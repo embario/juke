@@ -1,15 +1,21 @@
+import logging
 from rest_framework import viewsets, permissions
 from rest_framework.response import Response
 
 from catalog import serializers, controller
 from catalog.models import Genre, Artist, Album, Track
 
+log = logging.getLogger(__name__)
+
 
 class MusicResourceViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request):
         if 'external' in request.GET and bool(request.GET['external']) is True:
+            log.info("RECV Request for External Source: %s", request)
             res = controller.route(request)
             return Response(res.data)
+        else:
+            log.info("RECV Request for Internal Data: %s", request)
         return super().list(request)
 
     def get_object(self):

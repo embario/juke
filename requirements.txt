@@ -9,5 +9,5 @@ psycopg2
 flake8
 ipython
 ipdb
-pillow
 spotipy
+pillow
