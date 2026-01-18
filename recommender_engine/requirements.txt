@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+numpy
+psycopg[binary,pool]

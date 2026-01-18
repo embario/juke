@@ -1,11 +1,20 @@
 import logging
 
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
+
 from rest_framework import viewsets, permissions, status, generics
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from social_django.utils import load_backend, load_strategy
 
-from juke_auth.serializers import JukeUserSerializer, MusicProfileSerializer
+from juke_auth.serializers import (
+    JukeUserSerializer,
+    MusicProfileSerializer,
+    MusicProfileSearchSerializer,
+)
 from juke_auth.models import JukeUser, MusicProfile
 
 
@@ -23,10 +32,64 @@ class JukeUserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 
+class IsProfileOwnerOrReadOnly(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return obj.user_id == request.user.id
+
+
 class MusicProfileViewSet(viewsets.ModelViewSet):
-    queryset = MusicProfile.objects.all()
+    queryset = MusicProfile.objects.select_related('user')
     serializer_class = MusicProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsProfileOwnerOrReadOnly]
+    lookup_field = 'username'
+    lookup_url_kwarg = 'username'
+    http_method_names = ['get', 'post', 'put', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        return self.queryset
+
+    def list(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Music profiles cannot be listed. Use the search endpoint instead.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def get_object(self):
+        username = self.kwargs.get(self.lookup_url_kwarg or self.lookup_field)
+        queryset = self.filter_queryset(self.get_queryset())
+        obj = get_object_or_404(queryset, user__username=username)
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+    def perform_create(self, serializer):
+        request_user = self.request.user
+        if MusicProfile.objects.filter(user=request_user).exists():
+            raise ValidationError({'detail': 'Profile already exists for this user.'})
+        serializer.save(user=request_user)
+
+    @action(detail=False, methods=['get', 'put', 'patch'], url_path='me')
+    def me(self, request):
+        profile, _ = MusicProfile.objects.get_or_create(user=request.user)
+        if request.method in ['PUT', 'PATCH']:
+            serializer = self.get_serializer(profile, data=request.data, partial=request.method == 'PATCH')
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+        serializer = self.get_serializer(profile)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='search')
+    def search(self, request):
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response({'results': []})
+        queryset = self.get_queryset().filter(
+            Q(user__username__icontains=query) | Q(display_name__icontains=query)
+        )[:10]
+        serializer = MusicProfileSearchSerializer(queryset, many=True)
+        return Response({'results': serializer.data})
 
 
 class SocialAuth(generics.CreateAPIView):

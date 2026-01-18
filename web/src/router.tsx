@@ -1,9 +1,10 @@
 import { createBrowserRouter } from 'react-router-dom';
-import AppLayout from './components/layout/AppLayout';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import LibraryPage from './pages/LibraryPage';
-import NotFoundPage from './pages/NotFoundPage';
+import AppLayout from './features/app/components/AppLayout';
+import LoginRoute from './features/auth/routes/LoginRoute';
+import RegisterRoute from './features/auth/routes/RegisterRoute';
+import LibraryRoute from './features/catalog/routes/LibraryRoute';
+import MusicProfileRoute from './features/profiles/routes/MusicProfileRoute';
+import NotFoundRoute from './features/app/routes/NotFoundRoute';
 
 const router = createBrowserRouter([
   {
@@ -12,21 +13,29 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <LibraryPage />,
+        element: <LibraryRoute />,
       },
       {
         path: 'login',
-        element: <LoginPage />,
+        element: <LoginRoute />,
       },
       {
         path: 'register',
-        element: <RegisterPage />,
+        element: <RegisterRoute />,
+      },
+      {
+        path: 'profiles',
+        element: <MusicProfileRoute />,
+      },
+      {
+        path: 'profiles/:username',
+        element: <MusicProfileRoute />,
       },
     ],
   },
   {
     path: '*',
-    element: <NotFoundPage />,
+    element: <NotFoundRoute />,
   },
 ]);
 

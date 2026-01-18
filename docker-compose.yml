@@ -7,6 +7,11 @@ services:
     #   - ./data/db:/var/lib/postgresql/data
     env_file: .env
 
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
   web:
     build: .
     command: bash run_dev.sh
@@ -16,7 +21,41 @@ services:
       - .:/app
     depends_on:
       - db
+      - redis
     env_file: .env
+
+  worker:
+    build: .
+    command: celery -A settings.celery worker -l info
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+    env_file: .env
+
+  beat:
+    build: .
+    command: celery -A settings.celery beat -l info
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+    env_file: .env
+
+  recommender-engine:
+    build:
+      context: ./recommender_engine
+    command: uvicorn app.main:app --host 0.0.0.0 --port 9000
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./recommender_engine:/app
+    env_file: .env
+    environment:
+      - RECOMMENDER_MODEL_VERSION=${RECOMMENDER_MODEL_VERSION:-v1.0.0}
+      - RECOMMENDER_VECTOR_DIM=${RECOMMENDER_VECTOR_DIM:-32}
 
   frontend:
     build:

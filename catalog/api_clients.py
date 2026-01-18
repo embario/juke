@@ -2,6 +2,7 @@ import typing
 import abc
 import logging
 
+from django.conf import settings
 from django.http import HttpRequest
 from rest_framework.exceptions import ParseError
 
@@ -9,7 +10,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 
 from catalog.utils import APIResponse, StreamingAPIError
-from catalog import serializers
+from catalog import serializers, spotify_stub
 
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,10 @@ class SpotifyAPIClient(StreamingPlatformAPIClient):
 
     def __init__(self, strategy: ResourceStrategy) -> None:
         super().__init__(strategy)
-        self.client = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
+        self.use_stub = getattr(settings, 'SPOTIFY_USE_STUB_DATA', False)
+        self.client = None if self.use_stub else spotipy.Spotify(
+            client_credentials_manager=SpotifyClientCredentials()
+        )
 
     def prepare_path(self, path: str, data: dict) -> str:
         if 'q' not in data and path in ['/api/v1/artists/', '/api/v1/albums', '/api/v1/tracks/']:
@@ -83,17 +87,20 @@ class SpotifyAPIClient(StreamingPlatformAPIClient):
         return data
 
     def _perform_request(self, path: str, data: str) -> APIResponse:
-        if 'q' in data:
-            res = self.client.search(data['q'], type=data['type'], offset=data['offset'])
-            res = res[f"{data['type']}s"]
-        elif data['type'] == 'artist':
-            res = self.client.artist(data['uri'])
-        elif data['type'] == 'album':
-            res = self.client.album(data['uri'])
-        elif data['type'] == 'track':
-            res = self.client.track(data['uri'])
+        if self.use_stub:
+            res = self._perform_stub_request(data)
         else:
-            raise StreamingAPIError()
+            if 'q' in data:
+                res = self.client.search(data['q'], type=data['type'], offset=data['offset'])
+                res = res[f"{data['type']}s"]
+            elif data['type'] == 'artist':
+                res = self.client.artist(data['uri'])
+            elif data['type'] == 'album':
+                res = self.client.album(data['uri'])
+            elif data['type'] == 'track':
+                res = self.client.track(data['uri'])
+            else:
+                raise StreamingAPIError()
 
         response = APIResponse(res)
         ser = {
@@ -111,3 +118,16 @@ class SpotifyAPIClient(StreamingPlatformAPIClient):
             response._data[idx] = ser_instance.data
             response.instance = ser_instance.instance
         return response
+
+    def _perform_stub_request(self, data: dict) -> dict:
+        if 'q' in data:
+            return spotify_stub.search_response(data['type'])
+
+        if data['type'] == 'artist':
+            return spotify_stub.artist_detail(data['uri'])
+        if data['type'] == 'album':
+            return spotify_stub.album_detail(data['uri'])
+        if data['type'] == 'track':
+            return spotify_stub.track_detail(data['uri'])
+
+        raise StreamingAPIError()

@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.0/ref/settings/
 """
 import os
+import sys
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -24,6 +25,13 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
+
+_cmd = sys.argv[1] if len(sys.argv) > 1 else ''
+SPOTIFY_USE_STUB_DATA = os.environ.get("SPOTIFY_USE_STUB_DATA")
+if SPOTIFY_USE_STUB_DATA is None:
+    SPOTIFY_USE_STUB_DATA = _cmd == 'test'
+else:
+    SPOTIFY_USE_STUB_DATA = SPOTIFY_USE_STUB_DATA.lower() in {'1', 'true', 'yes', 'on'}
 
 ALLOWED_HOSTS = []
 
@@ -52,6 +60,7 @@ REST_REGISTRATION = {
         'html_body': 'juke_auth/register/body.html',
     }
 }
+
 
 # Application definition
 
@@ -86,6 +95,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'juke_auth',
     'catalog',
+    'recommender',
 ]
 
 MIDDLEWARE = [
@@ -205,6 +215,30 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
+
+
+celery_always_eager = os.environ.get('CELERY_TASK_ALWAYS_EAGER')
+if celery_always_eager is None:
+    CELERY_TASK_ALWAYS_EAGER = _cmd == 'test'
+else:
+    CELERY_TASK_ALWAYS_EAGER = celery_always_eager.lower() in {'1', 'true', 'yes', 'on'}
+
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+CELERY_TASK_ROUTES = {
+    'catalog.tasks.sync_spotify_genres': {'queue': 'catalog'},
+}
+CELERY_BEAT_SCHEDULE = {
+    'sync-spotify-genres-daily': {
+        'task': 'catalog.tasks.sync_spotify_genres',
+        'schedule': 60 * 60 * 24,  # 24 hours
+    },
+}
+
+RECOMMENDER_ENGINE_BASE_URL = os.environ.get('RECOMMENDER_ENGINE_BASE_URL', 'http://recommender-engine:9000')
+RECOMMENDER_ENGINE_TIMEOUT = int(os.environ.get('RECOMMENDER_ENGINE_TIMEOUT', '15'))
 
 
 # Static files (CSS, JavaScript, Images)

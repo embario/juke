@@ -137,3 +137,17 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Frontend build artifacts
+web/.vite/
+web/storybook-static/
+web/tsconfig*.tsbuildinfo
+web/vite.config.js
+web/vite.config.d.ts
+
+# Generated JS mirrors from TS sources
+web/src/**/*.js
+web/src/**/*.js.map
+
+# Local simulator exports
+iOS/

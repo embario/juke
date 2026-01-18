@@ -1,3 +1,6 @@
+import datetime
+
+from django.core.exceptions import ValidationError
 from django.db import models
 
 CHOICES_ALBUM_TYPE = (
@@ -31,6 +34,33 @@ class Artist(MusicResource):
     genres = models.ManyToManyField(Genre, related_name='artists')
 
 
+def _normalize_release_date(raw_value, precision=None):
+    """Spotify sometimes sends YYYY or YYYY-MM for albums; coerce to a real date."""
+    if isinstance(raw_value, datetime.date):
+        return raw_value
+
+    if not raw_value:
+        raise ValidationError("Album release_date is required.")
+
+    if precision is None:
+        if len(raw_value) == 4:
+            precision = 'year'
+        elif len(raw_value) == 7:
+            precision = 'month'
+        else:
+            precision = 'day'
+
+    try:
+        if precision == 'year':
+            return datetime.date(int(raw_value), 1, 1)
+        if precision == 'month':
+            year, month = raw_value.split('-')
+            return datetime.date(int(year), int(month), 1)
+        return datetime.date.fromisoformat(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("Invalid release_date value from external source.") from exc
+
+
 class Album(MusicResource):
     name = models.CharField(blank=False, null=False, max_length=1024)
     artists = models.ManyToManyField(Artist, related_name='albums')
@@ -47,6 +77,10 @@ class Album(MusicResource):
 
     @staticmethod
     def get_or_create_with_validated_data(data):
+        release_date = _normalize_release_date(
+            data['release_date'],
+            data.get('release_date_precision'),
+        )
         try:
             instance = Album.objects.get(
                 name=data['name'],
@@ -56,7 +90,7 @@ class Album(MusicResource):
             instance.name = data['name']
             instance.spotify_id = data['id']
             instance.total_tracks = data['total_tracks']
-            instance.release_date = data['release_date']
+            instance.release_date = release_date
             instance.save()
             created = False
 
@@ -66,7 +100,7 @@ class Album(MusicResource):
                 spotify_id=data['id'],
                 album_type=data['album_type'].upper(),
                 total_tracks=data['total_tracks'],
-                release_date=data['release_date'],
+                release_date=release_date,
             )
             created = True
         return instance, created

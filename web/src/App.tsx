@@ -1,10 +1,13 @@
 import { RouterProvider } from 'react-router-dom';
 import router from './router';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider } from './features/auth/context/AuthProvider';
+import { CatalogSearchProvider } from './features/catalog/context/CatalogSearchContext';
 
 const App = () => (
   <AuthProvider>
-    <RouterProvider router={router} />
+    <CatalogSearchProvider>
+      <RouterProvider router={router} />
+    </CatalogSearchProvider>
   </AuthProvider>
 );
 
