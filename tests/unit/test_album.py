@@ -35,3 +35,23 @@ class AlbumTests(TestCase):
         AlbumImageResource.objects.create(image=image1, album=al)
         AlbumImageResource.objects.create(image=image2, album=al)
         self.assertEqual(al.images.count(), 2)
+
+    def test_get_or_create_normalizes_release_date_precision(self):
+        data = {
+            'name': 'Precision Test',
+            'id': 'album-precision-test',
+            'album_type': 'album',
+            'total_tracks': 10,
+            'release_date': '2006',
+        }
+
+        album, created = Album.get_or_create_with_validated_data(data=data)
+        self.assertTrue(created)
+        self.assertEqual(album.release_date, date(2006, 1, 1))
+
+        data['release_date'] = '2006-05'
+        data['release_date_precision'] = 'month'
+
+        album, created = Album.get_or_create_with_validated_data(data=data)
+        self.assertFalse(created)
+        self.assertEqual(album.release_date, date(2006, 5, 1))

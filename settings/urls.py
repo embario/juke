@@ -15,4 +15,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('auth/', include('juke_auth.urls')),
     path('api/v1/', include(router.urls)),
+    path('api/v1/', include('recommender.urls')),
 ]

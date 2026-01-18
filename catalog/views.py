@@ -1,9 +1,11 @@
 import logging
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from catalog import serializers, controller
 from catalog.models import Genre, Artist, Album, Track
+from catalog.tasks import sync_spotify_genres_task
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +31,11 @@ class GenreViewSet(MusicResourceViewSet):
     queryset = Genre.objects.all()
     serializer_class = serializers.GenreSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def refresh(self, request):
+        job = sync_spotify_genres_task.delay()
+        return Response({'task_id': job.id}, status=status.HTTP_202_ACCEPTED)
 
 
 class ArtistViewSet(MusicResourceViewSet):

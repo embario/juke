@@ -16,7 +16,11 @@
     "noEmit": false,
     "jsx": "react-jsx",
     "types": ["vitest/globals", "vite/client"],
-    "baseUrl": "./src"
+    "baseUrl": "./src",
+    "paths": {
+      "@shared/*": ["shared/*"],
+      "@uikit/*": ["uikit/*"]
+    }
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]

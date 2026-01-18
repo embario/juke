@@ -1,0 +1,46 @@
+body {
+  margin: 0;
+  background: radial-gradient(circle at top right, #1e3a8a, transparent 55%),
+    radial-gradient(circle at 20% 20%, rgba(249, 115, 22, 0.4), transparent 45%),
+    var(--clr-bg);
+  color: var(--clr-text);
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+a {
+  color: var(--clr-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+main {
+  min-height: 100vh;
+}
+
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 0.65rem;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--clr-panel-alt);
+  border-radius: 0.5rem;
+}

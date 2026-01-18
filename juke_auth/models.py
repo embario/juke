@@ -8,6 +8,19 @@ class JukeUser(AbstractUser):
 
 class MusicProfile(models.Model):
     name = models.CharField(blank=True, null=True, max_length=200)
-    user = models.ForeignKey(JukeUser, on_delete=models.PROTECT, blank=False, null=False)
+    user = models.OneToOneField(
+        JukeUser,
+        on_delete=models.PROTECT,
+        related_name='music_profile',
+    )
+    display_name = models.CharField(blank=True, default='', max_length=200)
+    tagline = models.CharField(blank=True, default='', max_length=280)
+    bio = models.TextField(blank=True, default='')
+    location = models.CharField(blank=True, default='', max_length=120)
+    avatar_url = models.URLField(blank=True, default='')
+    favorite_genres = models.JSONField(blank=True, default=list)
+    favorite_artists = models.JSONField(blank=True, default=list)
+    favorite_albums = models.JSONField(blank=True, default=list)
+    favorite_tracks = models.JSONField(blank=True, default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)

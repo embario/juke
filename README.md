@@ -5,13 +5,25 @@ Backend services for the Juke Music Service now ship with a React-based analyst 
 ## Running the stack
 
 1. Duplicate `template.env` into `.env` and populate the secrets as needed, including `BACKEND_URL` (defaults to `http://localhost:8000` for the browser-facing frontend).
-2. Start the local services, including the new frontend container:
+2. Start the local services, including the asynchronous workers and frontend container:
 
 	 ```bash
 	 docker-compose up --build
 	 ```
 
-	 The Django API stays on `http://localhost:8000` and the web console lives on `http://localhost:5173`.
+	 The Django API stays on `http://localhost:8000`, Celery workers connect to the bundled Redis broker, the recommender ML engine listens on `http://localhost:9000`, and the web console lives on `http://localhost:5173`.
+
+### Background tasks
+
+- Celery powers asynchronous workloads (Redis is provisioned automatically in `docker-compose.yml`).
+- The default worker plus a beat scheduler are part of the compose stack; for ad-hoc runs use:
+
+	```bash
+	docker-compose run --rm worker celery -A settings.celery worker -l info
+	```
+
+- Tasks may be triggered via the API (see the genre sync endpoint) or scheduled via Celery Beat.
+- The FastAPI-based `recommender-engine` container exposes `/embed` and `/recommend` for computing taste embeddings and likeness scores; Django calls it via the internal Docker network.
 
 ## Frontend development
 
@@ -25,6 +37,15 @@ Backend services for the Juke Music Service now ship with a React-based analyst 
 	```
 
 	You can override the backend target via `VITE_API_BASE_URL`.
+
+- Storybook documents the UI kit living under `web/src/uikit`. Launch it with:
+
+	```bash
+	cd web
+	npm run storybook
+	```
+
+	The builder runs on `http://localhost:6006` by default.
 
 ## Mobile app
 
