@@ -139,6 +139,7 @@ dmypy.json
 .pyre/
 
 # Frontend build artifacts
+.derived-data/
 web/.vite/
 web/storybook-static/
 web/tsconfig*.tsbuildinfo
