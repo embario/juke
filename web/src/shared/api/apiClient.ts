@@ -15,7 +15,14 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+const runtimeApiBase =
+  import.meta.env.VITE_API_BASE_URL ?? window?.ENV?.VITE_API_BASE_URL ?? window?.ENV?.BACKEND_URL;
+
+if (!runtimeApiBase) {
+  throw new Error('VITE_API_BASE_URL or BACKEND_URL must be defined.');
+}
+
+export const API_BASE_URL = runtimeApiBase;
 
 const buildUrl = (path: string, query?: Record<string, string | number | undefined>) => {
   const url = new URL(path, API_BASE_URL);
@@ -29,13 +36,26 @@ const buildUrl = (path: string, query?: Record<string, string | number | undefin
   return url.toString();
 };
 
+const safeGetCookie = (name: string): string | null => {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { token, query, headers, ...rest } = options;
+  const { token, query, headers, credentials, ...rest } = options;
   const url = buildUrl(path, query);
+  const method = (rest.method ?? 'GET').toUpperCase();
+  const shouldAttachCsrf = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+  const csrfToken = shouldAttachCsrf ? safeGetCookie('csrftoken') : null;
   const response = await fetch(url, {
     ...rest,
+    credentials: credentials ?? 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
       ...(token ? { Authorization: `Token ${token}` } : {}),
       ...headers,
     },

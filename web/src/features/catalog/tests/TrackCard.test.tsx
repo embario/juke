@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 import TrackCard from '../components/TrackCard';
 import type { Track } from '../types';
 
@@ -23,5 +24,14 @@ describe('TrackCard', () => {
     render(<TrackCard track={baseTrack} artworkUrl="https://example.com/art.jpg" />);
 
     expect(screen.getByAltText('Schism artwork')).toHaveAttribute('src', 'https://example.com/art.jpg');
+  });
+
+  it('calls onPlay when interactive', () => {
+    const handlePlay = vi.fn();
+    render(<TrackCard track={baseTrack} onPlay={handlePlay} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /play schism/i }));
+
+    expect(handlePlay).toHaveBeenCalledWith(baseTrack);
   });
 });

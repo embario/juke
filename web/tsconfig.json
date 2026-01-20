@@ -13,7 +13,7 @@
     "moduleResolution": "Node",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": false,
+    "noEmit": true,
     "jsx": "react-jsx",
     "types": ["vitest/globals", "vite/client"],
     "baseUrl": "./src",

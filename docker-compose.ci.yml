@@ -16,6 +16,8 @@ services:
   frontend:
     build:
       context: ./web
+      args:
+        VITE_API_BASE_URL: ${BACKEND_URL:?Set BACKEND_URL}
     command: npm run dev -- --host 0.0.0.0 --port 5173
     volumes:
       - ./web:/app
@@ -24,7 +26,7 @@ services:
       - web
     env_file: test.env
     environment:
-      - VITE_API_BASE_URL=${BACKEND_URL:-http://web:8000}
+      - VITE_API_BASE_URL=${BACKEND_URL:?Set BACKEND_URL}
       - CIRCLECI
     ports:
       - "8000:8000"

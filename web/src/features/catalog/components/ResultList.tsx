@@ -2,6 +2,8 @@ import AlbumCard from './AlbumCard';
 import ArtistCard from './ArtistCard';
 import TrackCard from './TrackCard';
 import type { Album, Artist, Track } from '../types';
+import { usePlayback } from '../../playback/hooks/usePlayback';
+import { deriveTrackUri } from '../../playback/utils';
 
 const buildAlbumLookup = (albums: Album[]): Map<string, Album> => {
   return albums.reduce((map, album) => {
@@ -69,6 +71,7 @@ type Props = {
 
 const ResultList = ({ title, items, variant, emptyCopy, relatedAlbums = [] }: Props) => {
   const albumLookup = relatedAlbums.length ? buildAlbumLookup(relatedAlbums) : undefined;
+  const { playTrack, isPlaying: playbackPlaying, isBusy: playbackBusy, activeTrackUri, canControl } = usePlayback();
 
   return (
     <div className="result-list">
@@ -97,9 +100,25 @@ const ResultList = ({ title, items, variant, emptyCopy, relatedAlbums = [] }: Pr
           }
           const track = resource as Track;
           const artworkUrl = albumLookup ? resolveTrackArtwork(track, albumLookup) : undefined;
+          const trackUri = deriveTrackUri(track);
+          const isActive = Boolean(trackUri && activeTrackUri && trackUri === activeTrackUri);
+          const canPlayTrack = Boolean(trackUri) && canControl;
+          const handlePlay = canPlayTrack
+            ? () => {
+                void playTrack(track);
+              }
+            : undefined;
           return (
             <li key={key}>
-              <TrackCard track={track} artworkUrl={artworkUrl} />
+              <TrackCard
+                track={track}
+                artworkUrl={artworkUrl}
+                onPlay={handlePlay}
+                isActive={isActive}
+                isPlaying={isActive && playbackPlaying}
+                isDisabled={!canPlayTrack}
+                isLoading={isActive && playbackBusy}
+              />
             </li>
           );
         })}

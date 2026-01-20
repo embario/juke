@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,6 +27,12 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip('/')
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://127.0.0.1:5173")
+LOGIN_REDIRECT_URL = FRONTEND_URL
+LOGOUT_REDIRECT_URL = FRONTEND_URL
+SOCIAL_AUTH_LOGIN_REDIRECT_URL = FRONTEND_URL
+
 _cmd = sys.argv[1] if len(sys.argv) > 1 else ''
 SPOTIFY_USE_STUB_DATA = os.environ.get("SPOTIFY_USE_STUB_DATA")
 if SPOTIFY_USE_STUB_DATA is None:
@@ -33,7 +40,17 @@ if SPOTIFY_USE_STUB_DATA is None:
 else:
     SPOTIFY_USE_STUB_DATA = SPOTIFY_USE_STUB_DATA.lower() in {'1', 'true', 'yes', 'on'}
 
-ALLOWED_HOSTS = []
+allowed_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS")
+if allowed_hosts:
+    ALLOWED_HOSTS = [host.strip() for host in allowed_hosts.split(",") if host.strip()]
+else:
+    ALLOWED_HOSTS = [
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",
+        "10.0.2.2",  # Android emulator loopback to host
+        "web",
+    ]
 
 AUTH_USER_MODEL = "juke_auth.JukeUser"
 
@@ -122,6 +139,13 @@ SOCIAL_AUTH_AUTHENTICATION_BACKENDS = (
 
 SOCIAL_AUTH_SPOTIFY_KEY = os.environ.get("SOCIAL_AUTH_SPOTIFY_KEY")
 SOCIAL_AUTH_SPOTIFY_SECRET = os.environ.get("SOCIAL_AUTH_SPOTIFY_SECRET")
+_spotify_scope = os.environ.get(
+    "SOCIAL_AUTH_SPOTIFY_SCOPE",
+    "user-read-playback-state user-read-currently-playing user-modify-playback-state",
+)
+SOCIAL_AUTH_SPOTIFY_SCOPE = [entry.strip() for entry in _spotify_scope.replace(",", " ").split() if entry.strip()]
+SPOTIFY_REDIRECT_PATH = '/api/v1/social-auth/complete/spotify/'
+SOCIAL_AUTH_SPOTIFY_REDIRECT_URI = urljoin(f"{BACKEND_URL}/", SPOTIFY_REDIRECT_PATH.lstrip('/'))
 os.environ["SPOTIPY_CLIENT_ID"] = SOCIAL_AUTH_SPOTIFY_KEY
 os.environ["SPOTIPY_CLIENT_SECRET"] = SOCIAL_AUTH_SPOTIFY_SECRET
 
@@ -130,7 +154,7 @@ SOCIAL_AUTH_JSONFIELD_ENABLED = True
 SOCIAL_AUTH_PIPELINE = (
     'social_core.pipeline.social_auth.social_details',
     'social_core.pipeline.social_auth.social_uid',
-    'social_core.pipeline.social_auth.social_user',
+    'juke_auth.pipeline.relink_social_user',
     'social_core.pipeline.user.get_username',
     'social_core.pipeline.user.create_user',
     'social_core.pipeline.social_auth.associate_user',
@@ -138,6 +162,10 @@ SOCIAL_AUTH_PIPELINE = (
     'social_core.pipeline.user.user_details',
     'social_core.pipeline.social_auth.associate_by_email',
 )
+
+SOCIAL_AUTH_STRATEGY = 'juke_auth.strategy.ResilientStrategy'
+SOCIAL_AUTH_STATE_CACHE_TTL = int(os.environ.get('SOCIAL_AUTH_STATE_CACHE_TTL', '600'))
+SOCIAL_AUTH_STATE_CACHE_PREFIX = os.environ.get('SOCIAL_AUTH_STATE_CACHE_PREFIX', 'social-state')
 
 ROOT_URLCONF = 'settings.urls'
 
@@ -251,8 +279,15 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# CORS settings
 cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS")
 if cors_origins:
-    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+    CORS_ALLOWED_ORIGINS = [origin.strip().rstrip('/') for origin in cors_origins.split(",") if origin.strip()]
 else:
-    CORS_ALLOWED_ORIGINS = ["http://localhost:5173"]
+    default_cors = [FRONTEND_URL, "http://127.0.0.1:5173", "http://localhost:5173"]
+    CORS_ALLOWED_ORIGINS = list(dict.fromkeys(origin.rstrip('/') for origin in default_cors))
+
+CORS_ALLOW_CREDENTIALS = True
+
+default_csrf = [origin.rstrip('/') for origin in CORS_ALLOWED_ORIGINS]
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(default_csrf))

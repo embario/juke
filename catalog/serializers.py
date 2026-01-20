@@ -146,3 +146,29 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
 
             instance.save()
         return instance
+
+
+class PlaybackProviderSerializer(serializers.Serializer):
+    provider = serializers.CharField(required=False, allow_blank=True)
+    device_id = serializers.CharField(required=False, allow_blank=True)
+
+
+class PlayRequestSerializer(PlaybackProviderSerializer):
+    track_uri = serializers.CharField(required=False, allow_blank=True)
+    context_uri = serializers.CharField(required=False, allow_blank=True)
+    position_ms = serializers.IntegerField(required=False, min_value=0)
+
+    def validate(self, attrs):
+        track_uri = attrs.get('track_uri')
+        context_uri = attrs.get('context_uri')
+        if track_uri:
+            attrs['track_uri'] = track_uri.strip()
+        if context_uri:
+            attrs['context_uri'] = context_uri.strip()
+        if attrs.get('device_id'):
+            attrs['device_id'] = attrs['device_id'].strip()
+        return attrs
+
+
+class PlaybackStateQuerySerializer(serializers.Serializer):
+    provider = serializers.CharField(required=False, allow_blank=True)

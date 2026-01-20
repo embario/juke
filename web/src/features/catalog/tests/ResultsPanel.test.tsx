@@ -1,5 +1,23 @@
 import { render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 import ResultsPanel from '../components/ResultsPanel';
+
+vi.mock('../../playback/hooks/usePlayback', () => ({
+  usePlayback: () => ({
+    state: null,
+    error: null,
+    isBusy: false,
+    isPlaying: false,
+    canControl: false,
+    activeTrackUri: null,
+    playTrack: vi.fn(),
+    pause: vi.fn(),
+    resume: vi.fn(),
+    next: vi.fn(),
+    previous: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}));
 
 const mockData = {
   genres: [],

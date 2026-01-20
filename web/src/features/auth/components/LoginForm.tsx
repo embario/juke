@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import Button from '@uikit/components/Button';
 import InputField from '@uikit/components/InputField';
 import StatusBanner from '@uikit/components/StatusBanner';
+import { SPOTIFY_AUTH_PATH } from '../constants';
 import type { LoginPayload } from '../types';
 
 type Props = {
@@ -59,9 +60,14 @@ const LoginForm = ({ onSubmit, isSubmitting = false, serverError = null }: Props
           onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
         />
         <StatusBanner variant="error" message={serverError} />
-        <Button type="submit" disabled={isSubmitting} data-variant="primary">
-          {isSubmitting ? 'Authenticating…' : 'Sign in'}
-        </Button>
+        <div className="login-form__actions">
+          <Button type="submit" disabled={isSubmitting} data-variant="primary">
+            {isSubmitting ? 'Authenticating…' : 'Sign in'}
+          </Button>
+          <a className="btn btn-ghost login-form__spotify" href={SPOTIFY_AUTH_PATH} aria-label="Sign in with Spotify">
+            Sign in with Spotify
+          </a>
+        </div>
       </div>
     </form>
   );

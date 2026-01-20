@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '@uikit/components/Button';
 import { useAuth } from '../../auth/hooks/useAuth';
+import { SPOTIFY_AUTH_PATH } from '../../auth/constants';
 
 const Header = () => {
   const { isAuthenticated, username, logout } = useAuth();
@@ -32,6 +33,13 @@ const Header = () => {
             >
               {username ?? 'Profile'}
             </button>
+            <a
+              className="pill pill--accent"
+              href={SPOTIFY_AUTH_PATH}
+              aria-label="Connect Spotify account"
+            >
+              Connect Spotify
+            </a>
             <Button variant="ghost" onClick={handleLogout} aria-label="Sign out">
               Sign out
             </Button>
@@ -44,6 +52,9 @@ const Header = () => {
             <Link to="/register" className="pill pill--accent">
               Create account
             </Link>
+            <a className="pill pill--accent" href={SPOTIFY_AUTH_PATH} aria-label="Sign in with Spotify">
+              Sign in with Spotify
+            </a>
           </>
         )}
       </div>

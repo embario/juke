@@ -1,5 +1,7 @@
 import logging
 
+from django.contrib.auth import authenticate, login, logout
+
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
@@ -7,6 +9,10 @@ from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.authtoken.serializers import AuthTokenSerializer
+from rest_framework.authtoken.models import Token
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from social_django.utils import load_backend, load_strategy
 
@@ -90,6 +96,31 @@ class MusicProfileViewSet(viewsets.ModelViewSet):
         )[:10]
         serializer = MusicProfileSearchSerializer(queryset, many=True)
         return Response({'results': serializer.data})
+
+
+
+class TokenLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = AuthTokenSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+        token, _ = Token.objects.get_or_create(user=user)
+        login(request, user)
+        return Response({'token': token.key}, status=status.HTTP_200_OK)
+
+
+class TokenLogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        if request.auth:
+            # Keep token valid for future logins, only clear session.
+            logout(request)
+        else:
+            logout(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class SocialAuth(generics.CreateAPIView):

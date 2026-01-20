@@ -4,14 +4,14 @@ Backend services for the Juke Music Service now ship with a React-based analyst 
 
 ## Running the stack
 
-1. Duplicate `template.env` into `.env` and populate the secrets as needed, including `BACKEND_URL` (defaults to `http://localhost:8000` for the browser-facing frontend).
+1. Duplicate `template.env` into `.env` and populate the secrets as needed, including `BACKEND_URL` (defaults to `http://127.0.0.1:8000` for the API) and `FRONTEND_URL` (`http://127.0.0.1:5173`).
 2. Start the local services, including the asynchronous workers and frontend container:
 
 	 ```bash
 	 docker-compose up --build
 	 ```
 
-	 The Django API stays on `http://localhost:8000`, Celery workers connect to the bundled Redis broker, the recommender ML engine listens on `http://localhost:9000`, and the web console lives on `http://localhost:5173`.
+	 The Django API stays on `http://127.0.0.1:8000`, Celery workers connect to the bundled Redis broker, the recommender ML engine listens on `http://localhost:9000`, and the web console lives on `http://localhost:5173`.
 
 ### Background tasks
 
@@ -50,7 +50,7 @@ Backend services for the Juke Music Service now ship with a React-based analyst 
 ## Mobile app
 
 - The native SwiftUI client from the former iOS repository has been moved into `mobile/`.
-- Open the project with Xcode via `xed mobile/juke-iOS.xcodeproj`.
+- Open the project with Xcode via `xed mobile/ios/juke-iOS.xcodeproj`.
 - Use the existing `juke-iOS` scheme for running on simulators or devices; it continues to build against the same bundle identifiers.
 
 ## Tests

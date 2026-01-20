@@ -47,13 +47,13 @@
 	    }
 	},
 	{
-	    "model": "juke_auth.MusicProfile",
-	    "pk": 2,
-	    "fields": {
-	    	"name": "test-music-profile2",
-	    	"user": 2,
-	        "created_at": "2022-01-04T16:22:31.508Z",
-	        "modified_at": "2022-01-04T16:22:31.508Z"
-	    }
-	}	
+		"model": "juke_auth.MusicProfile",
+		"pk": 2,
+		"fields": {
+			"name": "test-music-profile2",
+			"user": 2,
+			"created_at": "2022-01-04T16:22:31.508Z",
+			"modified_at": "2022-01-04T16:22:31.508Z"
+		}
+	}
 ]

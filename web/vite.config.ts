@@ -2,7 +2,11 @@ import { defineConfig } from 'vitest/config';
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 
-const BACKEND_TARGET = process.env.BACKEND_TARGET ?? 'http://web:8000';
+const BACKEND_TARGET = process.env.BACKEND_TARGET ?? process.env.BACKEND_URL;
+
+if (!BACKEND_TARGET) {
+  throw new Error('BACKEND_URL must be defined for the frontend dev server.');
+}
 
 export default defineConfig({
   plugins: [react()],

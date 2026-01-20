@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { loginRequest, registerRequest } from '../api/authApi';
+import { loginRequest, logoutRequest, registerRequest } from '../api/authApi';
 import type { AuthContextValue, AuthState, LoginPayload, RegisterPayload } from '../types';
 
 const STORAGE_KEY = 'juke-auth-state';
@@ -55,8 +55,17 @@ export const AuthProvider = ({ children }: Props) => {
   }, []);
 
   const logout = useCallback(() => {
+    const activeToken = state.token;
     setState(defaultState);
-  }, []);
+    if (activeToken) {
+      void logoutRequest(activeToken).catch((error) => {
+        if (import.meta.env.DEV) {
+          // Best-effort session cleanup; ignore errors in production.
+          console.error('Failed to revoke session', error);
+        }
+      });
+    }
+  }, [state.token]);
 
   const value = useMemo<AuthContextValue>(() => ({
     ...state,

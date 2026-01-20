@@ -60,6 +60,8 @@ services:
   frontend:
     build:
       context: ./web
+      args:
+        VITE_API_BASE_URL: ${BACKEND_URL:?Set BACKEND_URL in .env}
     command: npm run dev -- --host 0.0.0.0 --port 5173
     ports:
       - "5173:5173"
@@ -70,5 +72,5 @@ services:
       - web
     env_file: .env
     environment:
-      - VITE_API_BASE_URL=${BACKEND_URL:-http://localhost:8000}
+      - VITE_API_BASE_URL=${BACKEND_URL:?Set BACKEND_URL in .env}
 
