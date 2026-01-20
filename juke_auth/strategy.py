@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from social_django.strategy import DjangoStrategy
 
+
 @dataclass
 class CachedState:
     user_id: Optional[int]

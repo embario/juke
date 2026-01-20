@@ -146,10 +146,13 @@ _spotify_scope = os.environ.get(
 SOCIAL_AUTH_SPOTIFY_SCOPE = [entry.strip() for entry in _spotify_scope.replace(",", " ").split() if entry.strip()]
 SPOTIFY_REDIRECT_PATH = '/api/v1/social-auth/complete/spotify/'
 SOCIAL_AUTH_SPOTIFY_REDIRECT_URI = urljoin(f"{BACKEND_URL}/", SPOTIFY_REDIRECT_PATH.lstrip('/'))
-os.environ["SPOTIPY_CLIENT_ID"] = SOCIAL_AUTH_SPOTIFY_KEY
-os.environ["SPOTIPY_CLIENT_SECRET"] = SOCIAL_AUTH_SPOTIFY_SECRET
+if SOCIAL_AUTH_SPOTIFY_KEY:
+    os.environ["SPOTIPY_CLIENT_ID"] = SOCIAL_AUTH_SPOTIFY_KEY
+if SOCIAL_AUTH_SPOTIFY_SECRET:
+    os.environ["SPOTIPY_CLIENT_SECRET"] = SOCIAL_AUTH_SPOTIFY_SECRET
 
 SOCIAL_AUTH_JSONFIELD_ENABLED = True
+SOCIAL_AUTH_USER_MODEL = AUTH_USER_MODEL
 
 SOCIAL_AUTH_PIPELINE = (
     'social_core.pipeline.social_auth.social_details',

@@ -93,13 +93,30 @@ class PlaybackService:
         if not hasattr(self.user, 'social_auth'):
             raise PlaybackProviderNotLinked('Streaming accounts are not connected for this user.')
         account = self.user.social_auth.filter(provider=social_name).first()
-        logger.info('Resolved social account for user %s provider %s: %s', getattr(self.user, 'pk', self.user), social_name, account.pk if account else None)
+        logger.info(
+            'Resolved social account for user %s provider %s: %s',
+            getattr(self.user, 'pk', self.user),
+            social_name,
+            account.pk if account else None,
+        )
         if not account:
             raise PlaybackProviderNotLinked(f"Link your {provider_cls.slug.title()} account to control playback.")
         return account
 
-    def play(self, *, track_uri: Optional[str], context_uri: Optional[str], position_ms: Optional[int], device_id: Optional[str]) -> Optional[Dict[str, Any]]:
-        self.provider.play(track_uri=track_uri, context_uri=context_uri, position_ms=position_ms, device_id=device_id)
+    def play(
+        self,
+        *,
+        track_uri: Optional[str],
+        context_uri: Optional[str],
+        position_ms: Optional[int],
+        device_id: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        self.provider.play(
+            track_uri=track_uri,
+            context_uri=context_uri,
+            position_ms=position_ms,
+            device_id=device_id,
+        )
         return self.provider.state()
 
     def pause(self, *, device_id: Optional[str]) -> Optional[Dict[str, Any]]:

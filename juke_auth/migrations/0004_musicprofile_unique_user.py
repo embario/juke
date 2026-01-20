@@ -14,7 +14,6 @@ def deduplicate_music_profiles(apps, schema_editor):
     for entry in duplicates:
         user_id = entry['user_id']
         profiles = list(MusicProfile.objects.filter(user_id=user_id).order_by('id'))
-        keep = profiles[0]
         for extra in profiles[1:]:
             extra.delete()
 

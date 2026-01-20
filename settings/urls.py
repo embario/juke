@@ -13,7 +13,6 @@ router.registry.extend(catalog_router.registry)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('auth/', include('juke_auth.urls')),
     path('api/v1/auth/', include('juke_auth.urls')),
     path('api/v1/social-auth/', include('social_django.urls', namespace='social')),
     path('api/v1/', include(router.urls)),

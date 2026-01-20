@@ -7,8 +7,8 @@ from tests.utils import REGISTRATION_VERIFY_RE
 
 
 class TestRegistration(APITestCase):
-    register_url = '/auth/accounts/register/'
-    verify_url = '/auth/accounts/verify-registration/'
+    register_url = '/api/v1/auth/accounts/register/'
+    verify_url = '/api/v1/auth/accounts/verify-registration/'
 
     def test_register_fail_missing_username(self):
         data = {'password': 'testpassword'}

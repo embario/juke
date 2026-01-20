@@ -1,40 +1,57 @@
-version: "3.9"
-
 services:
   db:
-    image: "postgres:buster"
+    image: postgres:15-alpine
     env_file: test.env
-    ports:
-      - '5432:5432'
     environment:
-      - CIRCLECI
+      POSTGRES_DB: ${POSTGRES_NAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   web:
-    build: .
+    build:
+      context: .
     command: bash run_dev.sh
+    env_file:
+      - test.env
+    environment:
+      DJANGO_SETTINGS_MODULE: settings.base
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./web
       args:
-        VITE_API_BASE_URL: ${BACKEND_URL:?Set BACKEND_URL}
+        VITE_API_BASE_URL: ${BACKEND_URL:-http://127.0.0.1:8000}
+    working_dir: /app
     command: npm run dev -- --host 0.0.0.0 --port 5173
+    env_file:
+      - test.env
+    environment:
+      VITE_API_BASE_URL: ${BACKEND_URL:-http://127.0.0.1:8000}
     volumes:
       - ./web:/app
       - /app/node_modules
+    ports:
+      - "5173:5173"
     depends_on:
       - web
-    env_file: test.env
-    environment:
-      - VITE_API_BASE_URL=${BACKEND_URL:?Set BACKEND_URL}
-      - CIRCLECI
-    ports:
-      - "8000:8000"
-    depends_on:
-      - db
-    env_file: test.env
-    environment:
-      - CIRCLECI
-      - SOCIAL_AUTH_SPOTIFY_KEY
-      - SOCIAL_AUTH_SPOTIFY_SECRET      
-      - DJANGO_SECRET_KEY=abc123abc123abc123abc123abc123

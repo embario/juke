@@ -212,7 +212,6 @@ def _build_extra_payload(row: Dict[str, Any]) -> Dict[str, Any]:
     return extra
 
 
-
 def _hash_tokens(tokens: List[str]) -> np.ndarray:
     """
     Hash a list of tokens into a fixed-size vector.

@@ -10,7 +10,7 @@ from juke_auth.models import JukeUser
 
 
 class LoginTests(APITestCase):
-    social_login_url = '/auth/social-login/'
+    social_login_url = '/api/v1/auth/social-login/'
 
     @patch.object(SpotifyOAuth2, 'do_auth')
     def test_social_login_create_user(self, mock_auth):

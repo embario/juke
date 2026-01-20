@@ -22,7 +22,14 @@ class Migration(migrations.Migration):
                 ('metadata', models.JSONField(blank=True, default=dict)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('modified_at', models.DateTimeField(auto_now=True)),
-                ('artist', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='embedding', to='catalog.artist')),
+                (
+                    'artist',
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='embedding',
+                        to='catalog.artist',
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
@@ -35,7 +42,14 @@ class Migration(migrations.Migration):
                 ('metadata', models.JSONField(blank=True, default=dict)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('modified_at', models.DateTimeField(auto_now=True)),
-                ('track', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='embedding', to='catalog.track')),
+                (
+                    'track',
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='embedding',
+                        to='catalog.track',
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
@@ -48,7 +62,14 @@ class Migration(migrations.Migration):
                 ('metadata', models.JSONField(blank=True, default=dict)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('modified_at', models.DateTimeField(auto_now=True)),
-                ('album', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='embedding', to='catalog.album')),
+                (
+                    'album',
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='embedding',
+                        to='catalog.album',
+                    ),
+                ),
             ],
         ),
     ]

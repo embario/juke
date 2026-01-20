@@ -1,6 +1,6 @@
 import logging
 
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import login, logout
 
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -96,7 +96,6 @@ class MusicProfileViewSet(viewsets.ModelViewSet):
         )[:10]
         serializer = MusicProfileSearchSerializer(queryset, many=True)
         return Response({'results': serializer.data})
-
 
 
 class TokenLoginView(APIView):
