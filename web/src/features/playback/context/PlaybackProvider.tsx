@@ -117,8 +117,9 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     const provider = state?.provider ?? activeProvider;
+    const deviceId = state?.device?.id ?? undefined;
     try {
-      await runAction(() => pausePlayback(token, { provider, device_id: state?.device?.id }), { silent: false });
+      await runAction(() => pausePlayback(token, { provider, device_id: deviceId }), { silent: false });
     } catch {
       // handled globally
     }
@@ -129,12 +130,13 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     const provider = state?.provider ?? activeProvider;
+    const deviceId = state?.device?.id ?? undefined;
     try {
       await runAction(
         () =>
           startPlayback(token, {
             provider,
-            device_id: state?.device?.id,
+            device_id: deviceId,
           }),
         { silent: false },
       );
@@ -148,8 +150,9 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     const provider = state?.provider ?? activeProvider;
+    const deviceId = state?.device?.id ?? undefined;
     try {
-      await runAction(() => nextTrack(token, { provider, device_id: state?.device?.id }), { silent: false });
+      await runAction(() => nextTrack(token, { provider, device_id: deviceId }), { silent: false });
     } catch {
       // handled globally
     }
@@ -160,8 +163,9 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     const provider = state?.provider ?? activeProvider;
+    const deviceId = state?.device?.id ?? undefined;
     try {
-      await runAction(() => previousTrack(token, { provider, device_id: state?.device?.id }), { silent: false });
+      await runAction(() => previousTrack(token, { provider, device_id: deviceId }), { silent: false });
     } catch {
       // handled globally
     }

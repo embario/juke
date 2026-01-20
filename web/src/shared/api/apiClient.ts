@@ -15,8 +15,14 @@ export class ApiError extends Error {
   }
 }
 
+const nodeEnv = typeof process !== 'undefined' ? process.env : undefined;
+
 const runtimeApiBase =
-  import.meta.env.VITE_API_BASE_URL ?? window?.ENV?.VITE_API_BASE_URL ?? window?.ENV?.BACKEND_URL;
+  import.meta.env.VITE_API_BASE_URL ??
+  window?.ENV?.VITE_API_BASE_URL ??
+  window?.ENV?.BACKEND_URL ??
+  nodeEnv?.VITE_API_BASE_URL ??
+  nodeEnv?.BACKEND_URL;
 
 if (!runtimeApiBase) {
   throw new Error('VITE_API_BASE_URL or BACKEND_URL must be defined.');
