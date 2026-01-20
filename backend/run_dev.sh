@@ -1,4 +1,8 @@
 #!/bin/bash
+set -euo pipefail
+
+# Always operate from the backend directory
+cd "$(dirname "$0")"
 
 # wait for the database
 

@@ -23,14 +23,15 @@ services:
 
   backend:
     build:
-      context: .
+      context: ./backend
     command: bash run_dev.sh
+    working_dir: /app
     env_file:
       - test.env
     environment:
       DJANGO_SETTINGS_MODULE: settings.base
     volumes:
-      - .:/app
+      - ./backend:/app
     depends_on:
       db:
         condition: service_healthy

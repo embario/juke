@@ -93,7 +93,7 @@ const deriveErrorMessage = (statusText: string, payload: unknown) => {
 async function safeParse(response: Response): Promise<unknown> {
   try {
     return await response.json();
-  } catch (error) {
+  } catch {
     return undefined;
   }
 }

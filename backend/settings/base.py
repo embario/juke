@@ -24,8 +24,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 
+_supported_envs = {"development", "staging", "production"}
+RUNTIME_ENV = os.environ.get("JUKE_RUNTIME_ENV", "development").strip().lower()
+if RUNTIME_ENV not in _supported_envs:
+    raise ValueError(f"JUKE_RUNTIME_ENV must be one of {_supported_envs}, got '{RUNTIME_ENV}'")
+
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = RUNTIME_ENV == "development"
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip('/')
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://127.0.0.1:5173")
@@ -267,6 +272,14 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': 60 * 60 * 24,  # 24 hours
     },
 }
+# Keep Redis-queued tasks invisible long enough for workers to finish after fetching.
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'visibility_timeout': int(os.environ.get('CELERY_VISIBILITY_TIMEOUT', '3600')),
+}
+# Rely on Redis keyspace events instead of aggressive prefetching to reduce idle CPU.
+CELERY_WORKER_DISABLE_PREFETCH = True
+# With prefetch disabled we still cap to one task per worker process for deterministic flow.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 RECOMMENDER_ENGINE_BASE_URL = os.environ.get('RECOMMENDER_ENGINE_BASE_URL', 'http://recommender-engine:9000')
 RECOMMENDER_ENGINE_TIMEOUT = int(os.environ.get('RECOMMENDER_ENGINE_TIMEOUT', '15'))
@@ -275,7 +288,9 @@ RECOMMENDER_ENGINE_TIMEOUT = int(os.environ.get('RECOMMENDER_ENGINE_TIMEOUT', '1
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field

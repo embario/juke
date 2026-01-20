@@ -26,7 +26,7 @@ const readStateFromStorage = (): AuthState => {
       return defaultState;
     }
     return JSON.parse(raw) as AuthState;
-  } catch (error) {
+  } catch {
     return defaultState;
   }
 };

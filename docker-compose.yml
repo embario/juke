@@ -13,45 +13,61 @@ services:
       - "6379:6379"
 
   backend:
-    build: .
+    build:
+      context: ./backend
     command: bash run_dev.sh
+    working_dir: /app
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
+      - ./backend:/app
     depends_on:
       - db
       - redis
     env_file: .env
 
   worker:
-    build: .
-    command: celery -A settings.celery worker -l info
+    build:
+      context: ./backend
+    command: celery -A settings.celery worker --loglevel=INFO
+    working_dir: /app
     volumes:
-      - .:/app
+      - ./backend:/app
     depends_on:
       - db
       - redis
     env_file: .env
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: "512M"
 
   beat:
-    build: .
-    command: celery -A settings.celery beat -l info
+    build:
+      context: ./backend
+    command: celery -A settings.celery beat --loglevel=INFO
+    working_dir: /app
     volumes:
-      - .:/app
+      - ./backend:/app
     depends_on:
       - db
       - redis
     env_file: .env
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: "256M"
 
   recommender-engine:
     build:
-      context: ./recommender_engine
+      context: ./backend/recommender_engine
     command: uvicorn app.main:app --host 0.0.0.0 --port 9000
     ports:
       - "9000:9000"
     volumes:
-      - ./recommender_engine:/app
+      - ./backend/recommender_engine:/app
     env_file: .env
     environment:
       - RECOMMENDER_MODEL_VERSION=${RECOMMENDER_MODEL_VERSION:-v1.0.0}
@@ -62,7 +78,6 @@ services:
       context: ./web
       args:
         VITE_API_BASE_URL: ${BACKEND_URL:?Set BACKEND_URL in .env}
-    command: npm run dev -- --host 0.0.0.0 --port 5173
     ports:
       - "5173:5173"
     volumes:

@@ -7,8 +7,9 @@ __pycache__/
 node_modules
 
 
-static/media/albums/*.png
-static/media/artists/*.png
+backend/static/media/albums/*.png
+backend/static/media/artists/*.png
+backend/staticfiles/
 
 # Database
 data/
@@ -106,6 +107,7 @@ __pypackages__/
 
 # Celery stuff
 celerybeat-schedule
+backend/celerybeat-schedule
 celerybeat.pid
 
 # SageMath parsed files
@@ -151,7 +153,6 @@ web/src/**/*.js
 web/src/**/*.js.map
 
 # Local simulator exports
-/iOS/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/

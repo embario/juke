@@ -1,10 +1,18 @@
 # Juke Platform
 
-Backend services for the Juke Music Service now ship with a React-based analyst console located at `web/` and the SwiftUI mobile client now lives alongside it under `mobile/`.
+Backend services for the Juke Music Service now live under `backend/`, the React-based analyst console sits in `web/`, and the platform-specific mobile clients live under `mobile/`.
+
+## Repository layout
+
+- `backend/`: Django API, Celery workers/beat, recommender engine, infrastructure Dockerfiles, and backend-specific configuration such as `setup.cfg` and `genres.txt`.
+- `web/`: Vite + React frontend for analysts.
+- `mobile/`: Native clients (`mobile/android/juke`, `mobile/ios/juke`).
+- `template.env`, `.env`, and `test.env`: stay at the repository root so both Docker Compose files can source them regardless of where services run.
+- `backend/static/` (cover art + other media) and `scripts/`: shared assets that remain addressable from the repository root.
 
 ## Running the stack
 
-1. Duplicate `template.env` into `.env` and populate the secrets as needed, including `BACKEND_URL` (defaults to `http://127.0.0.1:8000` for the API) and `FRONTEND_URL` (`http://127.0.0.1:5173`).
+1. Duplicate `template.env` into `.env` (both stay in the repo root) and populate the secrets as needed, including `BACKEND_URL` (defaults to `http://127.0.0.1:8000` for the API) and `FRONTEND_URL` (`http://127.0.0.1:5173`).
 2. Start the local services, including the asynchronous workers and web container:
 
 	 ```bash
@@ -38,6 +46,9 @@ Backend services for the Juke Music Service now ship with a React-based analyst 
 
 	You can override the backend target via `VITE_API_BASE_URL`.
 
+- Asset builds honor `JUKE_RUNTIME_ENV` (`development`, `staging`, `production`). Use `npm run build:dev`, `npm run build:staging`, or `npm run build:prod` to emit the correct bundle; the default `npm run build` targets production and now outputs pre-compressed Brotli/Gzip assets ready for staging or production servers.
+- The Dockerized frontend follows the same flag: `development` keeps the Vite dev server live (no bundling), while `staging`/`production` trigger the optimized build and serve the static assets through NGINX (including gzip precompression and `/api` + `/auth` proxying).
+
 - Storybook documents the UI kit living under `web/src/uikit`. Launch it with:
 
 	```bash
@@ -55,7 +66,7 @@ Backend services for the Juke Music Service now ship with a React-based analyst 
 
 ## Tests
 
-- Backend: `docker-compose exec backend python manage.py test`
+- Backend: `docker-compose exec backend python manage.py test` (run `cd backend` first if you prefer executing management commands on the host machine instead of Docker).
 - Frontend: `cd web && npm test`
 
 GitHub Actions (see `.github/workflows/ci.yml`) runs linting plus both suites on every push and pull request targeting `main`.

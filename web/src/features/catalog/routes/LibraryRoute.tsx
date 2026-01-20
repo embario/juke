@@ -19,6 +19,8 @@ const LibraryRoute = () => {
   const { data, runSearch, isLoading, error } = useCatalogSearch();
 
   useEffect(() => {
+    // Sync the search field when the query param changes via navigation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFieldValue((prev) => (prev === queryParam ? prev : queryParam));
     if (queryParam && queryParam !== lastAppliedQueryRef.current) {
       lastAppliedQueryRef.current = queryParam;

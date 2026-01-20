@@ -11,7 +11,7 @@ const extractArtistName = (artist: Artist | string | number | undefined | null):
       const segments = url.pathname.split('/').filter(Boolean);
       const maybeId = segments.length > 0 ? segments[segments.length - 1] : undefined;
       return maybeId ? `Artist ${maybeId}` : artist;
-    } catch (error) {
+    } catch {
       return artist;
     }
   }

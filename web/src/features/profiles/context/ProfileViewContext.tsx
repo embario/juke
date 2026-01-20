@@ -138,7 +138,7 @@ export const ProfileViewProvider = ({ children, username: routeUsername }: Props
       try {
         const results = await searchProfiles(token, searchQuery.trim());
         setSearchResults(results);
-      } catch (error) {
+      } catch {
         setSearchResults([]);
       } finally {
         setIsSearching(false);
@@ -148,12 +148,12 @@ export const ProfileViewProvider = ({ children, username: routeUsername }: Props
     return () => window.clearTimeout(handle);
   }, [isAuthenticated, token, searchQuery]);
 
-  const updateField = (field: keyof ProfileDraft, value: string) => {
+  const updateField = useCallback((field: keyof ProfileDraft, value: string) => {
     if (!canEdit) {
       return;
     }
     setDraft((prev) => (prev ? { ...prev, [field]: value } : prev));
-  };
+  }, [canEdit]);
 
   const saveDraft = useCallback(async () => {
     if (!draft || !token || !canEdit) {
@@ -186,12 +186,12 @@ export const ProfileViewProvider = ({ children, username: routeUsername }: Props
     }
   }, [draft, token, canEdit]);
 
-  const resetDraft = () => {
+  const resetDraft = useCallback(() => {
     if (profile) {
       setDraft(toDraft(profile));
     }
     setMode('view');
-  };
+  }, [profile]);
 
   const toggleMode = useCallback(() => {
     if (!canEdit) {
@@ -200,10 +200,10 @@ export const ProfileViewProvider = ({ children, username: routeUsername }: Props
     setMode((prev) => (prev === 'view' ? 'edit' : 'view'));
   }, [canEdit]);
 
-  const clearSearch = () => {
+  const clearSearch = useCallback(() => {
     setSearchResults([]);
     setIsSearching(false);
-  };
+  }, []);
 
   const value = useMemo<ProfileViewContextValue>(() => ({
     profile,

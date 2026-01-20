@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SECTION_DIVIDER="----------------------------------------"
+
+service_is_running() {
+	local service="$1"
+	# docker compose ps --quiet prints container IDs when running, so anything means live container.
+	if docker compose ps --status=running --quiet "$service" >/dev/null 2>&1 && \
+		 [ -n "$(docker compose ps --status=running --quiet "$service" 2>/dev/null)" ]; then
+		return 0
+	fi
+	return 1
+}
+
+echo "${SECTION_DIVIDER}"
+echo "Running backend lint (flake8)"
+if service_is_running backend; then
+	docker compose exec -T backend flake8
+else
+	docker compose run --rm backend flake8
+fi
+
+echo "${SECTION_DIVIDER}"
+echo "Running web lint (npm run lint)"
+if service_is_running web; then
+	docker compose exec -T web sh -c "npm install && npm run lint"
+else
+	docker compose run --rm --entrypoint "" web sh -c "npm install && npm run lint"
+fi
+
+echo "${SECTION_DIVIDER}"
+echo "All linters passed"
