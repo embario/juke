@@ -1,0 +1,834 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		SC20000001A0000000000001 /* ShotClockApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000001 /* ShotClockApp.swift */; };
+		SC20000001A0000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000002 /* ContentView.swift */; };
+		SC20000001A0000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000003 /* Assets.xcassets */; };
+		SC20000001A0000000000004 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000004 /* Preview Assets.xcassets */; };
+		SC20000001A0000000000005 /* ShotClockDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000005 /* ShotClockDesignSystem.swift */; };
+		SC20000001A0000000000006 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000006 /* APIClient.swift */; };
+		SC20000001A0000000000007 /* ShotClockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000007 /* ShotClockTests.swift */; };
+		SC20000001A0000000000008 /* ShotClockUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000008 /* ShotClockUITests.swift */; };
+		SC20000001A0000000000009 /* ShotClockUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000009 /* ShotClockUITestsLaunchTests.swift */; };
+		SCB0000001A0000000000001 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000001 /* User.swift */; };
+		SCB0000001A0000000000002 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000002 /* AuthService.swift */; };
+		SCB0000001A0000000000003 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000003 /* SessionStore.swift */; };
+		SCB0000001A0000000000004 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000004 /* AuthViewModel.swift */; };
+		SCB0000001A0000000000005 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000005 /* AuthView.swift */; };
+		SCB0000001A0000000000006 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000006 /* HomeView.swift */; };
+		SCB0000001A0000000000007 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000007 /* Session.swift */; };
+		SCB0000001A0000000000008 /* SessionPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000008 /* SessionPlayer.swift */; };
+		SCB0000001A0000000000009 /* SessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000009 /* SessionService.swift */; };
+		SCB0000001A0000000000010 /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000010 /* HomeViewModel.swift */; };
+		SCB0000001A0000000000011 /* CreateSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000011 /* CreateSessionViewModel.swift */; };
+		SCB0000001A0000000000012 /* CreateSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000012 /* CreateSessionView.swift */; };
+		SCB0000001A0000000000013 /* SessionTrackItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000013 /* SessionTrackItem.swift */; };
+		SCB0000001A0000000000014 /* SessionLobbyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000014 /* SessionLobbyViewModel.swift */; };
+		SCB0000001A0000000000015 /* SessionLobbyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000015 /* SessionLobbyView.swift */; };
+		SCB0000001A0000000000016 /* CatalogTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000016 /* CatalogTrack.swift */; };
+		SCB0000001A0000000000017 /* CatalogService.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000017 /* CatalogService.swift */; };
+		SCB0000001A0000000000018 /* AddTracksViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000018 /* AddTracksViewModel.swift */; };
+		SCB0000001A0000000000019 /* AddTracksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000019 /* AddTracksView.swift */; };
+		SCB0000001A0000000000020 /* airhorn.wav in Resources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000020 /* airhorn.wav */; };
+		SCB0000001A0000000000021 /* buzzer.wav in Resources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000021 /* buzzer.wav */; };
+		SCB0000001A0000000000022 /* bell.wav in Resources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000022 /* bell.wav */; };
+		SCB0000001A0000000000023 /* whistle.wav in Resources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000023 /* whistle.wav */; };
+		SCB0000001A0000000000024 /* glass_clink.wav in Resources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000024 /* glass_clink.wav */; };
+		SCB0000001A0000000000025 /* SoundPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000025 /* SoundPlayer.swift */; };
+		SCB0000001A0000000000026 /* SessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000026 /* SessionState.swift */; };
+		SCB0000001A0000000000027 /* PlaybackViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000027 /* PlaybackViewModel.swift */; };
+		SCB0000001A0000000000028 /* PlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000028 /* PlaybackView.swift */; };
+		SCB0000001A0000000000029 /* SpotifyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000029 /* SpotifyManager.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		SC80000001A0000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = SC00000001A0000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = SC40000001A0000000000001;
+			remoteInfo = ShotClock;
+		};
+		SC80000001A0000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = SC00000001A0000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = SC40000001A0000000000001;
+			remoteInfo = ShotClock;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		SC00000001A0000000000004 /* ShotClock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShotClock.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		SC00000001A0000000000005 /* ShotClockTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShotClockTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		SC00000001A0000000000006 /* ShotClockUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShotClockUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		SC10000001A0000000000001 /* ShotClockApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotClockApp.swift; sourceTree = "<group>"; };
+		SC10000001A0000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		SC10000001A0000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		SC10000001A0000000000004 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		SC10000001A0000000000005 /* ShotClockDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotClockDesignSystem.swift; sourceTree = "<group>"; };
+		SC10000001A0000000000006 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		SC10000001A0000000000007 /* ShotClockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotClockTests.swift; sourceTree = "<group>"; };
+		SC10000001A0000000000008 /* ShotClockUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotClockUITests.swift; sourceTree = "<group>"; };
+		SC10000001A0000000000009 /* ShotClockUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotClockUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000001 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000002 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000003 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000004 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000005 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000006 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000007 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000008 /* SessionPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPlayer.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000009 /* SessionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionService.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000010 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000011 /* CreateSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateSessionViewModel.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000012 /* CreateSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateSessionView.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000013 /* SessionTrackItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTrackItem.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000014 /* SessionLobbyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLobbyViewModel.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000015 /* SessionLobbyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLobbyView.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000016 /* CatalogTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogTrack.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000017 /* CatalogService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogService.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000018 /* AddTracksViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTracksViewModel.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000019 /* AddTracksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTracksView.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000020 /* airhorn.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = airhorn.wav; sourceTree = "<group>"; };
+		SCA0000001A0000000000021 /* buzzer.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = buzzer.wav; sourceTree = "<group>"; };
+		SCA0000001A0000000000022 /* bell.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = bell.wav; sourceTree = "<group>"; };
+		SCA0000001A0000000000023 /* whistle.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = whistle.wav; sourceTree = "<group>"; };
+		SCA0000001A0000000000024 /* glass_clink.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = glass_clink.wav; sourceTree = "<group>"; };
+		SCA0000001A0000000000025 /* SoundPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundPlayer.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000026 /* SessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionState.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000027 /* PlaybackViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackViewModel.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000028 /* PlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackView.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000029 /* SpotifyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyManager.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		SC50000001A0000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		SC50000001A0000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		SC50000001A0000000000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		SC00000001A0000000000002 = {
+			isa = PBXGroup;
+			children = (
+				SC30000001A0000000000001 /* ShotClock */,
+				SC30000001A0000000000003 /* ShotClockTests */,
+				SC30000001A0000000000004 /* ShotClockUITests */,
+				SC00000001A0000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		SC00000001A0000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				SC00000001A0000000000004 /* ShotClock.app */,
+				SC00000001A0000000000005 /* ShotClockTests.xctest */,
+				SC00000001A0000000000006 /* ShotClockUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		SC30000001A0000000000001 /* ShotClock */ = {
+			isa = PBXGroup;
+			children = (
+				SC10000001A0000000000001 /* ShotClockApp.swift */,
+				SC10000001A0000000000002 /* ContentView.swift */,
+				SCC0000001A0000000000001 /* Models */,
+				SC30000001A0000000000005 /* Networking */,
+				SCC0000001A0000000000002 /* Services */,
+				SCC0000001A0000000000003 /* ViewModels */,
+				SCC0000001A0000000000004 /* Views */,
+				SC30000001A0000000000006 /* DesignSystem */,
+				SCC0000001A0000000000008 /* Sounds */,
+				SC10000001A0000000000003 /* Assets.xcassets */,
+				SC30000001A0000000000002 /* Preview Content */,
+			);
+			path = ShotClock;
+			sourceTree = "<group>";
+		};
+		SC30000001A0000000000002 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				SC10000001A0000000000004 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		SC30000001A0000000000003 /* ShotClockTests */ = {
+			isa = PBXGroup;
+			children = (
+				SC10000001A0000000000007 /* ShotClockTests.swift */,
+			);
+			path = ShotClockTests;
+			sourceTree = "<group>";
+		};
+		SC30000001A0000000000004 /* ShotClockUITests */ = {
+			isa = PBXGroup;
+			children = (
+				SC10000001A0000000000008 /* ShotClockUITests.swift */,
+				SC10000001A0000000000009 /* ShotClockUITestsLaunchTests.swift */,
+			);
+			path = ShotClockUITests;
+			sourceTree = "<group>";
+		};
+		SC30000001A0000000000005 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				SC10000001A0000000000006 /* APIClient.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		SC30000001A0000000000006 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				SC10000001A0000000000005 /* ShotClockDesignSystem.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		SCC0000001A0000000000001 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				SCA0000001A0000000000001 /* User.swift */,
+				SCA0000001A0000000000007 /* Session.swift */,
+				SCA0000001A0000000000008 /* SessionPlayer.swift */,
+				SCA0000001A0000000000013 /* SessionTrackItem.swift */,
+				SCA0000001A0000000000016 /* CatalogTrack.swift */,
+				SCA0000001A0000000000026 /* SessionState.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		SCC0000001A0000000000002 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				SCA0000001A0000000000002 /* AuthService.swift */,
+				SCA0000001A0000000000009 /* SessionService.swift */,
+				SCA0000001A0000000000017 /* CatalogService.swift */,
+				SCA0000001A0000000000025 /* SoundPlayer.swift */,
+				SCA0000001A0000000000029 /* SpotifyManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		SCC0000001A0000000000003 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				SCA0000001A0000000000003 /* SessionStore.swift */,
+				SCA0000001A0000000000004 /* AuthViewModel.swift */,
+				SCA0000001A0000000000010 /* HomeViewModel.swift */,
+				SCA0000001A0000000000011 /* CreateSessionViewModel.swift */,
+				SCA0000001A0000000000014 /* SessionLobbyViewModel.swift */,
+				SCA0000001A0000000000018 /* AddTracksViewModel.swift */,
+				SCA0000001A0000000000027 /* PlaybackViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		SCC0000001A0000000000004 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				SCC0000001A0000000000005 /* Auth */,
+				SCC0000001A0000000000006 /* Home */,
+				SCC0000001A0000000000007 /* Session */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		SCC0000001A0000000000007 /* Session */ = {
+			isa = PBXGroup;
+			children = (
+				SCA0000001A0000000000012 /* CreateSessionView.swift */,
+				SCA0000001A0000000000015 /* SessionLobbyView.swift */,
+				SCA0000001A0000000000019 /* AddTracksView.swift */,
+				SCA0000001A0000000000028 /* PlaybackView.swift */,
+			);
+			path = Session;
+			sourceTree = "<group>";
+		};
+		SCC0000001A0000000000005 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				SCA0000001A0000000000005 /* AuthView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		SCC0000001A0000000000006 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				SCA0000001A0000000000006 /* HomeView.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		SCC0000001A0000000000008 /* Sounds */ = {
+			isa = PBXGroup;
+			children = (
+				SCA0000001A0000000000020 /* airhorn.wav */,
+				SCA0000001A0000000000021 /* buzzer.wav */,
+				SCA0000001A0000000000022 /* bell.wav */,
+				SCA0000001A0000000000023 /* whistle.wav */,
+				SCA0000001A0000000000024 /* glass_clink.wav */,
+			);
+			path = Sounds;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		SC40000001A0000000000001 /* ShotClock */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = SC70000001A0000000000002 /* Build configuration list for PBXNativeTarget "ShotClock" */;
+			buildPhases = (
+				SC50000001A0000000000001 /* Sources */,
+				SC50000001A0000000000002 /* Frameworks */,
+				SC50000001A0000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShotClock;
+			packageProductDependencies = (
+				SCPKD0001A0000000000001 /* SpotifyiOS */,
+			);
+			productName = ShotClock;
+			productReference = SC00000001A0000000000004 /* ShotClock.app */;
+			productType = "com.apple.product-type.application";
+		};
+		SC40000001A0000000000002 /* ShotClockTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = SC70000001A0000000000003 /* Build configuration list for PBXNativeTarget "ShotClockTests" */;
+			buildPhases = (
+				SC50000001A0000000000004 /* Sources */,
+				SC50000001A0000000000005 /* Frameworks */,
+				SC50000001A0000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				SC90000001A0000000000001 /* PBXTargetDependency */,
+			);
+			name = ShotClockTests;
+			productName = ShotClockTests;
+			productReference = SC00000001A0000000000005 /* ShotClockTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		SC40000001A0000000000003 /* ShotClockUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = SC70000001A0000000000004 /* Build configuration list for PBXNativeTarget "ShotClockUITests" */;
+			buildPhases = (
+				SC50000001A0000000000007 /* Sources */,
+				SC50000001A0000000000008 /* Frameworks */,
+				SC50000001A0000000000009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				SC90000001A0000000000002 /* PBXTargetDependency */,
+			);
+			name = ShotClockUITests;
+			productName = ShotClockUITests;
+			productReference = SC00000001A0000000000006 /* ShotClockUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		SC00000001A0000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					SC40000001A0000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					SC40000001A0000000000002 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = SC40000001A0000000000001;
+					};
+					SC40000001A0000000000003 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = SC40000001A0000000000001;
+					};
+				};
+			};
+			buildConfigurationList = SC70000001A0000000000001 /* Build configuration list for PBXProject "ShotClock" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = SC00000001A0000000000002;
+			packageReferences = (
+				SCPKG0001A0000000000001 /* XCRemoteSwiftPackageReference "ios-sdk" */,
+			);
+			productRefGroup = SC00000001A0000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				SC40000001A0000000000001 /* ShotClock */,
+				SC40000001A0000000000002 /* ShotClockTests */,
+				SC40000001A0000000000003 /* ShotClockUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		SC50000001A0000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				SC20000001A0000000000004 /* Preview Assets.xcassets in Resources */,
+				SC20000001A0000000000003 /* Assets.xcassets in Resources */,
+				SCB0000001A0000000000020 /* airhorn.wav in Resources */,
+				SCB0000001A0000000000021 /* buzzer.wav in Resources */,
+				SCB0000001A0000000000022 /* bell.wav in Resources */,
+				SCB0000001A0000000000023 /* whistle.wav in Resources */,
+				SCB0000001A0000000000024 /* glass_clink.wav in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		SC50000001A0000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		SC50000001A0000000000009 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		SC50000001A0000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				SC20000001A0000000000002 /* ContentView.swift in Sources */,
+				SC20000001A0000000000001 /* ShotClockApp.swift in Sources */,
+				SC20000001A0000000000005 /* ShotClockDesignSystem.swift in Sources */,
+				SC20000001A0000000000006 /* APIClient.swift in Sources */,
+				SCB0000001A0000000000001 /* User.swift in Sources */,
+				SCB0000001A0000000000002 /* AuthService.swift in Sources */,
+				SCB0000001A0000000000003 /* SessionStore.swift in Sources */,
+				SCB0000001A0000000000004 /* AuthViewModel.swift in Sources */,
+				SCB0000001A0000000000005 /* AuthView.swift in Sources */,
+				SCB0000001A0000000000006 /* HomeView.swift in Sources */,
+				SCB0000001A0000000000007 /* Session.swift in Sources */,
+				SCB0000001A0000000000008 /* SessionPlayer.swift in Sources */,
+				SCB0000001A0000000000009 /* SessionService.swift in Sources */,
+				SCB0000001A0000000000010 /* HomeViewModel.swift in Sources */,
+				SCB0000001A0000000000011 /* CreateSessionViewModel.swift in Sources */,
+				SCB0000001A0000000000012 /* CreateSessionView.swift in Sources */,
+				SCB0000001A0000000000013 /* SessionTrackItem.swift in Sources */,
+				SCB0000001A0000000000014 /* SessionLobbyViewModel.swift in Sources */,
+				SCB0000001A0000000000015 /* SessionLobbyView.swift in Sources */,
+				SCB0000001A0000000000016 /* CatalogTrack.swift in Sources */,
+				SCB0000001A0000000000017 /* CatalogService.swift in Sources */,
+				SCB0000001A0000000000018 /* AddTracksViewModel.swift in Sources */,
+				SCB0000001A0000000000019 /* AddTracksView.swift in Sources */,
+				SCB0000001A0000000000025 /* SoundPlayer.swift in Sources */,
+				SCB0000001A0000000000026 /* SessionState.swift in Sources */,
+				SCB0000001A0000000000027 /* PlaybackViewModel.swift in Sources */,
+				SCB0000001A0000000000028 /* PlaybackView.swift in Sources */,
+				SCB0000001A0000000000029 /* SpotifyManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		SC50000001A0000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				SC20000001A0000000000007 /* ShotClockTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		SC50000001A0000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				SC20000001A0000000000008 /* ShotClockUITests.swift in Sources */,
+				SC20000001A0000000000009 /* ShotClockUITestsLaunchTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		SC90000001A0000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = SC40000001A0000000000001 /* ShotClock */;
+			targetProxy = SC80000001A0000000000001 /* PBXContainerItemProxy */;
+		};
+		SC90000001A0000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = SC40000001A0000000000001 /* ShotClock */;
+			targetProxy = SC80000001A0000000000002 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		SC60000001A0000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		SC60000001A0000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		SC60000001A0000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"ShotClock/Preview Content\"";
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShotClock/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = embario.ShotClock;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		SC60000001A0000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"ShotClock/Preview Content\"";
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShotClock/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = embario.ShotClock;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		SC60000001A0000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.ShotClockTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ShotClock.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ShotClock";
+			};
+			name = Debug;
+		};
+		SC60000001A0000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.ShotClockTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ShotClock.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ShotClock";
+			};
+			name = Release;
+		};
+		SC60000001A0000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.ShotClockUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = ShotClock;
+			};
+			name = Debug;
+		};
+		SC60000001A0000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.ShotClockUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = ShotClock;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		SC70000001A0000000000001 /* Build configuration list for PBXProject "ShotClock" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				SC60000001A0000000000001 /* Debug */,
+				SC60000001A0000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		SC70000001A0000000000002 /* Build configuration list for PBXNativeTarget "ShotClock" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				SC60000001A0000000000003 /* Debug */,
+				SC60000001A0000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		SC70000001A0000000000003 /* Build configuration list for PBXNativeTarget "ShotClockTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				SC60000001A0000000000005 /* Debug */,
+				SC60000001A0000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		SC70000001A0000000000004 /* Build configuration list for PBXNativeTarget "ShotClockUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				SC60000001A0000000000007 /* Debug */,
+				SC60000001A0000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		SCPKG0001A0000000000001 /* XCRemoteSwiftPackageReference "ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/spotify/ios-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		SCPKD0001A0000000000001 /* SpotifyiOS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = SCPKG0001A0000000000001 /* XCRemoteSwiftPackageReference "ios-sdk" */;
+			productName = SpotifyiOS;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = SC00000001A0000000000001 /* Project object */;
+}

@@ -17,4 +17,5 @@ urlpatterns = [
     path('api/v1/social-auth/', include('social_django.urls', namespace='social')),
     path('api/v1/', include(router.urls)),
     path('api/v1/', include('recommender.urls')),
+    path('api/v1/', include('powerhour.urls')),
 ]

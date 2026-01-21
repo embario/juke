@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: True dark -->
+  <rect width="1024" height="1024" rx="230" fill="#09090B"/>
+
+  <!-- Subtle radial glow -->
+  <radialGradient id="glow-c" cx="50%" cy="50%" r="40%">
+    <stop offset="0%" stop-color="#EAB308" stop-opacity="0.08"/>
+    <stop offset="100%" stop-color="#09090B" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="1024" height="1024" rx="230" fill="url(#glow-c)"/>
+
+  <!-- Countdown ring track (background) -->
+  <circle cx="512" cy="512" r="300" fill="none" stroke="#27272A" stroke-width="48"/>
+
+  <!-- Countdown ring arc (gold, ~270 degrees / 75% complete) -->
+  <circle cx="512" cy="512" r="300"
+          fill="none"
+          stroke="#EAB308"
+          stroke-width="48"
+          stroke-linecap="round"
+          stroke-dasharray="1885"
+          stroke-dashoffset="471"
+          transform="rotate(-90 512 512)"/>
+
+  <!-- Ring end cap glow -->
+  <circle cx="512" cy="212" r="30" fill="#EAB308" opacity="0.3"/>
+
+  <!-- Center "S" letterform - geometric, minimal -->
+  <path d="M 560 400
+           C 560 380, 540 365, 512 365
+           C 475 365, 455 390, 455 415
+           C 455 445, 480 460, 512 470
+           C 544 480, 570 495, 570 530
+           C 570 565, 545 590, 512 590
+           C 480 590, 460 570, 460 550"
+        fill="none"
+        stroke="#FAFAFA"
+        stroke-width="36"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Small tick marks at cardinal positions -->
+  <g stroke="#71717A" stroke-width="4" stroke-linecap="round" opacity="0.6">
+    <line x1="512" y1="172" x2="512" y2="192"/>
+    <line x1="852" y1="512" x2="832" y2="512"/>
+    <line x1="512" y1="852" x2="512" y2="832"/>
+    <line x1="172" y1="512" x2="192" y2="512"/>
+  </g>
+</svg>

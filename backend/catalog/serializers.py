@@ -120,6 +120,7 @@ class SpotifyAlbumSerializer(SpotifyResourceSerializer):
 class SpotifyTrackSerializer(SpotifyResourceSerializer):
     album = serializers.JSONField(write_only=True)
     album_link = serializers.HyperlinkedRelatedField(view_name='album-detail', read_only=True, many=False)
+    preview_url = serializers.URLField(write_only=True, required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = Track
@@ -142,10 +143,20 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
                 'id': validated_data['id'],
                 'type': validated_data['type'],
                 'uri': validated_data['uri'],
+                'preview_url': validated_data.get('preview_url') or '',
             }
 
             instance.save()
         return instance
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['album_name'] = instance.album.name if instance.album else ''
+        if instance.album:
+            data['artist_names'] = ', '.join(a.name for a in instance.album.artists.all())
+        else:
+            data['artist_names'] = ''
+        return data
 
 
 class PlaybackProviderSerializer(serializers.Serializer):

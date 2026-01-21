@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: Deep warm black with subtle radial glow -->
+  <rect width="1024" height="1024" rx="230" fill="#0C0A09"/>
+  <radialGradient id="glow-a" cx="50%" cy="45%" r="45%">
+    <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="#0C0A09" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="1024" height="1024" rx="230" fill="url(#glow-a)"/>
+
+  <!-- Shot glass silhouette -->
+  <path d="M 400 320 L 380 700 Q 380 760 440 760 L 584 760 Q 644 760 644 700 L 624 320 Z"
+        fill="none" stroke="#FAFAF9" stroke-width="28" stroke-linejoin="round"/>
+
+  <!-- Amber liquid inside -->
+  <path d="M 408 480 L 394 700 Q 394 746 440 746 L 584 746 Q 630 746 630 700 L 616 480 Z"
+        fill="#F59E0B" opacity="0.9"/>
+
+  <!-- Liquid surface highlight -->
+  <ellipse cx="512" cy="480" rx="104" ry="14" fill="#FBBF24" opacity="0.6"/>
+
+  <!-- Clock tick marks around the glass (subtle) -->
+  <g stroke="#A8A29E" stroke-width="4" opacity="0.5">
+    <line x1="512" y1="200" x2="512" y2="240"/>
+    <line x1="512" y1="830" x2="512" y2="790"/>
+    <line x1="200" y1="512" x2="240" y2="512"/>
+    <line x1="824" y1="512" x2="784" y2="512"/>
+    <line x1="292" y1="292" x2="320" y2="320"/>
+    <line x1="732" y1="292" x2="704" y2="320"/>
+    <line x1="292" y1="732" x2="320" y2="704"/>
+    <line x1="732" y1="732" x2="704" y2="704"/>
+  </g>
+
+  <!-- "60" text at top -->
+  <text x="512" y="280" text-anchor="middle" font-family="SF Pro Display, -apple-system, Helvetica" font-weight="700" font-size="72" fill="#F59E0B">60</text>
+</svg>

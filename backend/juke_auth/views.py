@@ -99,6 +99,7 @@ class MusicProfileViewSet(viewsets.ModelViewSet):
 
 
 class TokenLoginView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):

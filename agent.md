@@ -5,6 +5,7 @@ This document orients AI agents to the entire repository. Each major subproject 
 - [backend/agent.md](backend/agent.md)
 - [mobile/android/agent.md](mobile/android/agent.md)
 - [mobile/ios/agent.md](mobile/ios/agent.md)
+- [mobile/ios/shotclock/ARCHITECTURE.md](mobile/ios/shotclock/ARCHITECTURE.md) — ShotClock (Power Hour) iOS app
 - [web/agent.md](web/agent.md)
 
 ## High-Level Architecture

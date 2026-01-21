@@ -70,9 +70,9 @@ REST_REGISTRATION = {
     'REGISTER_EMAIL_VERIFICATION_ENABLED': True,
     'RESET_PASSWORD_VERIFICATION_ENABLED': True,
 
-    'REGISTER_VERIFICATION_URL': 'https://frontend-host/verify-user/',
-    'RESET_PASSWORD_VERIFICATION_URL': 'https://frontend-host/reset-password/',
-    'REGISTER_EMAIL_VERIFICATION_URL': 'https://frontend-host/verify-email/',
+    'REGISTER_VERIFICATION_URL': os.environ.get('REGISTER_VERIFICATION_URL', 'https://frontend-host/verify-user/'),
+    'RESET_PASSWORD_VERIFICATION_URL': os.environ.get('RESET_PASSWORD_VERIFICATION_URL', 'https://frontend-host/reset-password/'),
+    'REGISTER_EMAIL_VERIFICATION_URL': os.environ.get('REGISTER_EMAIL_VERIFICATION_URL', 'https://frontend-host/verify-email/'),
 
     'VERIFICATION_FROM_EMAIL': os.environ.get("EMAIL_HOST_USER"),
 
@@ -118,6 +118,7 @@ INSTALLED_APPS = [
     'juke_auth',
     'catalog',
     'recommender',
+    'powerhour',
 ]
 
 MIDDLEWARE = [

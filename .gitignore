@@ -6,6 +6,9 @@ __pycache__/
 .vscode
 node_modules
 
+# Local logs
+logs/
+
 
 backend/static/media/albums/*.png
 backend/static/media/artists/*.png

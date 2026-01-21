@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900">
+  <!-- Full background -->
+  <rect width="1200" height="900" fill="#0C0A09"/>
+
+  <!-- Title -->
+  <text x="60" y="60" font-family="SF Pro Display, -apple-system, Helvetica" font-weight="700" font-size="28" fill="#FAFAF9">Design A: "Amber Pour"</text>
+  <text x="60" y="90" font-family="SF Pro Display, -apple-system, Helvetica" font-size="16" fill="#A8A29E">Warm, premium, cocktail-bar inspired</text>
+
+  <!-- Color swatches -->
+  <g transform="translate(60, 120)">
+    <rect width="100" height="60" rx="8" fill="#0C0A09" stroke="#A8A29E" stroke-width="1"/>
+    <text x="50" y="80" text-anchor="middle" font-family="monospace" font-size="11" fill="#A8A29E">Background</text>
+
+    <rect x="120" width="100" height="60" rx="8" fill="#1C1917"/>
+    <text x="170" y="80" text-anchor="middle" font-family="monospace" font-size="11" fill="#A8A29E">Panel</text>
+
+    <rect x="240" width="100" height="60" rx="8" fill="#292524"/>
+    <text x="290" y="80" text-anchor="middle" font-family="monospace" font-size="11" fill="#A8A29E">Panel Alt</text>
+
+    <rect x="360" width="100" height="60" rx="8" fill="#F59E0B"/>
+    <text x="410" y="80" text-anchor="middle" font-family="monospace" font-size="11" fill="#A8A29E">Accent</text>
+
+    <rect x="480" width="100" height="60" rx="8" fill="#FBBF24"/>
+    <text x="530" y="80" text-anchor="middle" font-family="monospace" font-size="11" fill="#A8A29E">Accent Soft</text>
+
+    <rect x="600" width="100" height="60" rx="8" fill="#22C55E"/>
+    <text x="650" y="80" text-anchor="middle" font-family="monospace" font-size="11" fill="#A8A29E">Success</text>
+
+    <rect x="720" width="100" height="60" rx="8" fill="#EF4444"/>
+    <text x="770" y="80" text-anchor="middle" font-family="monospace" font-size="11" fill="#A8A29E">Error</text>
+  </g>
+
+  <!-- Mock Phone Frame -->
+  <g transform="translate(60, 240)">
+    <!-- Phone body -->
+    <rect width="360" height="640" rx="40" fill="#1C1917" stroke="#292524" stroke-width="2"/>
+
+    <!-- Status bar -->
+    <text x="30" y="40" font-family="SF Pro, Helvetica" font-size="14" fill="#FAFAF9">9:41</text>
+    <circle cx="330" cy="34" r="6" fill="#22C55E"/>
+
+    <!-- Screen content: Home view -->
+    <text x="30" y="90" font-family="SF Pro Display, Helvetica" font-weight="700" font-size="26" fill="#FAFAF9">My Sessions</text>
+
+    <!-- Session card 1 -->
+    <rect x="20" y="110" width="320" height="100" rx="20" fill="#292524"/>
+    <text x="40" y="145" font-family="SF Pro, Helvetica" font-weight="600" font-size="16" fill="#FAFAF9">Friday Pregame</text>
+    <text x="40" y="170" font-family="SF Pro, Helvetica" font-size="13" fill="#A8A29E">4 players · 30 tracks · Lobby</text>
+    <rect x="40" y="182" width="60" height="20" rx="10" fill="#F59E0B" opacity="0.2"/>
+    <text x="50" y="196" font-family="SF Pro, Helvetica" font-size="11" fill="#F59E0B">LOBBY</text>
+
+    <!-- Session card 2 -->
+    <rect x="20" y="225" width="320" height="100" rx="20" fill="#292524"/>
+    <text x="40" y="260" font-family="SF Pro, Helvetica" font-weight="600" font-size="16" fill="#FAFAF9">Birthday Bash</text>
+    <text x="40" y="285" font-family="SF Pro, Helvetica" font-size="13" fill="#A8A29E">6 players · 45 tracks · Ended</text>
+    <rect x="40" y="297" width="60" height="20" rx="10" fill="#A8A29E" opacity="0.2"/>
+    <text x="50" y="311" font-family="SF Pro, Helvetica" font-size="11" fill="#A8A29E">ENDED</text>
+
+    <!-- Create button -->
+    <rect x="20" y="560" width="320" height="56" rx="18" fill="#F59E0B"/>
+    <text x="180" y="594" text-anchor="middle" font-family="SF Pro, Helvetica" font-weight="700" font-size="17" fill="#0C0A09">+ New Power Hour</text>
+  </g>
+
+  <!-- Mock Phone 2: Playback view -->
+  <g transform="translate(460, 240)">
+    <rect width="360" height="640" rx="40" fill="#1C1917" stroke="#292524" stroke-width="2"/>
+
+    <text x="30" y="40" font-family="SF Pro, Helvetica" font-size="14" fill="#FAFAF9">9:41</text>
+
+    <text x="180" y="90" text-anchor="middle" font-family="SF Pro Display, Helvetica" font-weight="700" font-size="20" fill="#FAFAF9">Now Playing</text>
+
+    <!-- Countdown ring -->
+    <circle cx="180" cy="280" r="120" fill="none" stroke="#292524" stroke-width="20"/>
+    <circle cx="180" cy="280" r="120" fill="none" stroke="#F59E0B" stroke-width="20"
+            stroke-linecap="round" stroke-dasharray="754" stroke-dashoffset="188"
+            transform="rotate(-90 180 280)"/>
+    <text x="180" y="295" text-anchor="middle" font-family="SF Pro Display, Helvetica" font-weight="800" font-size="64" fill="#FAFAF9">42</text>
+    <text x="180" y="325" text-anchor="middle" font-family="SF Pro, Helvetica" font-size="14" fill="#A8A29E">seconds</text>
+
+    <!-- Track info -->
+    <text x="180" y="450" text-anchor="middle" font-family="SF Pro, Helvetica" font-weight="600" font-size="18" fill="#FAFAF9">Bohemian Rhapsody</text>
+    <text x="180" y="475" text-anchor="middle" font-family="SF Pro, Helvetica" font-size="14" fill="#A8A29E">Queen</text>
+    <text x="180" y="510" text-anchor="middle" font-family="SF Pro, Helvetica" font-size="13" fill="#F59E0B">Track 12 of 30</text>
+
+    <!-- Controls -->
+    <circle cx="180" cy="580" r="32" fill="#F59E0B"/>
+    <rect x="170" y="568" width="8" height="24" rx="2" fill="#0C0A09"/>
+    <rect x="182" y="568" width="8" height="24" rx="2" fill="#0C0A09"/>
+  </g>
+
+  <!-- Mock Phone 3: Add tracks -->
+  <g transform="translate(860, 240)">
+    <rect width="320" height="500" rx="36" fill="#1C1917" stroke="#292524" stroke-width="2"/>
+
+    <text x="160" y="40" text-anchor="middle" font-family="SF Pro Display, Helvetica" font-weight="700" font-size="18" fill="#FAFAF9">Add Tracks</text>
+
+    <!-- Search bar -->
+    <rect x="16" y="60" width="288" height="44" rx="14" fill="#292524"/>
+    <text x="36" y="87" font-family="SF Pro, Helvetica" font-size="15" fill="#A8A29E">Search songs...</text>
+
+    <!-- Tab bar -->
+    <rect x="16" y="118" width="85" height="30" rx="15" fill="#F59E0B" opacity="0.2"/>
+    <text x="58" y="138" text-anchor="middle" font-family="SF Pro, Helvetica" font-size="12" fill="#F59E0B">Search</text>
+    <text x="150" y="138" text-anchor="middle" font-family="SF Pro, Helvetica" font-size="12" fill="#A8A29E">Sessions</text>
+    <text x="245" y="138" text-anchor="middle" font-family="SF Pro, Helvetica" font-size="12" fill="#A8A29E">Playlists</text>
+
+    <!-- Track results -->
+    <rect x="16" y="162" width="288" height="60" rx="12" fill="#292524"/>
+    <circle cx="46" cy="192" r="20" fill="#F59E0B" opacity="0.3"/>
+    <text x="76" y="187" font-family="SF Pro, Helvetica" font-weight="500" font-size="14" fill="#FAFAF9">Don't Stop Me Now</text>
+    <text x="76" y="205" font-family="SF Pro, Helvetica" font-size="12" fill="#A8A29E">Queen · 3:29</text>
+    <text x="280" y="196" text-anchor="middle" font-family="SF Pro, Helvetica" font-size="20" fill="#F59E0B">+</text>
+
+    <rect x="16" y="232" width="288" height="60" rx="12" fill="#292524"/>
+    <circle cx="46" cy="262" r="20" fill="#F59E0B" opacity="0.3"/>
+    <text x="76" y="257" font-family="SF Pro, Helvetica" font-weight="500" font-size="14" fill="#FAFAF9">Mr. Brightside</text>
+    <text x="76" y="275" font-family="SF Pro, Helvetica" font-size="12" fill="#A8A29E">The Killers · 3:42</text>
+    <text x="280" y="266" text-anchor="middle" font-family="SF Pro, Helvetica" font-size="20" fill="#F59E0B">+</text>
+  </g>
+</svg>

@@ -1,0 +1,38 @@
+[
+  {
+    "input": ["branding/shotclock/icon_a_amber_pour.svg"],
+    "output": [
+      ["branding/shotclock/renders/icon_a_amber_pour.png", "512:512"]
+    ]
+  },
+  {
+    "input": ["branding/shotclock/icon_b_neon_night.svg"],
+    "output": [
+      ["branding/shotclock/renders/icon_b_neon_night.png", "512:512"]
+    ]
+  },
+  {
+    "input": ["branding/shotclock/icon_c_midnight_gold.svg"],
+    "output": [
+      ["branding/shotclock/renders/icon_c_midnight_gold.png", "512:512"]
+    ]
+  },
+  {
+    "input": ["branding/shotclock/palette_a_amber_pour.svg"],
+    "output": [
+      ["branding/shotclock/renders/palette_a_amber_pour.png", "1200:900"]
+    ]
+  },
+  {
+    "input": ["branding/shotclock/palette_b_neon_night.svg"],
+    "output": [
+      ["branding/shotclock/renders/palette_b_neon_night.png", "1200:900"]
+    ]
+  },
+  {
+    "input": ["branding/shotclock/palette_c_midnight_gold.svg"],
+    "output": [
+      ["branding/shotclock/renders/palette_c_midnight_gold.png", "1200:900"]
+    ]
+  }
+]

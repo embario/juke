@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: Deep indigo black -->
+  <rect width="1024" height="1024" rx="230" fill="#0A0118"/>
+
+  <!-- Neon glow effects -->
+  <radialGradient id="glow-pink" cx="40%" cy="30%" r="40%">
+    <stop offset="0%" stop-color="#E11D89" stop-opacity="0.3"/>
+    <stop offset="100%" stop-color="#0A0118" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="glow-cyan" cx="70%" cy="70%" r="35%">
+    <stop offset="0%" stop-color="#06B6D4" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="#0A0118" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="1024" height="1024" rx="230" fill="url(#glow-pink)"/>
+  <rect width="1024" height="1024" rx="230" fill="url(#glow-cyan)"/>
+
+  <!-- Clock circle -->
+  <circle cx="512" cy="512" r="300" fill="none" stroke="#1E1145" stroke-width="40"/>
+  <circle cx="512" cy="512" r="300" fill="none" stroke="#E11D89" stroke-width="6" opacity="0.8"/>
+
+  <!-- Clock tick marks -->
+  <g stroke="#F472B6" stroke-width="6" stroke-linecap="round">
+    <!-- 12 -->
+    <line x1="512" y1="232" x2="512" y2="272"/>
+    <!-- 3 -->
+    <line x1="792" y1="512" x2="752" y2="512"/>
+    <!-- 6 -->
+    <line x1="512" y1="792" x2="512" y2="752"/>
+    <!-- 9 -->
+    <line x1="232" y1="512" x2="272" y2="512"/>
+  </g>
+  <g stroke="#94A3B8" stroke-width="3" stroke-linecap="round" opacity="0.5">
+    <line x1="652" y1="270" x2="638" y2="298"/>
+    <line x1="754" y1="372" x2="726" y2="386"/>
+    <line x1="754" y1="652" x2="726" y2="638"/>
+    <line x1="652" y1="754" x2="638" y2="726"/>
+    <line x1="372" y1="754" x2="386" y2="726"/>
+    <line x1="270" y1="652" x2="298" y2="638"/>
+    <line x1="270" y1="372" x2="298" y2="386"/>
+    <line x1="372" y1="270" x2="386" y2="298"/>
+  </g>
+
+  <!-- Shot glass as hour hand -->
+  <path d="M 490 512 L 480 340 Q 480 320 500 320 L 524 320 Q 544 320 544 340 L 534 512 Z"
+        fill="#06B6D4" opacity="0.9"/>
+
+  <!-- Minute hand -->
+  <line x1="512" y1="512" x2="680" y2="420" stroke="#E11D89" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Center dot -->
+  <circle cx="512" cy="512" r="16" fill="#E11D89"/>
+  <circle cx="512" cy="512" r="8" fill="#F8FAFC"/>
+
+  <!-- Splash effect at 12 o'clock -->
+  <g fill="#06B6D4" opacity="0.7">
+    <circle cx="512" cy="200" r="8"/>
+    <circle cx="490" cy="185" r="5"/>
+    <circle cx="536" cy="190" r="6"/>
+    <circle cx="500" cy="170" r="4"/>
+    <circle cx="528" cy="175" r="4"/>
+  </g>
+</svg>
