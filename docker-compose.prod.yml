@@ -1,0 +1,90 @@
+services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:?Set DOMAIN}
+      - CADDY_EMAIL=${CADDY_EMAIL:?Set CADDY_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    env_file: .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    command: bash run_prod.sh
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - media_data:/app/static/media
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+    command: celery -A settings.celery worker --loglevel=INFO
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ./backend
+    command: celery -A settings.celery beat --loglevel=INFO
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  recommender-engine:
+    build:
+      context: ./backend/recommender_engine
+    command: uvicorn app.main:app --host 0.0.0.0 --port 9000
+    env_file: .env
+    environment:
+      - RECOMMENDER_MODEL_VERSION=${RECOMMENDER_MODEL_VERSION:-v1.0.0}
+      - RECOMMENDER_VECTOR_DIM=${RECOMMENDER_VECTOR_DIM:-32}
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_API_BASE_URL: ${BACKEND_URL:?Set BACKEND_URL}
+        JUKE_RUNTIME_ENV: production
+    environment:
+      - VITE_API_BASE_URL=${BACKEND_URL:?Set BACKEND_URL}
+      - JUKE_RUNTIME_ENV=production
+    depends_on:
+      - backend
+    expose:
+      - "5173"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  media_data:
+  caddy_data:
+  caddy_config:

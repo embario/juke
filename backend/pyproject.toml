@@ -1,0 +1,11 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 140
+exclude = [
+  ".git",
+  "__pycache__",
+]
+select = ["E", "F", "W"]
+
+[tool.ruff.format]
+line-ending = "lf"
