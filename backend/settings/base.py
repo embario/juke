@@ -65,10 +65,19 @@ EMAIL_PORT = 587
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
 
+def _env_flag(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+DISABLE_REGISTRATION_EMAILS = _env_flag('DISABLE_REGISTRATION_EMAILS', False)
+
 REST_REGISTRATION = {
-    'REGISTER_VERIFICATION_ENABLED': True,
-    'REGISTER_EMAIL_VERIFICATION_ENABLED': True,
-    'RESET_PASSWORD_VERIFICATION_ENABLED': True,
+    'REGISTER_VERIFICATION_ENABLED': not DISABLE_REGISTRATION_EMAILS,
+    'REGISTER_EMAIL_VERIFICATION_ENABLED': not DISABLE_REGISTRATION_EMAILS,
+    'RESET_PASSWORD_VERIFICATION_ENABLED': not DISABLE_REGISTRATION_EMAILS,
 
     'REGISTER_VERIFICATION_URL': os.environ.get('REGISTER_VERIFICATION_URL', 'https://frontend-host/verify-user/'),
     'RESET_PASSWORD_VERIFICATION_URL': os.environ.get('RESET_PASSWORD_VERIFICATION_URL', 'https://frontend-host/reset-password/'),
