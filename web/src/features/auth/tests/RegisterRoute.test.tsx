@@ -11,14 +11,12 @@ vi.mock('react-router-dom', () => ({
 }));
 
 describe('RegisterRoute', () => {
-  const originalEnv = window.ENV;
-
   afterEach(() => {
-    window.ENV = originalEnv;
+    vi.unstubAllEnvs();
   });
 
   it('shows a full banner and hides the form when registration is disabled', () => {
-    window.ENV = { DISABLE_REGISTRATION: '1' };
+    vi.stubEnv('DISABLE_REGISTRATION', '1');
 
     render(<RegisterRoute />);
 
@@ -30,7 +28,7 @@ describe('RegisterRoute', () => {
   });
 
   it('shows the registration form when enabled', () => {
-    window.ENV = { DISABLE_REGISTRATION: '0' };
+    vi.stubEnv('DISABLE_REGISTRATION', '0');
 
     render(<RegisterRoute />);
 

@@ -1,12 +1,10 @@
-declare global {
-  interface Window {
-    ENV?: {
-      VITE_API_BASE_URL?: string;
-      DISABLE_REGISTRATION?: string;
-      BACKEND_URL?: string;
-      [key: string]: string | undefined;
-    };
-  }
+interface ImportMetaEnv {
+  readonly BACKEND_URL?: string;
+  readonly DISABLE_REGISTRATION?: string;
+  readonly JUKE_RUNTIME_ENV?: string;
+  readonly VITE_API_BASE_URL?: string;
 }
 
-export {};
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}

@@ -14,10 +14,7 @@ const RegisterRoute = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const registrationDisabled = (() => {
-    const value =
-      import.meta.env.DISABLE_REGISTRATION ??
-      window?.ENV?.DISABLE_REGISTRATION ??
-      '';
+    const value = import.meta.env.DISABLE_REGISTRATION ?? '';
     return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
   })();
 

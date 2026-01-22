@@ -3,8 +3,10 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import viteCompression from 'vite-plugin-compression';
 
-const BACKEND_TARGET = process.env.BACKEND_TARGET ?? process.env.BACKEND_URL;
+const BACKEND_URL = process.env.BACKEND_URL ?? '';
+const BACKEND_TARGET = process.env.BACKEND_TARGET ?? BACKEND_URL;
 const RUNTIME_ENV = (process.env.JUKE_RUNTIME_ENV ?? 'development').toLowerCase();
+const API_BASE_URL = process.env.VITE_API_BASE_URL ?? BACKEND_URL;
 const PROD_LIKE_ENVIRONMENTS = new Set(['staging', 'production']);
 const SHOULD_PRECOMPRESS_ASSETS = PROD_LIKE_ENVIRONMENTS.has(RUNTIME_ENV);
 const createCompressionPlugin = viteCompression as unknown as typeof import('vite-plugin-compression')['default'];
@@ -33,6 +35,12 @@ export default defineConfig({
   ],
   define: {
     __JUKE_RUNTIME_ENV__: JSON.stringify(RUNTIME_ENV),
+    'import.meta.env.BACKEND_URL': JSON.stringify(BACKEND_URL),
+    'import.meta.env.DISABLE_REGISTRATION': JSON.stringify(
+      process.env.DISABLE_REGISTRATION ?? ''
+    ),
+    'import.meta.env.JUKE_RUNTIME_ENV': JSON.stringify(process.env.JUKE_RUNTIME_ENV ?? ''),
+    'import.meta.env.VITE_API_BASE_URL': JSON.stringify(API_BASE_URL),
   },
   resolve: {
     alias: {
