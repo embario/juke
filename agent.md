@@ -43,6 +43,11 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
 3. **Testing**
    - Backend: `docker compose exec backend python manage.py test`
    - Frontend: `cd web && npm test`
+   - Mobile: `scripts/test_mobile.sh` (runs both iOS and Android test suites; see `scripts/test_mobile.sh --help` for options)
+4. **Mobile config (.env)**
+   - Mobile build/test scripts load `.env` via `scripts/load_env.sh`; set `BACKEND_URL` and `DISABLE_REGISTRATION` there to configure iOS + Android builds consistently.
+5. **iOS workflow**
+   - When editing iOS app code, run `scripts/build_and_run_ios.sh -p <project>` after each change to verify the update in the simulator.
 4. **Environment switches**
    - `JUKE_RUNTIME_ENV` (development/staging/production) drives both Django settings (DEBUG, security toggles) and the web container entrypoint.
    - In Docker: `development` keeps the live Vite dev server, while `staging`/`production` invoke `npm run build:*`, copy the compressed assets, and hand them to NGINX (see `web/docker-entrypoint.sh`).

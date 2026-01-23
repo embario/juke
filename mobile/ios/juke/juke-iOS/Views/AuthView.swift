@@ -16,7 +16,14 @@ struct AuthView: View {
                         hero
                         JukeCard {
                             VStack(alignment: .leading, spacing: 20) {
-                                modeToggle
+                                if viewModel.isRegistrationDisabled {
+                                    JukeStatusBanner(
+                                        message: "Registration is temporarily disabled while email delivery is offline.",
+                                        variant: .warning
+                                    )
+                                } else {
+                                    modeToggle
+                                }
                                 accountFields
                                 securityFields
                                 JukeStatusBanner(message: viewModel.successMessage, variant: .success)

@@ -10,7 +10,14 @@ android {
     namespace = "fm.juke.mobile"
     compileSdk = 36
 
-    val apiBaseUrl = project.findProperty("juke.apiBaseUrl") as String? ?: "http://10.0.2.2:8000"
+    val backendUrl = System.getenv("BACKEND_URL")
+        ?: project.findProperty("juke.apiBaseUrl") as String?
+        ?: "http://10.0.2.2:8000"
+    val disableRegistrationRaw = (System.getenv("DISABLE_REGISTRATION")
+        ?: project.findProperty("juke.disableRegistration") as String?
+        ?: "false")
+        .lowercase()
+    val disableRegistration = if (disableRegistrationRaw in listOf("1", "true", "yes", "on")) "true" else "false"
 
     defaultConfig {
         applicationId = "fm.juke.mobile"
@@ -24,7 +31,8 @@ android {
             useSupportLibrary = true
         }
 
-        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "BACKEND_URL", "\"$backendUrl\"")
+        buildConfigField("boolean", "DISABLE_REGISTRATION", disableRegistration)
     }
 
     buildTypes {

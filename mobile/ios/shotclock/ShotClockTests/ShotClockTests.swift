@@ -43,4 +43,40 @@ final class ShotClockTests: XCTestCase {
         XCTAssertEqual(dict?["email"], "a@b.com")
         XCTAssertEqual(dict?["password_confirm"], "pass1234")
     }
+
+    func testAppConfigurationEnvOverridesPlist() {
+        let config = AppConfiguration(
+            env: ["DISABLE_REGISTRATION": "yes"],
+            plistValue: "false"
+        )
+
+        XCTAssertTrue(config.isRegistrationDisabled)
+    }
+
+    func testAppConfigurationPlistBooleanFallback() {
+        let config = AppConfiguration(
+            env: [:],
+            plistValue: true
+        )
+
+        XCTAssertTrue(config.isRegistrationDisabled)
+    }
+
+    func testResolveBaseURLUsesEnvironment() {
+        let resolved = APIClient.resolveBaseURL(
+            environment: ["BACKEND_URL": "http://env.example.com"],
+            plistURL: "http://plist.example.com"
+        )
+
+        XCTAssertEqual(resolved, "http://env.example.com")
+    }
+
+    func testResolveBaseURLUsesPlistWhenEnvironmentMissing() {
+        let resolved = APIClient.resolveBaseURL(
+            environment: [:],
+            plistURL: "http://plist.example.com"
+        )
+
+        XCTAssertEqual(resolved, "http://plist.example.com")
+    }
 }

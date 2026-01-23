@@ -80,7 +80,14 @@ fun AuthScreen(
                 Column(
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
-                    AuthModeToggle(mode = state.mode, onToggleMode = onToggleMode)
+                    if (state.isRegistrationDisabled) {
+                        JukeStatusBanner(
+                            message = "Registration is temporarily disabled while email delivery is offline.",
+                            variant = JukeStatusVariant.WARNING,
+                        )
+                    } else {
+                        AuthModeToggle(mode = state.mode, onToggleMode = onToggleMode)
+                    }
                     JukeInputField(
                         label = "Username",
                         value = state.username,
@@ -189,6 +196,7 @@ private fun AuthModeToggle(
 
 private fun AuthUiState.canSubmit(): Boolean {
     if (username.trim().isEmpty() || password.isBlank()) return false
+    if (isRegistrationDisabled && mode == AuthMode.REGISTER) return false
     return if (mode == AuthMode.REGISTER) {
         email.trim().isNotEmpty() && confirmPassword.isNotBlank()
     } else {

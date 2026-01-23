@@ -7,13 +7,17 @@ struct APIConfiguration {
     let baseURL: URL
 
     init(bundle: Bundle = .main, processInfo: ProcessInfo = .processInfo) {
-        if let overrideURLString = processInfo.environment["API_BASE_URL"], let url = URL(string: overrideURLString) {
+        let plistValue = bundle.object(forInfoDictionaryKey: "BACKEND_URL") as? String
+        self.init(environment: processInfo.environment, plistValue: plistValue)
+    }
+
+    init(environment: [String: String], plistValue: String?) {
+        if let overrideURLString = environment["BACKEND_URL"], let url = URL(string: overrideURLString) {
             baseURL = url
             return
         }
 
-        if let plistValue = bundle.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
-           let url = URL(string: plistValue) {
+        if let plistValue, let url = URL(string: plistValue) {
             baseURL = url
             return
         }
@@ -222,6 +226,10 @@ final class APIClient {
         }
 
         if let message = String(data: data, encoding: .utf8), !message.isEmpty {
+            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if trimmed.hasPrefix("<!doctype") || trimmed.hasPrefix("<html") {
+                return defaultMessage
+            }
             return message
         }
 

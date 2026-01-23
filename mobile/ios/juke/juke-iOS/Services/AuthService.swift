@@ -41,7 +41,7 @@ final class AuthService {
         let payload = LoginRequest(username: username, password: password)
         let body = try encoder.encode(payload)
         let response: AuthTokenResponse = try await client.send(
-            "/auth/api-auth-token/",
+            "/api/v1/auth/api-auth-token/",
             method: .post,
             body: body
         )
@@ -52,7 +52,7 @@ final class AuthService {
         let payload = RegisterRequest(username: username, email: email, password: password, passwordConfirm: passwordConfirm)
         let body = try encoder.encode(payload)
         return try await client.send(
-            "/auth/accounts/register/",
+            "/api/v1/auth/accounts/register/",
             method: .post,
             body: body
         )
