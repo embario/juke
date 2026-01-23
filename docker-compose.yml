@@ -8,7 +8,7 @@ services:
   redis:
     image: redis:7
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:?Set REDIS_PORT}:${REDIS_PORT:?Set REDIS_PORT}"
 
   backend:
     build:
@@ -16,7 +16,7 @@ services:
     command: bash run_dev.sh
     working_dir: /app
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:?Set BACKEND_PORT}:${BACKEND_PORT:?Set BACKEND_PORT}"
     volumes:
       - ./backend:/app
     depends_on:
@@ -61,9 +61,9 @@ services:
   recommender-engine:
     build:
       context: ./backend/recommender_engine
-    command: uvicorn app.main:app --host 0.0.0.0 --port 9000
+    command: uvicorn app.main:app --host 0.0.0.0 --port ${RECOMMENDER_PORT:?Set RECOMMENDER_PORT}
     ports:
-      - "${RECOMMENDER_PORT:-9000}:9000"
+      - "${RECOMMENDER_PORT:?Set RECOMMENDER_PORT}:${RECOMMENDER_PORT:?Set RECOMMENDER_PORT}"
     volumes:
       - ./backend/recommender_engine:/app
     env_file: .env
@@ -76,8 +76,9 @@ services:
       context: ./web
       args:
         VITE_API_BASE_URL: ${BACKEND_URL:?Set BACKEND_URL in .env}
+        WEB_PORT: ${WEB_PORT:?Set WEB_PORT}
     ports:
-      - "${WEB_PORT:-5173}:5173"
+      - "${WEB_PORT:?Set WEB_PORT}:${WEB_PORT:?Set WEB_PORT}"
     volumes:
       - ./web:/app
       - /app/node_modules

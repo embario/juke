@@ -8,7 +8,9 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-ENGINE_BASE_URL = getattr(settings, 'RECOMMENDER_ENGINE_BASE_URL', 'http://recommender-engine:9000')
+ENGINE_BASE_URL = getattr(settings, 'RECOMMENDER_ENGINE_BASE_URL', None)
+if not ENGINE_BASE_URL:
+    raise ValueError("RECOMMENDER_ENGINE_BASE_URL must be set")
 DEFAULT_TIMEOUT = int(getattr(settings, 'RECOMMENDER_ENGINE_TIMEOUT', 15))
 
 

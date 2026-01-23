@@ -28,7 +28,9 @@ def _database_conninfo() -> str:
     user = os.environ.get('POSTGRES_USER', 'postgres')
     password = os.environ.get('POSTGRES_PASSWORD', 'postgres')
     host = os.environ.get('POSTGRES_HOST') or os.environ.get('POSTGRES_HOSTNAME') or 'db'
-    port = os.environ.get('POSTGRES_PORT', '5432')
+    port = os.environ.get('POSTGRES_PORT')
+    if not port:
+        raise ValueError("POSTGRES_PORT must be set")
     return f"dbname={name} user={user} password={password} host={host} port={port}"
 
 

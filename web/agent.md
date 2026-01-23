@@ -21,17 +21,17 @@
 ```bash
 cd web
 npm install                # once per environment
-npm run dev                # Vite dev server @ http://127.0.0.1:5173
+npm run dev                # Vite dev server @ FRONTEND_URL from `.env`
 npm run build:dev          # development bundle (sets JUKE_RUNTIME_ENV=development)
 npm run build:staging      # staging optimizations
 npm run build:prod         # production bundle (default `npm run build`)
 npm run preview            # serve a built bundle locally
 npm test                   # Vitest suite
-npm run storybook          # Storybook dev mode (port 6006)
+npm run storybook          # Storybook dev mode (see Storybook config for port)
 npm run build-storybook    # Static Storybook export
 ```
 
-- `VITE_API_BASE_URL` controls the API root; defaults to `http://127.0.0.1:8000` via `.env` or runtime injection from Docker.
+- `VITE_API_BASE_URL` controls the API root and should be set in `.env`.
 - `JUKE_RUNTIME_ENV` aligns with backend settings and toggles analytics/logging gates.
 
 ## Networking & Data Flow
@@ -50,7 +50,7 @@ npm run build-storybook    # Static Storybook export
 
 - Production builds generate Brotli + gzip assets (via `vite-plugin-compression`). Host them behind a CDN or the `web` service inside Docker.
 - When running under Docker Compose, the container entrypoint (`web/docker-entrypoint.sh`) checks `JUKE_RUNTIME_ENV`:
-	- `development` → skips bundling and launches `npm run dev` bound to `0.0.0.0:5173` so HMR works.
+	- `development` → skips bundling and launches `npm run dev` bound to `0.0.0.0:$WEB_PORT` so HMR works.
 	- `staging`/`production` → runs the matching `npm run build:*`, copies `dist/` into `/usr/share/nginx/html`, and starts NGINX using `web/nginx.conf` (gz precompressed assets + `/api`/`/auth` proxy to the backend service).
 - After changing frontend dependencies or environment wiring, restart with `docker compose restart web` (or rebuild with `docker compose build web`) to regenerate bundles.
 - Keep dependency versions in `package.json` aligned with Node >=18 as enforced by the `engines` block.

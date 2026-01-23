@@ -29,7 +29,7 @@ struct APIConfiguration {
             return
         }
 
-        baseURL = URL(string: "http://localhost:8000")!
+        fatalError("BACKEND_URL must be set in the environment or Info.plist.")
     }
 }
 

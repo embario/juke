@@ -26,7 +26,7 @@ The Django backend lives at the repo root (files such as `manage.py`, `settings/
 ```bash
 # API + workers + recommender + Postgres + Redis
 cp template.env .env
-BACKEND_URL=http://127.0.0.1:8000 FRONTEND_URL=http://127.0.0.1:5173 docker compose up --build
+docker compose up --build
 ```
 
 - Django: `docker compose exec backend python manage.py migrate` & `python manage.py createsuperuser` when needed.

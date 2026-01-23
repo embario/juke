@@ -34,9 +34,9 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
    cp template.env .env  # fill secrets
    docker compose up --build
    ```
-   - API → http://127.0.0.1:8000
-   - Web console → http://127.0.0.1:5173
-   - Recommender engine → http://localhost:9000
+   - API → BACKEND_URL from `.env`
+   - Web console → FRONTEND_URL from `.env`
+   - Recommender engine → RECOMMENDER_ENGINE_BASE_URL from `.env`
 2. **Celery tasks**
    - Workers + beat already run under compose. For a one-off worker: `docker compose run --rm worker celery -A settings.celery worker -l info`.
    - Genre sync task lives at `catalog/tasks.py` and is scheduled daily.
@@ -72,7 +72,7 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
 
 ## Operational Notes
 
-- Default Postgres hostnames (`db` inside Docker) and Redis (`redis://redis:6379/0`) are hard-coded in settings; override via env vars for cloud deployments.
+- Default Postgres hostnames (`db` inside Docker) and Redis (`redis://redis:$REDIS_PORT/0`) are set via env vars; override via `.env` for cloud deployments.
 - Static media under `backend/static/media` stores cover art; in production serve via CDN and point `STATIC_URL` accordingly.
 - GitHub Actions runs lint + tests on push to `main` (see `.github/workflows/ci.yml`).
 

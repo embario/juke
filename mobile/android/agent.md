@@ -38,7 +38,7 @@ The helper script creates the AVD (`jukeApi36`), waits for boot, installs the de
 
 ## Networking & Config
 
-- Android clients talk to the Django API; point them at your backend via build-time config (e.g., `local.properties` or buildConfig fields). When running under Docker defaults, use `10.0.2.2:8000` for emulator-to-host traffic.
+- Android clients talk to the Django API; point them at your backend via build-time config (e.g., `local.properties` or buildConfig fields). Keep the value aligned with `BACKEND_URL` in `.env`.
 - Authentication mirrors the backend: Spotify OAuth and token-based endpoints; keep redirect URIs consistent with the app id.
 
 ## Testing & QA

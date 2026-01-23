@@ -5,6 +5,7 @@ from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from social_core.backends.spotify import SpotifyOAuth2
+from social_core.exceptions import AuthConnectionError
 
 from juke_auth.models import JukeUser
 
@@ -64,3 +65,17 @@ class LoginTests(APITestCase):
 
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(resp.data['detail'], 'Something bad happened.')
+
+    @patch.object(SpotifyOAuth2, 'do_auth')
+    def test_social_login_spotify_unavailable(self, mock_auth):
+        mock_auth.side_effect = AuthConnectionError(SpotifyOAuth2, "Spotify unavailable")
+
+        resp = self.client.post(self.social_login_url, data={
+            'access_token': 'Something valid.',
+        }, format='json')
+
+        self.assertEqual(resp.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(
+            resp.data['detail'],
+            'Spotify authentication is temporarily unavailable. Please try again.'
+        )

@@ -18,6 +18,6 @@
 		<string>spotify</string>
 	</array>
 	<key>BACKEND_URL</key>
-	<string>http://localhost:8000</string>
+	<string>$(BACKEND_URL)</string>
 </dict>
 </plist>

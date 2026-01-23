@@ -1,14 +1,15 @@
 #!/bin/sh
 
 RUNTIME_ENV=${JUKE_RUNTIME_ENV:-development}
-FRONTEND_PORT=${FRONTEND_PORT:-5173}
+WEB_PORT=${WEB_PORT:?Set WEB_PORT}
+BACKEND_PORT=${BACKEND_PORT:?Set BACKEND_PORT}
 
 if [ "$#" -gt 0 ]; then
   exec "$@"
 fi
 
 if [ "$RUNTIME_ENV" = "development" ]; then
-  exec npm run dev -- --host 0.0.0.0 --port "$FRONTEND_PORT"
+  exec npm run dev -- --host 0.0.0.0 --port "$WEB_PORT"
 fi
 
 BUILD_SCRIPT="build:prod"
@@ -20,5 +21,9 @@ npm run "$BUILD_SCRIPT"
 
 rm -rf /usr/share/nginx/html/*
 cp -r dist/. /usr/share/nginx/html/
+
+envsubst '$WEB_PORT $BACKEND_PORT' \
+  < /etc/nginx/http.d/default.conf.template \
+  > /etc/nginx/http.d/default.conf
 
 exec nginx -g 'daemon off;'

@@ -22,14 +22,14 @@ Backend services live under `backend/`, the analyst console sits in `web/`, and 
 
 ## Running the stack
 
-1. Duplicate `template.env` into `.env` (both stay in the repo root) and populate the secrets as needed, including `BACKEND_URL` (defaults to `http://127.0.0.1:8000` for the API) and `FRONTEND_URL` (`http://127.0.0.1:5173`).
+1. Duplicate `template.env` into `.env` (both stay in the repo root) and populate the secrets as needed, including `BACKEND_URL`, `FRONTEND_URL`, and the per-service port variables (`BACKEND_PORT`, `WEB_PORT`, `RECOMMENDER_PORT`, `REDIS_PORT`, `POSTGRES_PORT`, `EMAIL_PORT`).
 2. Start the local services, including the asynchronous workers and web container:
 
 	 ```bash
 	 docker-compose up --build
 	 ```
 
-	 The Django API stays on `http://127.0.0.1:8000`, Celery workers connect to the bundled Redis broker, the recommender ML engine listens on `http://localhost:9000`, and the web console lives on `http://localhost:5173`.
+	 The Django API, Celery broker, recommender ML engine, and web console URLs all come from `.env` so you can run multiple stacks without collisions.
 
 ### Background tasks
 
@@ -74,7 +74,7 @@ scripts/setup-hooks.sh
 	npm run storybook
 	```
 
-	The builder runs on `http://localhost:6006` by default.
+	The builder runs on the port configured in Storybook settings.
 
 ## Mobile app
 

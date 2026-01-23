@@ -12,7 +12,7 @@ android {
 
     val backendUrl = System.getenv("BACKEND_URL")
         ?: project.findProperty("juke.apiBaseUrl") as String?
-        ?: "http://10.0.2.2:8000"
+        ?: error("BACKEND_URL must be set (env var or juke.apiBaseUrl property).")
     val disableRegistrationRaw = (System.getenv("DISABLE_REGISTRATION")
         ?: project.findProperty("juke.disableRegistration") as String?
         ?: "false")

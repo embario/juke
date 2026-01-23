@@ -39,7 +39,7 @@ Logs from `xcodebuild` stream to `/tmp/juke-ios-build.log` for quick inspection 
 
 ## Configuration Touchpoints
 
-- API base URL: use an `xcconfig` file or `Info.plist` entry so it stays aligned with backend environments (`http://127.0.0.1:8000` locally, staging/prod hosts otherwise).
+- API base URL: use an `xcconfig` file or `Info.plist` entry so it stays aligned with backend environments (set via `.env` for local Docker).
 - OAuth redirects: coordinate with backend `SOCIAL_AUTH_SPOTIFY_*` + scheme/host in `Info.plist` (`URL Types`).
 - Feature flags/settings: consolidate inside a shared Swift struct (e.g., `AppConfiguration.swift`) to keep parity with Android/web.
 

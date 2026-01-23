@@ -2,11 +2,14 @@ services:
   caddy:
     image: caddy:2
     ports:
-      - "80:80"
-      - "443:443"
+      - "${CADDY_HTTP_PORT:?Set CADDY_HTTP_PORT}:${CADDY_HTTP_PORT:?Set CADDY_HTTP_PORT}"
+      - "${CADDY_HTTPS_PORT:?Set CADDY_HTTPS_PORT}:${CADDY_HTTPS_PORT:?Set CADDY_HTTPS_PORT}"
     environment:
       - DOMAIN=${DOMAIN:?Set DOMAIN}
       - CADDY_EMAIL=${CADDY_EMAIL:?Set CADDY_EMAIL}
+      - CADDY_HTTP_PORT=${CADDY_HTTP_PORT:?Set CADDY_HTTP_PORT}
+      - CADDY_HTTPS_PORT=${CADDY_HTTPS_PORT:?Set CADDY_HTTPS_PORT}
+      - WEB_PORT=${WEB_PORT:?Set WEB_PORT}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -61,7 +64,7 @@ services:
   recommender-engine:
     build:
       context: ./backend/recommender_engine
-    command: uvicorn app.main:app --host 0.0.0.0 --port 9000
+    command: uvicorn app.main:app --host 0.0.0.0 --port ${RECOMMENDER_PORT:?Set RECOMMENDER_PORT}
     env_file: .env
     environment:
       - RECOMMENDER_MODEL_VERSION=${RECOMMENDER_MODEL_VERSION:-v1.0.0}
@@ -76,15 +79,18 @@ services:
         VITE_API_BASE_URL: ${BACKEND_URL:?Set BACKEND_URL}
         DISABLE_REGISTRATION: ${DISABLE_REGISTRATION:-0}
         JUKE_RUNTIME_ENV: production
+        WEB_PORT: ${WEB_PORT:?Set WEB_PORT}
     environment:
       - VITE_API_BASE_URL=${BACKEND_URL:?Set BACKEND_URL}
       - JUKE_RUNTIME_ENV=production
       - BACKEND_URL=${BACKEND_URL:?Set BACKEND_URL}
       - DISABLE_REGISTRATION=${DISABLE_REGISTRATION:-0}
+      - WEB_PORT=${WEB_PORT:?Set WEB_PORT}
+      - BACKEND_PORT=${BACKEND_PORT:?Set BACKEND_PORT}
     depends_on:
       - backend
     expose:
-      - "5173"
+      - "${WEB_PORT:?Set WEB_PORT}"
     restart: unless-stopped
 
 volumes:

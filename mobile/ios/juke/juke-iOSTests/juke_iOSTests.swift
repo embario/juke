@@ -69,10 +69,4 @@ class juke_iOSTests: XCTestCase {
         XCTAssertEqual(config.baseURL.absoluteString, "http://plist.example.com")
     }
 
-    func testAPIConfigurationDefaultFallback() {
-        let config = APIConfiguration(environment: [:], plistValue: nil)
-
-        XCTAssertEqual(config.baseURL.absoluteString, "http://localhost:8000")
-    }
-
 }

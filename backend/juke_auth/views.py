@@ -2,7 +2,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import login, logout
-
+from django.http import HttpResponseRedirect, JsonResponse
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
@@ -17,6 +17,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_registration.api.views.register import RegisterView
 
 from social_django.utils import load_backend, load_strategy
+from social_core.exceptions import AuthConnectionError
+from social_django import views as social_views
 
 from juke_auth.serializers import (
     JukeUserSerializer,
@@ -27,9 +29,38 @@ from juke_auth.serializers import (
 from juke_auth.models import JukeUser, MusicProfile
 
 
-logger = logging.Logger(__name__)
+logger = logging.getLogger(__name__)
 
 SOCIAL_AUTH_PROVIDER = 'spotify'
+
+
+def _social_auth_error_response(request, error_code: str, detail: str, status_code: int):
+    accept = request.META.get('HTTP_ACCEPT', '')
+    if 'application/json' in accept:
+        return JsonResponse({'detail': detail, 'error': error_code}, status=status_code)
+    error_url = f"{settings.FRONTEND_URL.rstrip('/')}/login?error={error_code}"
+    return HttpResponseRedirect(error_url)
+
+
+def spotify_complete(request, *args, **kwargs):
+    try:
+        return social_views.complete(request, backend=SOCIAL_AUTH_PROVIDER, *args, **kwargs)
+    except AuthConnectionError as exc:
+        logger.warning('Spotify auth connection error', exc_info=exc)
+        return _social_auth_error_response(
+            request,
+            error_code='spotify_unavailable',
+            detail='Spotify authentication is temporarily unavailable. Please try again.',
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    except Exception as exc:
+        logger.exception('Spotify auth failed', exc_info=exc)
+        return _social_auth_error_response(
+            request,
+            error_code='spotify_auth_failed',
+            detail='Spotify authentication failed. Please try again.',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class JukeUserViewSet(viewsets.ModelViewSet):
@@ -183,6 +214,12 @@ class SocialAuth(generics.CreateAPIView):
             user = backend.do_auth(access_token, expires=None, *args, **kwargs)
             user_serializer = JukeUserSerializer(user, context={'request': request})
             return Response(user_serializer.data, status=status.HTTP_200_OK)
+        except AuthConnectionError as exc:
+            logger.warning('Spotify auth connection error', exc_info=exc)
+            return Response(
+                {'detail': 'Spotify authentication is temporarily unavailable. Please try again.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception as e:
             return Response({'detail': e.args[0]}, status=status.HTTP_400_BAD_REQUEST)
 

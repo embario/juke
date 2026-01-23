@@ -1,8 +1,10 @@
 {
     email {$CADDY_EMAIL}
+    http_port {$CADDY_HTTP_PORT}
+    https_port {$CADDY_HTTPS_PORT}
 }
 
 {$DOMAIN} {
     encode zstd gzip
-    reverse_proxy web:5173
+    reverse_proxy web:{$WEB_PORT}
 }

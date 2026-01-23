@@ -69,7 +69,7 @@ final class APIClient {
         if let plistURL, !plistURL.isEmpty {
             return plistURL
         }
-        return "http://localhost:8000"
+        fatalError("BACKEND_URL must be set in the environment or Info.plist.")
     }
 
     // MARK: - Request Methods

@@ -7,12 +7,16 @@ const BACKEND_URL = process.env.BACKEND_URL ?? '';
 const BACKEND_TARGET = process.env.BACKEND_TARGET ?? BACKEND_URL;
 const RUNTIME_ENV = (process.env.JUKE_RUNTIME_ENV ?? 'development').toLowerCase();
 const API_BASE_URL = process.env.VITE_API_BASE_URL ?? BACKEND_URL;
+const WEB_PORT = process.env.WEB_PORT ?? process.env.FRONTEND_PORT ?? '';
 const PROD_LIKE_ENVIRONMENTS = new Set(['staging', 'production']);
 const SHOULD_PRECOMPRESS_ASSETS = PROD_LIKE_ENVIRONMENTS.has(RUNTIME_ENV);
 const createCompressionPlugin = viteCompression as unknown as typeof import('vite-plugin-compression')['default'];
 
 if (!BACKEND_TARGET) {
   throw new Error('BACKEND_URL must be defined for the frontend dev server.');
+}
+if (!WEB_PORT || Number.isNaN(Number(WEB_PORT))) {
+  throw new Error('WEB_PORT must be defined for the frontend dev server.');
 }
 
 export default defineConfig({
@@ -50,7 +54,7 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 5173,
+    port: Number(WEB_PORT),
     proxy: {
       '/auth': {
         target: BACKEND_TARGET,

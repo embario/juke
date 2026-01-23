@@ -29,11 +29,18 @@ RUNTIME_ENV = os.environ.get("JUKE_RUNTIME_ENV", "development").strip().lower()
 if RUNTIME_ENV not in _supported_envs:
     raise ValueError(f"JUKE_RUNTIME_ENV must be one of {_supported_envs}, got '{RUNTIME_ENV}'")
 
+def _required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise ValueError(f"{name} must be set")
+    return value
+
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = RUNTIME_ENV == "development"
 
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://127.0.0.1:8000").rstrip('/')
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://127.0.0.1:5173")
+BACKEND_URL = _required_env("BACKEND_URL").rstrip('/')
+FRONTEND_URL = _required_env("FRONTEND_URL")
 LOGIN_REDIRECT_URL = FRONTEND_URL
 LOGOUT_REDIRECT_URL = FRONTEND_URL
 SOCIAL_AUTH_LOGIN_REDIRECT_URL = FRONTEND_URL
@@ -61,7 +68,7 @@ AUTH_USER_MODEL = "juke_auth.JukeUser"
 
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_USE_TLS = True
-EMAIL_PORT = 587
+EMAIL_PORT = int(_required_env("EMAIL_PORT"))
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
 
@@ -218,7 +225,7 @@ DATABASES = {
         'USER': os.environ.get("POSTGRES_USER"),
         'PASSWORD': os.environ.get("POSTGRES_PASSWORD"),
         'HOST': 'db',
-        'PORT': '5432',
+        'PORT': _required_env("POSTGRES_PORT"),
     }
 }
 
@@ -271,8 +278,8 @@ if celery_always_eager is None:
 else:
     CELERY_TASK_ALWAYS_EAGER = celery_always_eager.lower() in {'1', 'true', 'yes', 'on'}
 
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://redis:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
+CELERY_BROKER_URL = _required_env("CELERY_BROKER_URL")
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_DEFAULT_QUEUE = 'default'
 CELERY_TASK_ROUTES = {
@@ -293,7 +300,7 @@ CELERY_WORKER_DISABLE_PREFETCH = True
 # With prefetch disabled we still cap to one task per worker process for deterministic flow.
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
-RECOMMENDER_ENGINE_BASE_URL = os.environ.get('RECOMMENDER_ENGINE_BASE_URL', 'http://recommender-engine:9000')
+RECOMMENDER_ENGINE_BASE_URL = _required_env("RECOMMENDER_ENGINE_BASE_URL")
 RECOMMENDER_ENGINE_TIMEOUT = int(os.environ.get('RECOMMENDER_ENGINE_TIMEOUT', '15'))
 
 
@@ -315,8 +322,7 @@ cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS")
 if cors_origins:
     CORS_ALLOWED_ORIGINS = [origin.strip().rstrip('/') for origin in cors_origins.split(",") if origin.strip()]
 else:
-    default_cors = [FRONTEND_URL, "http://127.0.0.1:5173", "http://localhost:5173"]
-    CORS_ALLOWED_ORIGINS = list(dict.fromkeys(origin.rstrip('/') for origin in default_cors))
+    CORS_ALLOWED_ORIGINS = [FRONTEND_URL.rstrip('/')]
 
 CORS_ALLOW_CREDENTIALS = True
 
