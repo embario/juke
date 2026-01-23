@@ -22,6 +22,7 @@ from juke_auth.serializers import (
     JukeUserSerializer,
     MusicProfileSerializer,
     MusicProfileSearchSerializer,
+    GlobePointSerializer,
 )
 from juke_auth.models import JukeUser, MusicProfile
 
@@ -98,6 +99,45 @@ class MusicProfileViewSet(viewsets.ModelViewSet):
         )[:10]
         serializer = MusicProfileSearchSerializer(queryset, many=True)
         return Response({'results': serializer.data})
+
+    @action(detail=False, methods=['get'], url_path='globe')
+    def globe(self, request):
+        """Bulk geo-point retrieval with LOD filtering for the Juke World globe."""
+        try:
+            min_lat = float(request.query_params.get('min_lat', -90))
+            max_lat = float(request.query_params.get('max_lat', 90))
+            min_lng = float(request.query_params.get('min_lng', -180))
+            max_lng = float(request.query_params.get('max_lng', 180))
+            zoom = int(request.query_params.get('zoom', 1))
+            limit = min(int(request.query_params.get('limit', 5000)), 10000)
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': 'Invalid query parameters.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # LOD clout threshold based on zoom level
+        if zoom <= 4:
+            clout_threshold = 0.5
+        elif zoom <= 8:
+            clout_threshold = 0.2
+        elif zoom <= 12:
+            clout_threshold = 0.05
+        else:
+            clout_threshold = 0.0
+
+        queryset = MusicProfile.objects.select_related('user').filter(
+            city_lat__isnull=False,
+            city_lng__isnull=False,
+            city_lat__gte=min_lat,
+            city_lat__lte=max_lat,
+            city_lng__gte=min_lng,
+            city_lng__lte=max_lng,
+            clout__gte=clout_threshold,
+        ).order_by('-clout')[:limit]
+
+        serializer = GlobePointSerializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class TokenLoginView(APIView):
