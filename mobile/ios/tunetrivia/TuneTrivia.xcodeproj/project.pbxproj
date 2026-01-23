@@ -1,0 +1,751 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 55;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		TT000001AAAA000000000001 /* TuneTriviaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000001 /* TuneTriviaApp.swift */; };
+		TT000001AAAA000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000002 /* ContentView.swift */; };
+		TT000001AAAA000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000003 /* Assets.xcassets */; };
+		TT000001AAAA000000000004 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000004 /* Preview Assets.xcassets */; };
+		TT000001AAAA000000000005 /* TuneTriviaDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000005 /* TuneTriviaDesignSystem.swift */; };
+		TT000001AAAA000000000006 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000006 /* APIClient.swift */; };
+		TT000001AAAA000000000007 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000007 /* User.swift */; };
+		TT000001AAAA000000000008 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000008 /* AuthService.swift */; };
+		TT000001AAAA000000000009 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000009 /* ProfileService.swift */; };
+		TT000001AAAA000000000010 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000010 /* SessionStore.swift */; };
+		TT000001AAAA000000000012 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000012 /* AuthView.swift */; };
+		TT000001AAAA000000000013 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000013 /* HomeView.swift */; };
+		TT000001AAAA000000000020 /* TuneTriviaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000020 /* TuneTriviaTests.swift */; };
+		TT000001AAAA000000000021 /* TuneTriviaUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000021 /* TuneTriviaUITests.swift */; };
+		TT000001AAAA000000000022 /* TuneTriviaUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000022 /* TuneTriviaUITestsLaunchTests.swift */; };
+		TT000001AAAA000000000030 /* TuneTriviaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000030 /* TuneTriviaModels.swift */; };
+		TT000001AAAA000000000031 /* TuneTriviaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000031 /* TuneTriviaService.swift */; };
+		TT000001AAAA000000000032 /* CreateSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000032 /* CreateSessionView.swift */; };
+		TT000001AAAA000000000033 /* JoinSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000033 /* JoinSessionView.swift */; };
+		TT000001AAAA000000000034 /* SessionLobbyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000034 /* SessionLobbyView.swift */; };
+		TT000001AAAA000000000035 /* AddTracksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000035 /* AddTracksView.swift */; };
+		TT000001AAAA000000000036 /* GamePlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000036 /* GamePlayView.swift */; };
+		TT000001AAAA000000000037 /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000037 /* LeaderboardView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		TT000003AAAA000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = TT000004AAAA000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = TT000005AAAA000000000001;
+			remoteInfo = TuneTrivia;
+		};
+		TT000003AAAA000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = TT000004AAAA000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = TT000005AAAA000000000001;
+			remoteInfo = TuneTrivia;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		TT000006AAAA000000000001 /* TuneTrivia.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TuneTrivia.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		TT000002AAAA000000000001 /* TuneTriviaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneTriviaApp.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		TT000002AAAA000000000004 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		TT000002AAAA000000000005 /* TuneTriviaDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneTriviaDesignSystem.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000006 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000007 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000008 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000009 /* ProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileService.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000010 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000012 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000013 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		TT000006AAAA000000000002 /* TuneTriviaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TuneTriviaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		TT000002AAAA000000000020 /* TuneTriviaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneTriviaTests.swift; sourceTree = "<group>"; };
+		TT000006AAAA000000000003 /* TuneTriviaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TuneTriviaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		TT000002AAAA000000000021 /* TuneTriviaUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneTriviaUITests.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000022 /* TuneTriviaUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneTriviaUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000030 /* TuneTriviaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneTriviaModels.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000031 /* TuneTriviaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneTriviaService.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000032 /* CreateSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateSessionView.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000033 /* JoinSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinSessionView.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000034 /* SessionLobbyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLobbyView.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000035 /* AddTracksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTracksView.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000036 /* GamePlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePlayView.swift; sourceTree = "<group>"; };
+		TT000002AAAA000000000037 /* LeaderboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		TT000007AAAA000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TT000007AAAA000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TT000007AAAA000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		TT000008AAAA000000000001 = {
+			isa = PBXGroup;
+			children = (
+				TT000008AAAA000000000002 /* TuneTrivia */,
+				TT000008AAAA000000000010 /* TuneTriviaTests */,
+				TT000008AAAA000000000011 /* TuneTriviaUITests */,
+				TT000008AAAA000000000012 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000012 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				TT000006AAAA000000000001 /* TuneTrivia.app */,
+				TT000006AAAA000000000002 /* TuneTriviaTests.xctest */,
+				TT000006AAAA000000000003 /* TuneTriviaUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000002 /* TuneTrivia */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000001 /* TuneTriviaApp.swift */,
+				TT000002AAAA000000000002 /* ContentView.swift */,
+				TT000002AAAA000000000014 /* Info.plist */,
+				TT000002AAAA000000000003 /* Assets.xcassets */,
+				TT000008AAAA000000000003 /* Preview Content */,
+				TT000008AAAA000000000004 /* DesignSystem */,
+				TT000008AAAA000000000005 /* Networking */,
+				TT000008AAAA000000000006 /* Models */,
+				TT000008AAAA000000000007 /* Services */,
+				TT000008AAAA000000000008 /* ViewModels */,
+				TT000008AAAA000000000009 /* Views */,
+			);
+			path = TuneTrivia;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000003 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000004 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000004 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000005 /* TuneTriviaDesignSystem.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000005 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000006 /* APIClient.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000006 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000007 /* User.swift */,
+				TT000002AAAA000000000030 /* TuneTriviaModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000007 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000008 /* AuthService.swift */,
+				TT000002AAAA000000000009 /* ProfileService.swift */,
+				TT000002AAAA000000000031 /* TuneTriviaService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000008 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000010 /* SessionStore.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000009 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				TT000008AAAA000000000013 /* Auth */,
+				TT000008AAAA000000000014 /* Home */,
+				TT000008AAAA000000000015 /* Session */,
+				TT000008AAAA000000000016 /* Game */,
+				TT000008AAAA000000000017 /* Leaderboard */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000013 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000012 /* AuthView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000014 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000013 /* HomeView.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000015 /* Session */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000032 /* CreateSessionView.swift */,
+				TT000002AAAA000000000033 /* JoinSessionView.swift */,
+				TT000002AAAA000000000034 /* SessionLobbyView.swift */,
+				TT000002AAAA000000000035 /* AddTracksView.swift */,
+			);
+			path = Session;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000016 /* Game */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000036 /* GamePlayView.swift */,
+			);
+			path = Game;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000017 /* Leaderboard */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000037 /* LeaderboardView.swift */,
+			);
+			path = Leaderboard;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000010 /* TuneTriviaTests */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000020 /* TuneTriviaTests.swift */,
+			);
+			path = TuneTriviaTests;
+			sourceTree = "<group>";
+		};
+		TT000008AAAA000000000011 /* TuneTriviaUITests */ = {
+			isa = PBXGroup;
+			children = (
+				TT000002AAAA000000000021 /* TuneTriviaUITests.swift */,
+				TT000002AAAA000000000022 /* TuneTriviaUITestsLaunchTests.swift */,
+			);
+			path = TuneTriviaUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		TT000005AAAA000000000001 /* TuneTrivia */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TT000009AAAA000000000001 /* Build configuration list for PBXNativeTarget "TuneTrivia" */;
+			buildPhases = (
+				TT00000AAAAA000000000001 /* Sources */,
+				TT000007AAAA000000000001 /* Frameworks */,
+				TT00000BAAAA000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TuneTrivia;
+			productName = TuneTrivia;
+			productReference = TT000006AAAA000000000001 /* TuneTrivia.app */;
+			productType = "com.apple.product-type.application";
+		};
+		TT000005AAAA000000000002 /* TuneTriviaTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TT000009AAAA000000000002 /* Build configuration list for PBXNativeTarget "TuneTriviaTests" */;
+			buildPhases = (
+				TT00000AAAAA000000000002 /* Sources */,
+				TT000007AAAA000000000002 /* Frameworks */,
+				TT00000BAAAA000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				TT00000CAAAA000000000001 /* PBXTargetDependency */,
+			);
+			name = TuneTriviaTests;
+			productName = TuneTriviaTests;
+			productReference = TT000006AAAA000000000002 /* TuneTriviaTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		TT000005AAAA000000000003 /* TuneTriviaUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TT000009AAAA000000000003 /* Build configuration list for PBXNativeTarget "TuneTriviaUITests" */;
+			buildPhases = (
+				TT00000AAAAA000000000003 /* Sources */,
+				TT000007AAAA000000000003 /* Frameworks */,
+				TT00000BAAAA000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				TT00000CAAAA000000000002 /* PBXTargetDependency */,
+			);
+			name = TuneTriviaUITests;
+			productName = TuneTriviaUITests;
+			productReference = TT000006AAAA000000000003 /* TuneTriviaUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		TT000004AAAA000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					TT000005AAAA000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					TT000005AAAA000000000002 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = TT000005AAAA000000000001;
+					};
+					TT000005AAAA000000000003 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = TT000005AAAA000000000001;
+					};
+				};
+			};
+			buildConfigurationList = TT000009AAAA000000000004 /* Build configuration list for PBXProject "TuneTrivia" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = TT000008AAAA000000000001;
+			productRefGroup = TT000008AAAA000000000012 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				TT000005AAAA000000000001 /* TuneTrivia */,
+				TT000005AAAA000000000002 /* TuneTriviaTests */,
+				TT000005AAAA000000000003 /* TuneTriviaUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		TT00000BAAAA000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TT000001AAAA000000000004 /* Preview Assets.xcassets in Resources */,
+				TT000001AAAA000000000003 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TT00000BAAAA000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TT00000BAAAA000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		TT00000AAAAA000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TT000001AAAA000000000001 /* TuneTriviaApp.swift in Sources */,
+				TT000001AAAA000000000002 /* ContentView.swift in Sources */,
+				TT000001AAAA000000000005 /* TuneTriviaDesignSystem.swift in Sources */,
+				TT000001AAAA000000000006 /* APIClient.swift in Sources */,
+				TT000001AAAA000000000007 /* User.swift in Sources */,
+				TT000001AAAA000000000008 /* AuthService.swift in Sources */,
+				TT000001AAAA000000000009 /* ProfileService.swift in Sources */,
+				TT000001AAAA000000000010 /* SessionStore.swift in Sources */,
+				TT000001AAAA000000000012 /* AuthView.swift in Sources */,
+				TT000001AAAA000000000013 /* HomeView.swift in Sources */,
+				TT000001AAAA000000000030 /* TuneTriviaModels.swift in Sources */,
+				TT000001AAAA000000000031 /* TuneTriviaService.swift in Sources */,
+				TT000001AAAA000000000032 /* CreateSessionView.swift in Sources */,
+				TT000001AAAA000000000033 /* JoinSessionView.swift in Sources */,
+				TT000001AAAA000000000034 /* SessionLobbyView.swift in Sources */,
+				TT000001AAAA000000000035 /* AddTracksView.swift in Sources */,
+				TT000001AAAA000000000036 /* GamePlayView.swift in Sources */,
+				TT000001AAAA000000000037 /* LeaderboardView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TT00000AAAAA000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TT000001AAAA000000000020 /* TuneTriviaTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		TT00000AAAAA000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TT000001AAAA000000000022 /* TuneTriviaUITestsLaunchTests.swift in Sources */,
+				TT000001AAAA000000000021 /* TuneTriviaUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		TT00000CAAAA000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = TT000005AAAA000000000001 /* TuneTrivia */;
+			targetProxy = TT000003AAAA000000000001 /* PBXContainerItemProxy */;
+		};
+		TT00000CAAAA000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = TT000005AAAA000000000001 /* TuneTrivia */;
+			targetProxy = TT000003AAAA000000000002 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		TT00000DAAAA000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		TT00000DAAAA000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		TT00000DAAAA000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				BACKEND_URL = "http://localhost:8000";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"TuneTrivia/Preview Content\"";
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TuneTrivia/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.TuneTrivia;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		TT00000DAAAA000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				BACKEND_URL = "http://localhost:8000";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"TuneTrivia/Preview Content\"";
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TuneTrivia/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.TuneTrivia;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		TT00000DAAAA000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.TuneTriviaTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TuneTrivia.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TuneTrivia";
+			};
+			name = Debug;
+		};
+		TT00000DAAAA000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.TuneTriviaTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TuneTrivia.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TuneTrivia";
+			};
+			name = Release;
+		};
+		TT00000DAAAA000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.TuneTriviaUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TuneTrivia;
+			};
+			name = Debug;
+		};
+		TT00000DAAAA000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = embario.TuneTriviaUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TuneTrivia;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		TT000009AAAA000000000004 /* Build configuration list for PBXProject "TuneTrivia" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TT00000DAAAA000000000001 /* Debug */,
+				TT00000DAAAA000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		TT000009AAAA000000000001 /* Build configuration list for PBXNativeTarget "TuneTrivia" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TT00000DAAAA000000000003 /* Debug */,
+				TT00000DAAAA000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		TT000009AAAA000000000002 /* Build configuration list for PBXNativeTarget "TuneTriviaTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TT00000DAAAA000000000005 /* Debug */,
+				TT00000DAAAA000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		TT000009AAAA000000000003 /* Build configuration list for PBXNativeTarget "TuneTriviaUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TT00000DAAAA000000000007 /* Debug */,
+				TT00000DAAAA000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = TT000004AAAA000000000001 /* Project object */;
+}

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: Deep space black -->
+  <rect width="1024" height="1024" rx="230" fill="#0a0a0f"/>
+
+  <!-- Grid pattern overlay -->
+  <defs>
+    <pattern id="neonGrid" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M 60 0 L 0 0 0 60" fill="none" stroke="#00f5ff" stroke-width="1" opacity="0.15"/>
+    </pattern>
+    <linearGradient id="neonGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f5ff"/>
+      <stop offset="100%" stop-color="#ff00aa"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#neonGrid)"/>
+
+  <!-- Outer glow effect -->
+  <circle cx="512" cy="480" r="280" fill="none" stroke="#00f5ff" stroke-width="4" opacity="0.3" filter="url(#glow)"/>
+
+  <!-- Musical note - stylized with neon effect -->
+  <g filter="url(#glow)">
+    <!-- Note head (oval) -->
+    <ellipse cx="380" cy="620" rx="80" ry="60" fill="none" stroke="url(#neonGradient)" stroke-width="24"/>
+    <ellipse cx="380" cy="620" rx="80" ry="60" fill="#00f5ff" opacity="0.2"/>
+
+    <!-- Note stem -->
+    <line x1="460" y1="620" x2="460" y2="280" stroke="url(#neonGradient)" stroke-width="24" stroke-linecap="round"/>
+
+    <!-- Note flag -->
+    <path d="M 460 280 Q 580 320 580 420 Q 560 380 460 380" fill="none" stroke="url(#neonGradient)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Question mark - positioned to the right -->
+  <g filter="url(#glow)">
+    <text x="650" y="520" font-family="SF Pro Display, -apple-system, Helvetica" font-weight="900" font-size="320" fill="none" stroke="#ff00aa" stroke-width="8">?</text>
+    <text x="650" y="520" font-family="SF Pro Display, -apple-system, Helvetica" font-weight="900" font-size="320" fill="#ff00aa" opacity="0.3">?</text>
+  </g>
+
+  <!-- Accent dots -->
+  <circle cx="280" cy="300" r="12" fill="#f0ff00" opacity="0.8"/>
+  <circle cx="750" cy="700" r="10" fill="#00f5ff" opacity="0.6"/>
+  <circle cx="200" cy="700" r="8" fill="#ff00aa" opacity="0.5"/>
+</svg>

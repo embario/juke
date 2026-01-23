@@ -109,6 +109,12 @@ case "${IOS_PROJECT_NAME}" in
         BUNDLE_ID="embario.ShotClock"
         APP_NAME="ShotClock.app"
         ;;
+    tunetrivia)
+        XCODEPROJ_NAME="TuneTrivia.xcodeproj"
+        SCHEME_NAME="TuneTrivia"
+        BUNDLE_ID="embario.TuneTrivia"
+        APP_NAME="TuneTrivia.app"
+        ;;
     *)
         XCODEPROJ_NAME="juke-iOS.xcodeproj"
         SCHEME_NAME="juke-iOS"

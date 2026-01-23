@@ -18,4 +18,5 @@ urlpatterns = [
     path('api/v1/', include(router.urls)),
     path('api/v1/', include('recommender.urls')),
     path('api/v1/', include('powerhour.urls')),
+    path('api/v1/tunetrivia/', include('tunetrivia.urls')),
 ]

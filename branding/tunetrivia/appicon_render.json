@@ -1,0 +1,22 @@
+[
+  {
+    "input": ["branding/tunetrivia/icon_b_party_pop.svg"],
+    "output": [
+      ["branding/tunetrivia/AppIcon.appiconset/icon_20.png", "20:20"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_20@2x.png", "40:40"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_20@3x.png", "60:60"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_29.png", "29:29"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_29@2x.png", "58:58"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_29@3x.png", "87:87"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_40.png", "40:40"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_40@2x.png", "80:80"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_40@3x.png", "120:120"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_60@2x.png", "120:120"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_60@3x.png", "180:180"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_76.png", "76:76"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_76@2x.png", "152:152"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_83.5@2x.png", "167:167"],
+      ["branding/tunetrivia/AppIcon.appiconset/icon_1024.png", "1024:1024"]
+    ]
+  }
+]

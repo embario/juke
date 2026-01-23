@@ -1,0 +1,38 @@
+[
+  {
+    "input": ["branding/tunetrivia/icon_a_neon_arcade.svg"],
+    "output": [
+      ["branding/tunetrivia/renders/icon_a_neon_arcade.png", "512:512"]
+    ]
+  },
+  {
+    "input": ["branding/tunetrivia/icon_b_party_pop.svg"],
+    "output": [
+      ["branding/tunetrivia/renders/icon_b_party_pop.png", "512:512"]
+    ]
+  },
+  {
+    "input": ["branding/tunetrivia/icon_c_vinyl_lounge.svg"],
+    "output": [
+      ["branding/tunetrivia/renders/icon_c_vinyl_lounge.png", "512:512"]
+    ]
+  },
+  {
+    "input": ["branding/tunetrivia/palette_a_neon_arcade.svg"],
+    "output": [
+      ["branding/tunetrivia/renders/palette_a_neon_arcade.png", "1200:900"]
+    ]
+  },
+  {
+    "input": ["branding/tunetrivia/palette_b_party_pop.svg"],
+    "output": [
+      ["branding/tunetrivia/renders/palette_b_party_pop.png", "1200:900"]
+    ]
+  },
+  {
+    "input": ["branding/tunetrivia/palette_c_vinyl_lounge.svg"],
+    "output": [
+      ["branding/tunetrivia/renders/palette_c_vinyl_lounge.png", "1200:900"]
+    ]
+  }
+]

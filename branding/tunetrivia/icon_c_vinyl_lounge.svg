@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: Rich black -->
+  <rect width="1024" height="1024" rx="230" fill="#0d0d0d"/>
+
+  <!-- Subtle warm glow -->
+  <defs>
+    <radialGradient id="amberGlow" cx="40%" cy="35%" r="50%">
+      <stop offset="0%" stop-color="#f5a623" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0d0d0d" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="goldShine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5a623"/>
+      <stop offset="50%" stop-color="#ffd700"/>
+      <stop offset="100%" stop-color="#f5a623"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#amberGlow)"/>
+
+  <!-- Vinyl record -->
+  <g transform="translate(512, 512)">
+    <!-- Outer record edge -->
+    <circle cx="0" cy="0" r="320" fill="#1a1a1a" stroke="#2a2a2a" stroke-width="3"/>
+
+    <!-- Record grooves -->
+    <circle cx="0" cy="0" r="280" fill="none" stroke="#2a2a2a" stroke-width="1" opacity="0.6"/>
+    <circle cx="0" cy="0" r="240" fill="none" stroke="#2a2a2a" stroke-width="1" opacity="0.5"/>
+    <circle cx="0" cy="0" r="200" fill="none" stroke="#2a2a2a" stroke-width="1" opacity="0.4"/>
+    <circle cx="0" cy="0" r="160" fill="none" stroke="#2a2a2a" stroke-width="1" opacity="0.3"/>
+
+    <!-- Record label - amber/gold -->
+    <circle cx="0" cy="0" r="120" fill="#f5a623"/>
+    <circle cx="0" cy="0" r="100" fill="#e07a5f" opacity="0.3"/>
+
+    <!-- Center hole -->
+    <circle cx="0" cy="0" r="15" fill="#0d0d0d"/>
+
+    <!-- Light reflection on record -->
+    <ellipse cx="-100" cy="-100" rx="80" ry="20" fill="#f5a623" opacity="0.08" transform="rotate(-45)"/>
+  </g>
+
+  <!-- Question mark on the label -->
+  <text x="512" y="560" text-anchor="middle" font-family="New York, Georgia, serif" font-weight="700" font-size="180" fill="#0d0d0d" opacity="0.8">?</text>
+
+  <!-- Musical note accent - small, elegant -->
+  <g transform="translate(680, 280) scale(0.4)">
+    <ellipse cx="0" cy="100" rx="50" ry="35" fill="#f5a623"/>
+    <rect x="45" y="-120" width="16" height="220" fill="#f5a623"/>
+    <path d="M 53 -120 Q 140 -90 140 0 Q 120 -40 53 -40" fill="#f5a623"/>
+  </g>
+
+  <!-- Subtle corner accents -->
+  <circle cx="180" cy="180" r="6" fill="#f5a623" opacity="0.5"/>
+  <circle cx="844" cy="844" r="6" fill="#e07a5f" opacity="0.5"/>
+</svg>

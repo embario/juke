@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Background: Vibrant gradient -->
+  <defs>
+    <linearGradient id="partyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff6b6b"/>
+      <stop offset="50%" stop-color="#ff8e8e"/>
+      <stop offset="100%" stop-color="#9b5de5"/>
+    </linearGradient>
+    <filter id="softShadow">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#partyGradient)"/>
+
+  <!-- Confetti dots -->
+  <circle cx="180" cy="200" r="24" fill="#ffe66d" opacity="0.9"/>
+  <circle cx="850" cy="180" r="18" fill="#4ecdc4" opacity="0.8"/>
+  <circle cx="150" cy="750" r="20" fill="#4ecdc4" opacity="0.7"/>
+  <circle cx="880" cy="820" r="28" fill="#ffe66d" opacity="0.85"/>
+  <circle cx="300" cy="120" r="14" fill="#ffffff" opacity="0.6"/>
+  <circle cx="750" cy="900" r="16" fill="#ffffff" opacity="0.5"/>
+  <circle cx="920" cy="450" r="12" fill="#ffe66d" opacity="0.7"/>
+  <circle cx="100" cy="500" r="15" fill="#4ecdc4" opacity="0.6"/>
+
+  <!-- Main icon container - white rounded square -->
+  <rect x="212" y="212" width="600" height="600" rx="120" fill="#ffffff" filter="url(#softShadow)"/>
+
+  <!-- Musical note - playful coral color -->
+  <g>
+    <!-- Note head (filled oval) -->
+    <ellipse cx="380" cy="620" rx="75" ry="55" fill="#ff6b6b"/>
+
+    <!-- Note stem -->
+    <rect x="435" y="300" width="28" height="320" rx="14" fill="#ff6b6b"/>
+
+    <!-- Note flag - bouncy curve -->
+    <path d="M 449 300 Q 600 340 600 450 Q 560 400 449 400" fill="#ff6b6b"/>
+  </g>
+
+  <!-- Question mark - teal accent -->
+  <text x="550" y="580" font-family="SF Pro Rounded, SF Pro Display, -apple-system, Helvetica" font-weight="900" font-size="280" fill="#4ecdc4">?</text>
+
+  <!-- Small sparkle accents -->
+  <g fill="#ffe66d">
+    <polygon points="700,250 710,270 730,270 715,285 720,305 700,292 680,305 685,285 670,270 690,270" opacity="0.9"/>
+    <polygon points="280,350 287,365 302,365 291,376 295,391 280,381 265,391 269,376 258,365 273,365" transform="scale(0.7) translate(120, 200)" opacity="0.8"/>
+  </g>
+</svg>
