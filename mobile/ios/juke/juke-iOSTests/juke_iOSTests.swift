@@ -33,4 +33,46 @@ class juke_iOSTests: XCTestCase {
         }
     }
 
+    func testAppConfigurationEnvOverridesPlist() {
+        let config = AppConfiguration(
+            env: ["DISABLE_REGISTRATION": "true"],
+            plistValue: "false"
+        )
+
+        XCTAssertTrue(config.isRegistrationDisabled)
+    }
+
+    func testAppConfigurationPlistBooleanFallback() {
+        let config = AppConfiguration(
+            env: [:],
+            plistValue: true
+        )
+
+        XCTAssertTrue(config.isRegistrationDisabled)
+    }
+
+    func testAPIConfigurationEnvOverridesPlist() {
+        let config = APIConfiguration(
+            environment: ["BACKEND_URL": "http://env.example.com"],
+            plistValue: "http://plist.example.com"
+        )
+
+        XCTAssertEqual(config.baseURL.absoluteString, "http://env.example.com")
+    }
+
+    func testAPIConfigurationPlistFallback() {
+        let config = APIConfiguration(
+            environment: [:],
+            plistValue: "http://plist.example.com"
+        )
+
+        XCTAssertEqual(config.baseURL.absoluteString, "http://plist.example.com")
+    }
+
+    func testAPIConfigurationDefaultFallback() {
+        let config = APIConfiguration(environment: [:], plistValue: nil)
+
+        XCTAssertEqual(config.baseURL.absoluteString, "http://localhost:8000")
+    }
+
 }

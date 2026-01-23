@@ -12,9 +12,27 @@ final class AuthViewModel: ObservableObject {
     @Published var successMessage: String?
 
     private let authService: AuthService
+    private let configuration: AppConfiguration
+    private let registrationDisabledMessage = "Registration is temporarily disabled. Please try again later."
 
-    init(authService: AuthService = AuthService()) {
+    var isRegistrationDisabled: Bool {
+        configuration.isRegistrationDisabled
+    }
+
+    init(authService: AuthService = AuthService(), configuration: AppConfiguration = .shared) {
         self.authService = authService
+        self.configuration = configuration
+    }
+
+    func setMode(registering: Bool) {
+        if configuration.isRegistrationDisabled && registering {
+            errorMessage = registrationDisabledMessage
+            return
+        }
+        guard registering != isRegistering else { return }
+        isRegistering = registering
+        errorMessage = nil
+        successMessage = nil
     }
 
     func submit(session: SessionStore) async {
@@ -31,6 +49,10 @@ final class AuthViewModel: ObservableObject {
         }
 
         if isRegistering {
+            if configuration.isRegistrationDisabled {
+                errorMessage = registrationDisabledMessage
+                return
+            }
             guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
                 errorMessage = "Email is required."
                 return
@@ -70,5 +92,36 @@ final class AuthViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+struct AppConfiguration {
+    static let shared = AppConfiguration()
+
+    let isRegistrationDisabled: Bool
+
+    init(bundle: Bundle = .main, processInfo: ProcessInfo = .processInfo) {
+        let plistValue = bundle.object(forInfoDictionaryKey: "DISABLE_REGISTRATION")
+        self.init(env: processInfo.environment, plistValue: plistValue)
+    }
+
+    init(env: [String: String], plistValue: Any?) {
+        if let envValue = env["DISABLE_REGISTRATION"] {
+            isRegistrationDisabled = AppConfiguration.parseFlag(envValue)
+            return
+        }
+        if let plistValue = plistValue as? String {
+            isRegistrationDisabled = AppConfiguration.parseFlag(plistValue)
+            return
+        }
+        if let plistValue = plistValue as? Bool {
+            isRegistrationDisabled = plistValue
+            return
+        }
+        isRegistrationDisabled = false
+    }
+
+    private static func parseFlag(_ value: String) -> Bool {
+        return ["1", "true", "yes", "on"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 }

@@ -37,12 +37,19 @@ struct AuthView: View {
                     SCCard {
                         VStack(spacing: 18) {
                             // Mode toggle
-                            HStack(spacing: 0) {
-                                SCChip(label: "Login", isActive: !viewModel.isRegistering) {
-                                    viewModel.isRegistering = false
-                                }
-                                SCChip(label: "Register", isActive: viewModel.isRegistering) {
-                                    viewModel.isRegistering = true
+                            if viewModel.isRegistrationDisabled {
+                                SCStatusBanner(
+                                    message: "Registration is temporarily disabled while email delivery is offline.",
+                                    variant: .warning
+                                )
+                            } else {
+                                HStack(spacing: 0) {
+                                    SCChip(label: "Login", isActive: !viewModel.isRegistering) {
+                                        viewModel.setMode(registering: false)
+                                    }
+                                    SCChip(label: "Register", isActive: viewModel.isRegistering) {
+                                        viewModel.setMode(registering: true)
+                                    }
                                 }
                             }
 

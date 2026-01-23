@@ -5,6 +5,7 @@ import fm.juke.mobile.BuildConfig
 import fm.juke.mobile.data.local.SessionStore
 import fm.juke.mobile.data.network.JukeApiService
 import fm.juke.mobile.data.repository.AuthRepository
+import fm.juke.mobile.data.repository.AuthRepositoryContract
 import fm.juke.mobile.data.repository.CatalogRepository
 import fm.juke.mobile.data.repository.ProfileRepository
 import kotlinx.serialization.json.Json
@@ -54,7 +55,7 @@ object ServiceLocator {
         SessionStore(appContext)
     }
 
-    val authRepository: AuthRepository by lazy {
+    val authRepository: AuthRepositoryContract by lazy {
         AuthRepository(apiService, sessionStore)
     }
 
@@ -72,8 +73,8 @@ object ServiceLocator {
         }
     }
 
-    private fun normalizedBaseUrl(): String {
-        val raw = BuildConfig.API_BASE_URL.trimEnd('/')
+    internal fun normalizedBaseUrl(rawBaseUrl: String = BuildConfig.BACKEND_URL): String {
+        val raw = rawBaseUrl.trimEnd('/')
         return "$raw/"
     }
 

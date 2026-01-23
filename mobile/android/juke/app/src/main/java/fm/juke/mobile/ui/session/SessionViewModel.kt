@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fm.juke.mobile.core.di.ServiceLocator
 import fm.juke.mobile.data.local.SessionSnapshot
-import fm.juke.mobile.data.repository.AuthRepository
+import fm.juke.mobile.data.repository.AuthRepositoryContract
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,7 +17,7 @@ sealed interface SessionUiState {
 }
 
 class SessionViewModel(
-    private val repository: AuthRepository = ServiceLocator.authRepository,
+    private val repository: AuthRepositoryContract = ServiceLocator.authRepository,
 ) : ViewModel() {
 
     private val _uiState: MutableStateFlow<SessionUiState> = MutableStateFlow(SessionUiState.Loading)

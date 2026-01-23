@@ -4,8 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 IOS_ROOT="${REPO_ROOT}/mobile/ios"
-IOS_PROJECT_NAME_DEFAULT="juke"
+source "${SCRIPT_DIR}/load_env.sh"
 SIM_TARGET_DEFAULT="iPhone 17 Pro"
+BUILD_TIMEOUT_SECONDS="${BUILD_TIMEOUT_SECONDS:-1800}"
 IOS_PROJECT_NAME="${IOS_PROJECT_NAME:-}"
 SIM_TARGET="${SIM_TARGET:-}"
 IOS_PROJECT_ROOT="${IOS_ROOT}/${IOS_PROJECT_NAME}"
@@ -14,11 +15,12 @@ LOGS_DIR="${REPO_ROOT}/logs"
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [-p project] [-s simulator]
+Usage: $(basename "$0") -p project [-s simulator] [--boot-sim]
 
 Options:
-  -p  iOS project name under ${IOS_ROOT} (default: ${IOS_PROJECT_NAME_DEFAULT})
+  -p  iOS project name under ${IOS_ROOT} (required)
   -s  Simulator name or UUID (default: ${SIM_TARGET_DEFAULT})
+  --boot-sim  Boot and target the specified simulator, even if another is booted
 EOF
 }
 
@@ -29,6 +31,25 @@ list_available_projects() {
         basename "${project}"
     done | sort
 }
+
+USE_BOOTED_SIM=true
+FORCE_BOOT_SIM=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --boot-sim)
+            FORCE_BOOT_SIM=true
+            USE_BOOTED_SIM=false
+            shift
+            ;;
+        -p|-s|-h)
+            break
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
 while getopts ":p:s:h" opt; do
     case "${opt}" in
@@ -57,7 +78,10 @@ done
 shift $((OPTIND - 1))
 
 if [[ -z "${IOS_PROJECT_NAME}" ]]; then
-    IOS_PROJECT_NAME="${IOS_PROJECT_NAME_DEFAULT}"
+    echo "Missing required -p project argument." >&2
+    echo "Available projects:" >&2
+    list_available_projects | sed 's/^/  - /' >&2
+    exit 2
 fi
 
 if [[ -z "${SIM_TARGET}" ]]; then
@@ -94,7 +118,7 @@ case "${IOS_PROJECT_NAME}" in
 esac
 
 PROJECT_PATH="${IOS_PROJECT_ROOT}/${XCODEPROJ_NAME}"
-APP_PATH="${DERIVED_DATA_PATH}/Build/Products/Debug-iphonesimulator/${APP_NAME}"
+APP_PATH=""
 
 resolve_device_id() {
     local target="$1"
@@ -110,12 +134,81 @@ resolve_device_id() {
     echo "$line" | sed -E 's/.*\(([0-9A-Fa-f-]+)\).*/\1/'
 }
 
+resolve_booted_device() {
+    local line
+    if ! line=$(xcrun simctl list devices booted | grep -m 1 "Booted"); then
+        return 1
+    fi
+    if [[ "${line}" =~ ^[[:space:]]*(.*)[[:space:]]+\(([0-9A-Fa-f-]{36})\)[[:space:]]+\(Booted\) ]]; then
+        local name udid
+        name="${BASH_REMATCH[1]}"
+        udid="${BASH_REMATCH[2]}"
+        echo "${udid}|${name}"
+        return 0
+    fi
+    echo "Unable to parse booted simulator from: ${line}" >&2
+    return 1
+}
+
+normalize_bool() {
+    local value
+    value="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]' | xargs)"
+    case "${value}" in
+        1|true|yes|on) echo "true" ;;
+        *) echo "false" ;;
+    esac
+}
+
+set_plist_value() {
+    local plist_path="$1"
+    local key="$2"
+    local type="$3"
+    local value="$4"
+    if /usr/libexec/PlistBuddy -c "Print :${key}" "${plist_path}" >/dev/null 2>&1; then
+        /usr/libexec/PlistBuddy -c "Set :${key} ${value}" "${plist_path}"
+    else
+        /usr/libexec/PlistBuddy -c "Add :${key} ${type} ${value}" "${plist_path}"
+    fi
+}
+
+run_with_timeout() {
+    local timeout_cmd=""
+    if command -v gtimeout >/dev/null 2>&1; then
+        timeout_cmd="gtimeout"
+    elif command -v timeout >/dev/null 2>&1; then
+        timeout_cmd="timeout"
+    fi
+
+    if [[ -n "${timeout_cmd}" ]]; then
+        "${timeout_cmd}" "${BUILD_TIMEOUT_SECONDS}" "$@"
+    else
+        "$@"
+    fi
+}
+
 mkdir -p "${DERIVED_DATA_PATH}" "${LOGS_DIR}"
 
+if "${USE_BOOTED_SIM}"; then
+    if BOOTED_INFO="$(resolve_booted_device)"; then
+        DEVICE_ID="${BOOTED_INFO%%|*}"
+        SIM_TARGET="${BOOTED_INFO##*|}"
+    else
+        DEVICE_ID="$(resolve_device_id "${SIM_TARGET}")"
+        FORCE_BOOT_SIM=true
+    fi
+else
+    DEVICE_ID="$(resolve_device_id "${SIM_TARGET}")"
+fi
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH}/${IOS_PROJECT_NAME}-${DEVICE_ID}"
+APP_PATH="${DERIVED_DATA_PATH}/Build/Products/Debug-iphonesimulator/${APP_NAME}"
+BUILD_LOG_PATH="${LOGS_DIR}/ios-build-${IOS_PROJECT_NAME}-${DEVICE_ID}-${RUN_TS}.log"
+SIM_LOG_PATH="${LOGS_DIR}/simulator-${IOS_PROJECT_NAME}-${DEVICE_ID}-${RUN_TS}.log"
+
 echo "[1/5] Building ${PROJECT_PATH} for ${SIM_TARGET}..."
-if xcodebuild -project "${PROJECT_PATH}" \
+if BACKEND_URL="${BACKEND_URL:-}" DISABLE_REGISTRATION="${DISABLE_REGISTRATION:-}" \
+    run_with_timeout xcodebuild -project "${PROJECT_PATH}" \
     -scheme "${SCHEME_NAME}" \
-    -destination "platform=iOS Simulator,name=${SIM_TARGET},OS=latest" \
+    -destination "platform=iOS Simulator,id=${DEVICE_ID}" \
     -derivedDataPath "${DERIVED_DATA_PATH}" \
     build >"${BUILD_LOG_PATH}" 2>&1; then
         echo "Build succeeded (see ${BUILD_LOG_PATH} for details)."
@@ -130,16 +223,35 @@ if [[ ! -d "${APP_PATH}" ]]; then
     exit 1
 fi
 
-DEVICE_ID="$(resolve_device_id "${SIM_TARGET}")"
+PLIST_PATH="${APP_PATH}/Info.plist"
+if [[ -f "${PLIST_PATH}" ]]; then
+    echo "Injecting runtime config into Info.plist..."
+    if [[ -n "${BACKEND_URL:-}" ]]; then
+        set_plist_value "${PLIST_PATH}" "BACKEND_URL" "string" "${BACKEND_URL}"
+    fi
+    set_plist_value "${PLIST_PATH}" "DISABLE_REGISTRATION" "bool" "$(normalize_bool "${DISABLE_REGISTRATION:-}")"
+fi
 
-echo "[2/5] Booting simulator ${DEVICE_ID} (${SIM_TARGET})..."
-xcrun simctl boot "${DEVICE_ID}" >/dev/null 2>&1 || true
+if "${FORCE_BOOT_SIM}"; then
+    echo "[2/5] Booting simulator ${DEVICE_ID} (${SIM_TARGET})..."
+    xcrun simctl boot "${DEVICE_ID}" >/dev/null 2>&1 || true
+else
+    echo "[2/5] Using already-booted simulator ${DEVICE_ID} (${SIM_TARGET})..."
+fi
 
 echo "[3/5] Installing app..."
 xcrun simctl install "${DEVICE_ID}" "${APP_PATH}"
 
 echo "[4/5] Launching ${BUNDLE_ID}..."
-LAUNCH_OUTPUT="$(xcrun simctl launch "${DEVICE_ID}" "${BUNDLE_ID}")"
+if LAUNCH_OUTPUT="$(xcrun simctl launch \
+    --env DISABLE_REGISTRATION="${DISABLE_REGISTRATION:-}" \
+    --env BACKEND_URL="${BACKEND_URL:-}" \
+    "${DEVICE_ID}" "${BUNDLE_ID}" 2>/dev/null)"; then
+    :
+else
+    echo "Simulator does not support --env on launch; starting without env overrides." >&2
+    LAUNCH_OUTPUT="$(xcrun simctl launch "${DEVICE_ID}" "${BUNDLE_ID}")"
+fi
 APP_PID="$(echo "${LAUNCH_OUTPUT}" | awk '{print $NF}')"
 if [[ ! "${APP_PID}" =~ ^[0-9]+$ ]]; then
     echo "Could not parse app PID from launch output: ${LAUNCH_OUTPUT}" >&2

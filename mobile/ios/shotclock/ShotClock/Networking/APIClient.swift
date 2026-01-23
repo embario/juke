@@ -58,11 +58,15 @@ final class APIClient {
     }
 
     private static func resolveBaseURL() -> String {
-        if let envURL = ProcessInfo.processInfo.environment["API_BASE_URL"] {
+        let plistURL = Bundle.main.object(forInfoDictionaryKey: "BACKEND_URL") as? String
+        return resolveBaseURL(environment: ProcessInfo.processInfo.environment, plistURL: plistURL)
+    }
+
+    static func resolveBaseURL(environment: [String: String], plistURL: String?) -> String {
+        if let envURL = environment["BACKEND_URL"], !envURL.isEmpty {
             return envURL
         }
-        if let plistURL = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
-           !plistURL.isEmpty {
+        if let plistURL, !plistURL.isEmpty {
             return plistURL
         }
         return "http://localhost:8000"
