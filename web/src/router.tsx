@@ -5,6 +5,7 @@ import RegisterRoute from './features/auth/routes/RegisterRoute';
 import LibraryRoute from './features/catalog/routes/LibraryRoute';
 import MusicProfileRoute from './features/profiles/routes/MusicProfileRoute';
 import NotFoundRoute from './features/app/routes/NotFoundRoute';
+import JukeWorldRoute from './features/world/routes/JukeWorldRoute';
 
 const router = createBrowserRouter([
   {
@@ -32,6 +33,10 @@ const router = createBrowserRouter([
         element: <MusicProfileRoute />,
       },
     ],
+  },
+  {
+    path: '/world',
+    element: <JukeWorldRoute />,
   },
   {
     path: '*',

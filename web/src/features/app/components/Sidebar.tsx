@@ -22,6 +22,9 @@ const Sidebar = () => {
         <NavLink to="/profiles" className={linkClass}>
           Music profile
         </NavLink>
+        <NavLink to="/world" className={linkClass}>
+          Juke World
+        </NavLink>
         {!isAuthenticated && (
           <>
             <NavLink to="/login" className={linkClass}>
