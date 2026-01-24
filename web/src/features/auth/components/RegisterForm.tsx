@@ -101,6 +101,9 @@ const RegisterForm = ({
         <Button type="submit" disabled={isSubmitting || isDisabled} data-variant="primary">
           {isDisabled ? 'Registration disabled' : isSubmitting ? 'Submitting…' : 'Create account'}
         </Button>
+        <a className="btn btn-link login-form__link" href="/login">
+          Already have an account? Sign in
+        </a>
       </div>
     </form>
   );

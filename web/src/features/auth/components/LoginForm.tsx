@@ -64,6 +64,9 @@ const LoginForm = ({ onSubmit, isSubmitting = false, serverError = null }: Props
           <Button type="submit" disabled={isSubmitting} data-variant="primary">
             {isSubmitting ? 'Authenticating…' : 'Sign in'}
           </Button>
+          <a className="btn btn-link login-form__link" href="/register">
+            Create account
+          </a>
           <a className="btn btn-ghost login-form__spotify" href={SPOTIFY_AUTH_PATH} aria-label="Sign in with Spotify">
             Sign in with Spotify
           </a>

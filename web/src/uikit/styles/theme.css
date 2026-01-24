@@ -1,8 +1,7 @@
 body {
   margin: 0;
-  background: radial-gradient(circle at top right, #1e3a8a, transparent 55%),
-    radial-gradient(circle at 20% 20%, rgba(249, 115, 22, 0.4), transparent 45%),
-    var(--clr-bg);
+  background-color: #1a2a4a;
+  background-image: linear-gradient(125deg, #b0602a 0%, #6a3c3a 32%, #243a63 55%, #2b4f9c 78%, #2e5bbb 100%);
   color: var(--clr-text);
   min-height: 100vh;
 }

@@ -20,9 +20,10 @@
   --clr-warning: #facc15;
   --clr-warning-soft: rgba(250, 204, 21, 0.2);
 
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
+  --radius-sm: 0.65rem;
+  --radius-md: 0.95rem;
+  --radius-lg: 1.2rem;
+  --radius-xl: 1.5rem;
   --radius-pill: 999px;
 
   --shadow-lg: 0 25px 80px rgba(2, 6, 23, 0.45);

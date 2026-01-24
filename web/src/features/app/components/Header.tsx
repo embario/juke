@@ -3,7 +3,12 @@ import Button from '@uikit/components/Button';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { SPOTIFY_AUTH_PATH } from '../../auth/constants';
 
-const Header = () => {
+type Props = {
+  onToggleSidebar: () => void;
+  isSidebarOpen: boolean;
+};
+
+const Header = ({ onToggleSidebar, isSidebarOpen }: Props) => {
   const { isAuthenticated, username, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -18,9 +23,20 @@ const Header = () => {
 
   return (
     <header className="app-header">
-      <div>
-        <p className="eyebrow">Curated by Juke</p>
-        <h1>Music Intelligence Console</h1>
+      <div className="header__title">
+        <button
+          type="button"
+          className="mobile-nav-toggle"
+          onClick={onToggleSidebar}
+          aria-label={isSidebarOpen ? 'Close navigation' : 'Open navigation'}
+          aria-controls="app-sidebar"
+          aria-expanded={isSidebarOpen}
+        >
+          <span className="mobile-nav-toggle__bar" />
+          <span className="mobile-nav-toggle__bar" />
+          <span className="mobile-nav-toggle__bar" />
+        </button>
+        <h1>Juke</h1>
       </div>
       <div className="header__actions">
         {isAuthenticated ? (

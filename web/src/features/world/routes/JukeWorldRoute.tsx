@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import JukeGlobe from '../components/JukeGlobe';
 import GlobeOverlayNav from '../components/GlobeOverlayNav';
 import UserDetailModal from '../components/UserDetailModal';
@@ -6,6 +7,7 @@ import { useGlobePoints } from '../hooks/useGlobePoints';
 import { useUserDetail } from '../hooks/useUserDetail';
 import { generateMockPoints } from '../mockData';
 import { GlobePoint } from '../types';
+import { useAuth } from '../../auth/hooks/useAuth';
 
 // Use mock data when API is unavailable (dev without backend)
 const USE_MOCK = true;
@@ -67,6 +69,8 @@ function filterPoints(
 }
 
 export default function JukeWorldRoute() {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [selectedPoint, setSelectedPoint] = useState<GlobePoint | null>(null);
   const initialLoadDone = useRef(false);
@@ -98,6 +102,12 @@ export default function JukeWorldRoute() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   // Initial load: show high-clout global view
   useEffect(() => {

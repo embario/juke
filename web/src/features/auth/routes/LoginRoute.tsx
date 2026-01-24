@@ -33,6 +33,13 @@ const LoginRoute = () => {
     }
   }, [isAuthenticated, navigate]);
 
+  useEffect(() => {
+    document.body.classList.add('no-scroll');
+    return () => {
+      document.body.classList.remove('no-scroll');
+    };
+  }, []);
+
   const handleSubmit = async (payload: LoginPayload) => {
     setIsSubmitting(true);
     setError(null);
@@ -48,11 +55,6 @@ const LoginRoute = () => {
 
   return (
     <section className="auth-grid">
-      <div>
-        <p className="eyebrow">Access control</p>
-        <h2>Sign in to monitor the catalog</h2>
-        <p className="muted">Use the credentials you registered or received via invite.</p>
-      </div>
       <LoginForm
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}

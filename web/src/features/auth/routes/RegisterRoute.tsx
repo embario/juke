@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import RegisterForm from '../components/RegisterForm';
 import { useAuth } from '../hooks/useAuth';
@@ -42,13 +42,15 @@ const RegisterRoute = () => {
     }
   };
 
+  useEffect(() => {
+    document.body.classList.add('no-scroll');
+    return () => {
+      document.body.classList.remove('no-scroll');
+    };
+  }, []);
+
   return (
     <section className="auth-grid">
-      <div>
-        <p className="eyebrow">Provision access</p>
-        <h2>Create a new catalog operator</h2>
-        <p className="muted">Your inbox will receive a verification link instantly.</p>
-      </div>
       {registrationDisabled ? (
         <div className="card">
           <div className="card__body">
