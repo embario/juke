@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import JukeGlobe from '../components/JukeGlobe';
 import GlobeOverlayNav from '../components/GlobeOverlayNav';
 import UserDetailModal from '../components/UserDetailModal';
@@ -8,6 +8,7 @@ import { useUserDetail } from '../hooks/useUserDetail';
 import { generateMockPoints } from '../mockData';
 import { GlobePoint } from '../types';
 import { useAuth } from '../../auth/hooks/useAuth';
+import type { GlobeMethods } from 'react-globe.gl';
 
 // Use mock data when API is unavailable (dev without backend)
 const USE_MOCK = true;
@@ -68,12 +69,23 @@ function filterPoints(
   return filtered;
 }
 
+// Welcome state from onboarding
+type WelcomeState = {
+  welcomeUser?: boolean;
+  focusLat?: number;
+  focusLng?: number;
+};
+
 export default function JukeWorldRoute() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [selectedPoint, setSelectedPoint] = useState<GlobePoint | null>(null);
+  const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
+  const welcomeHandled = useRef(false);
+  const globeRef = useRef<GlobeMethods | null>(null);
 
   // Full dataset (sorted by clout DESC for efficient LOD filtering)
   const allMockPoints = useMemo(() => {
@@ -116,6 +128,38 @@ export default function JukeWorldRoute() {
       loadPoints({ min_lat: -90, max_lat: 90, min_lng: -180, max_lng: 180, zoom: 1 });
     }
   }, [loadPoints]);
+
+  // Handle welcome user from onboarding
+  useEffect(() => {
+    const state = location.state as WelcomeState | null;
+    if (state?.welcomeUser && !welcomeHandled.current) {
+      welcomeHandled.current = true;
+
+      const showTimer = setTimeout(() => {
+        setWelcomeMessage("Welcome to Juke World! You're now on the map.");
+      }, 0);
+      const hideTimer = setTimeout(() => setWelcomeMessage(null), 5000);
+
+      // Zoom to user's location if available
+      if (state.focusLat != null && state.focusLng != null && globeRef.current) {
+        // Delay slightly to let globe initialize
+        setTimeout(() => {
+          globeRef.current?.pointOfView(
+            { lat: state.focusLat!, lng: state.focusLng!, altitude: 0.5 },
+            2000 // 2 second animation
+          );
+        }, 500);
+      }
+
+      // Clear location state to prevent re-triggering
+      window.history.replaceState({}, document.title);
+
+      return () => {
+        clearTimeout(showTimer);
+        clearTimeout(hideTimer);
+      };
+    }
+  }, [location.state]);
 
   // Camera change handler — triggers LOD re-filter
   const handleCameraChange = useCallback(
@@ -205,6 +249,46 @@ export default function JukeWorldRoute() {
       {/* Overlay navigation */}
       <GlobeOverlayNav />
 
+      {/* Welcome message toast */}
+      {welcomeMessage && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: 'rgba(0,0,0,0.9)',
+            backdropFilter: 'blur(16px)',
+            borderRadius: 16,
+            padding: '32px 48px',
+            zIndex: 100,
+            textAlign: 'center',
+            border: '1px solid rgba(249, 115, 22, 0.3)',
+            boxShadow: '0 0 60px rgba(249, 115, 22, 0.2)',
+            animation: 'welcomeFadeIn 0.5s ease',
+          }}
+        >
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
+          <h2 style={{
+            fontSize: 24,
+            fontWeight: 700,
+            color: '#fff',
+            margin: '0 0 8px',
+            fontFamily: 'Space Grotesk, sans-serif'
+          }}>
+            {welcomeMessage}
+          </h2>
+          <p style={{
+            fontSize: 14,
+            color: 'rgba(255,255,255,0.6)',
+            margin: 0,
+            fontFamily: 'Space Grotesk, sans-serif'
+          }}>
+            Explore the global community of music lovers
+          </p>
+        </div>
+      )}
+
       {/* User detail modal */}
       {selectedPoint && (
         <UserDetailModal
@@ -286,11 +370,21 @@ export default function JukeWorldRoute() {
         </div>
       </div>
 
-      {/* Pulse animation keyframes */}
+      {/* Animation keyframes */}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.5; transform: scale(0.8); }
+        }
+        @keyframes welcomeFadeIn {
+          from {
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+          }
         }
       `}</style>
     </div>

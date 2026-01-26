@@ -32,7 +32,7 @@ describe('RegisterRoute', () => {
 
     render(<RegisterRoute />);
 
-    expect(screen.getByText('Create your analyst seat')).toBeInTheDocument();
+    expect(screen.getByText('Join the Juke Community')).toBeInTheDocument();
     expect(
       screen.queryByText('Registration is temporarily disabled while email delivery is offline.')
     ).not.toBeInTheDocument();

@@ -72,6 +72,13 @@ EMAIL_PORT = int(_required_env("EMAIL_PORT"))
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
 
+# Use console email backend in development to avoid SMTP auth issues
+# Emails will be printed to the terminal instead of being sent
+if RUNTIME_ENV == "development":
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+
 def _env_flag(name, default=False):
     value = os.environ.get(name)
     if value is None:

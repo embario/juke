@@ -4,6 +4,8 @@ Juke is a music intelligence platform that unifies catalog ingestion, playback c
 
 Backend services live under `backend/`, the analyst console sits in `web/`, and platform-specific mobile clients live under `mobile/`.
 
+See `AGENTS.md` for repo-specific agent guidance and per-subproject notes.
+
 ## What ships here
 
 - **Core API**: Django + DRF, OAuth integrations, playlist/recommendation orchestration, and background jobs.

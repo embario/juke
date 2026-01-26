@@ -32,7 +32,7 @@ const AppLayout = () => {
 
   useEffect(() => {
     const path = location.pathname;
-    const isPublicRoute = path === '/login' || path === '/register';
+    const isPublicRoute = path === '/login' || path === '/register' || path.startsWith('/verify-user');
     if (!isAuthenticated && !isPublicRoute) {
       navigate('/login', { replace: true });
     }
