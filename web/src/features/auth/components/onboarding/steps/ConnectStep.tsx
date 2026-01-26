@@ -9,7 +9,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useOnboarding } from '../context/OnboardingProvider';
 import { saveOnboardingProfile, getSpotifyOAuthUrl } from '../api/onboardingApi';
-import { STEP_CONFIG } from '../types';
 
 type Props = {
   token: string;
@@ -21,7 +20,6 @@ export default function ConnectStep({ token }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const config = STEP_CONFIG.connect;
   const data = state.data;
 
   const handleSaveAndConnect = async (connectSpotify: boolean) => {
@@ -49,7 +47,7 @@ export default function ConnectStep({ token }: Props) {
           },
         });
       }
-    } catch (err) {
+    } catch {
       setError('Failed to save your profile. Please try again.');
       setIsSaving(false);
     }

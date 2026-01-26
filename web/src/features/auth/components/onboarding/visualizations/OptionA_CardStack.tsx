@@ -146,7 +146,7 @@ export default function OptionA_CardStack() {
             <div className="viz-card-content">
               <span className="viz-step-label">Step 2 of 9</span>
               <h1 className="viz-title">Your ride-or-die artist?</h1>
-              <p className="viz-subtitle">That one artist you'll defend to the end</p>
+              <p className="viz-subtitle">That one artist you&apos;ll defend to the end</p>
 
               <div className="viz-search-container">
                 <svg className="viz-search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -256,7 +256,7 @@ export default function OptionA_CardStack() {
                     </svg>
                   </div>
                   <h3>Album Listener</h3>
-                  <p>Front to back, artist's vision, the way it was meant to be heard</p>
+                  <p>Front to back, artist&apos;s vision, the way it was meant to be heard</p>
                 </button>
               </div>
             </div>
@@ -276,7 +276,7 @@ export default function OptionA_CardStack() {
           <div className="viz-card viz-card-enter">
             <div className="viz-card-content">
               <span className="viz-step-label">Step 8 of 9</span>
-              <h1 className="viz-title">What's your age range?</h1>
+              <h1 className="viz-title">What&apos;s your age range?</h1>
               <p className="viz-subtitle">Helps us personalize your experience</p>
 
               <div className="viz-pill-row">
@@ -308,16 +308,16 @@ export default function OptionA_CardStack() {
             <div className="viz-card-content">
               <span className="viz-step-label">Step {currentIndex + 1} of 9</span>
               <h1 className="viz-title">
-                {currentStep === 'hated' && "Any genres you can't stand?"}
-                {currentStep === 'rainy' && "What's your rainy day soundtrack?"}
+                {currentStep === 'hated' && "Any genres you can&apos;t stand?"}
+                {currentStep === 'rainy' && "What&apos;s your rainy day soundtrack?"}
                 {currentStep === 'workout' && "What powers your workout?"}
                 {currentStep === 'location' && "Where are you located?"}
               </h1>
               <p className="viz-subtitle">
-                {currentStep === 'hated' && "We'll make sure to avoid these"}
+                {currentStep === 'hated' && "We&apos;ll make sure to avoid these"}
                 {currentStep === 'rainy' && "When the mood is mellow"}
                 {currentStep === 'workout' && "Your energy anthem"}
-                {currentStep === 'location' && "We'll place you on the Juke World map"}
+                {currentStep === 'location' && "We&apos;ll place you on the Juke World map"}
               </p>
 
               <div className="viz-placeholder">
@@ -341,7 +341,7 @@ export default function OptionA_CardStack() {
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
               </div>
-              <h1 className="viz-title">You're all set!</h1>
+              <h1 className="viz-title">You&apos;re all set!</h1>
               <p className="viz-subtitle">Your music identity has been created</p>
 
               <div className="viz-summary">

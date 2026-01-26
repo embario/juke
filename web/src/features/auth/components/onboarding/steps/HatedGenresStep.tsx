@@ -27,7 +27,7 @@ export default function HatedGenresStep({ token }: Props) {
     async function loadGenres() {
       setIsLoading(true);
       try {
-        const data = await fetchFeaturedGenres(token);
+        const data = await fetchFeaturedGenres();
         // Filter out favorite genres
         const available = data.filter((g) => !favoriteGenres.includes(g.id));
         setGenres(available);

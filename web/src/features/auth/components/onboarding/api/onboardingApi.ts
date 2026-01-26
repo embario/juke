@@ -8,7 +8,7 @@ import { apiClient } from '@shared/api/apiClient';
 import type { Genre, Artist, CityLocation, OnboardingData } from '../types';
 
 // Fetch featured genres with top artists
-export async function fetchFeaturedGenres(token: string): Promise<Genre[]> {
+export async function fetchFeaturedGenres(): Promise<Genre[]> {
   // For now, return curated list. In production, this would call /api/v1/genres/featured/
   // which would return genres with top artists from Spotify
 

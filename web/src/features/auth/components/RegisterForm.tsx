@@ -57,7 +57,7 @@ const RegisterForm = ({
       <div className="card__body">
         <h2>Join the Juke Community</h2>
         <p className="muted" style={{ marginBottom: '8px' }}>
-          After you sign up, we'll help you build your music identity and place you on the global map of music lovers.
+          After you sign up, we&apos;ll help you build your music identity and place you on the global map of music lovers.
         </p>
         <p className="muted" style={{ fontSize: '12px', opacity: 0.7 }}>
           Verification arrives via email moments after submission.

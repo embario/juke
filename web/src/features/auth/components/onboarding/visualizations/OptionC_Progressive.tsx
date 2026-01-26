@@ -11,7 +11,7 @@
  * Best for: Desktop-first, users who like to see full scope, less "trapped" feeling
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import './visualizations.css';
 
 const GENRES = [
@@ -64,13 +64,11 @@ export default function OptionC_Progressive() {
   const [workoutVibe, setWorkoutVibe] = useState<string | null>(null);
   const [listeningStyle, setListeningStyle] = useState<'playlist' | 'album' | null>(null);
 
-  const sectionRefs = {
-    genres: useRef<HTMLDivElement>(null),
-    artist: useRef<HTMLDivElement>(null),
-    preferences: useRef<HTMLDivElement>(null),
-    about: useRef<HTMLDivElement>(null),
-    complete: useRef<HTMLDivElement>(null),
-  };
+  const genresRef = useRef<HTMLDivElement>(null);
+  const artistRef = useRef<HTMLDivElement>(null);
+  const preferencesRef = useRef<HTMLDivElement>(null);
+  const aboutRef = useRef<HTMLDivElement>(null);
+  const completeRef = useRef<HTMLDivElement>(null);
 
   const sections: { id: Section; label: string; number: number }[] = [
     { id: 'genres', label: 'Your Genres', number: 1 },
@@ -79,6 +77,23 @@ export default function OptionC_Progressive() {
     { id: 'about', label: 'About You', number: 4 },
     { id: 'complete', label: 'Welcome', number: 5 },
   ];
+
+  const getSectionRef = (section: Section) => {
+    switch (section) {
+      case 'genres':
+        return genresRef;
+      case 'artist':
+        return artistRef;
+      case 'preferences':
+        return preferencesRef;
+      case 'about':
+        return aboutRef;
+      case 'complete':
+        return completeRef;
+      default:
+        return genresRef;
+    }
+  };
 
   const toggleGenre = (genreId: string) => {
     setSelectedGenres(prev => {
@@ -96,7 +111,7 @@ export default function OptionC_Progressive() {
     if (currentIndex < sections.length - 1) {
       const nextSection = sections[currentIndex + 1].id;
       setActiveSection(nextSection);
-      sectionRefs[nextSection].current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      getSectionRef(nextSection).current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
@@ -110,7 +125,7 @@ export default function OptionC_Progressive() {
   const scrollToSection = (section: Section) => {
     if (isSectionUnlocked(section)) {
       setActiveSection(section);
-      sectionRefs[section].current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      getSectionRef(section).current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
@@ -148,7 +163,7 @@ export default function OptionC_Progressive() {
       <div className="viz-prog-content">
         {/* Section 1: Genres */}
         <section
-          ref={sectionRefs.genres}
+          ref={genresRef}
           className={`viz-prog-section ${activeSection === 'genres' ? 'active' : ''} ${completedSections.includes('genres') ? 'completed' : ''}`}
         >
           <div className="viz-prog-section-header">
@@ -195,13 +210,13 @@ export default function OptionC_Progressive() {
 
         {/* Section 2: Artist */}
         <section
-          ref={sectionRefs.artist}
+          ref={artistRef}
           className={`viz-prog-section ${activeSection === 'artist' ? 'active' : ''} ${!isSectionUnlocked('artist') ? 'locked' : ''}`}
         >
           <div className="viz-prog-section-header">
             <span className="viz-prog-section-number">02</span>
             <h2>Your ride-or-die artist?</h2>
-            <p>The one you'll defend to the end</p>
+            <p>The one you&apos;ll defend to the end</p>
           </div>
 
           {isSectionUnlocked('artist') && (
@@ -230,7 +245,7 @@ export default function OptionC_Progressive() {
 
         {/* Section 3: Preferences */}
         <section
-          ref={sectionRefs.preferences}
+          ref={preferencesRef}
           className={`viz-prog-section ${activeSection === 'preferences' ? 'active' : ''} ${!isSectionUnlocked('preferences') ? 'locked' : ''}`}
         >
           <div className="viz-prog-section-header">
@@ -243,7 +258,7 @@ export default function OptionC_Progressive() {
             <>
               {/* Rainy Day */}
               <div className="viz-prog-subsection">
-                <h3>What's your rainy day soundtrack?</h3>
+                <h3>What&apos;s your rainy day soundtrack?</h3>
                 <div className="viz-prog-mood-grid">
                   {MOODS.map(mood => (
                     <button
@@ -312,7 +327,7 @@ export default function OptionC_Progressive() {
 
         {/* Section 4: About You */}
         <section
-          ref={sectionRefs.about}
+          ref={aboutRef}
           className={`viz-prog-section ${activeSection === 'about' ? 'active' : ''} ${!isSectionUnlocked('about') ? 'locked' : ''}`}
         >
           <div className="viz-prog-section-header">
@@ -350,7 +365,7 @@ export default function OptionC_Progressive() {
                   </svg>
                   <input type="text" placeholder="Search for your city..." />
                 </div>
-                <p className="viz-prog-location-note">We'll place you on the Juke World globe!</p>
+                <p className="viz-prog-location-note">We&apos;ll place you on the Juke World globe!</p>
               </div>
 
               <div className="viz-prog-section-footer">
@@ -364,7 +379,7 @@ export default function OptionC_Progressive() {
 
         {/* Section 5: Complete */}
         <section
-          ref={sectionRefs.complete}
+          ref={completeRef}
           className={`viz-prog-section viz-prog-complete ${activeSection === 'complete' ? 'active' : ''} ${!isSectionUnlocked('complete') ? 'locked' : ''}`}
         >
           {isSectionUnlocked('complete') && (

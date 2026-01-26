@@ -26,8 +26,6 @@ export default function LocationStep() {
     }
 
     if (!query.trim()) {
-      setResults([]);
-      setShowResults(false);
       return;
     }
 
@@ -100,7 +98,14 @@ export default function LocationStep() {
               className="onboarding__search-input"
               placeholder="Search for your city..."
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                const nextQuery = e.target.value;
+                setQuery(nextQuery);
+                if (!nextQuery.trim()) {
+                  setResults([]);
+                  setShowResults(false);
+                }
+              }}
               onFocus={() => results.length > 0 && setShowResults(true)}
             />
             {showResults && results.length > 0 && (

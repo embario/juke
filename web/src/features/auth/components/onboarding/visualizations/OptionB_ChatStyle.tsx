@@ -25,6 +25,18 @@ type Message = {
 
 const GENRES = ['Hip-Hop', 'Rock', 'Pop', 'R&B', 'Electronic', 'Country', 'Jazz', 'Classical', 'Latin', 'Indie'];
 const DECADES = ['60s', '70s', '80s', '90s', '2000s', '2010s', '2020s'];
+const QUESTIONS = [
+  { text: "Hey! Welcome to Juke! 🎵 I'm so excited to help you build your music identity.", delay: 1000 },
+  { text: "Let's start with the big one... What are your top 3 genres?", component: 'genres' as const, delay: 1500 },
+  { text: "Great taste! Now, is there one artist you'll absolutely ride or die for?", component: 'artist' as const, delay: 1200 },
+  { text: 'What decade of music speaks to your soul?', component: 'decade' as const, delay: 1000 },
+  {
+    text: 'Last one - are you a playlist shuffler or an album-front-to-back kind of person?',
+    component: 'listening' as const,
+    delay: 1200,
+  },
+  { text: 'Amazing! Your music identity is looking incredible. Ready to join Juke World? 🌍', delay: 1000 },
+];
 
 export default function OptionB_ChatStyle() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -33,21 +45,12 @@ export default function OptionB_ChatStyle() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const questions = [
-    { text: "Hey! Welcome to Juke! 🎵 I'm so excited to help you build your music identity.", delay: 1000 },
-    { text: "Let's start with the big one... What are your top 3 genres?", component: 'genres' as const, delay: 1500 },
-    { text: "Great taste! Now, is there one artist you'll absolutely ride or die for?", component: 'artist' as const, delay: 1200 },
-    { text: "What decade of music speaks to your soul?", component: 'decade' as const, delay: 1000 },
-    { text: "Last one - are you a playlist shuffler or an album-front-to-back kind of person?", component: 'listening' as const, delay: 1200 },
-    { text: "Amazing! Your music identity is looking incredible. Ready to join Juke World? 🌍", delay: 1000 },
-  ];
-
   useEffect(() => {
-    if (currentQuestion < questions.length) {
-      setIsTyping(true);
+    if (currentQuestion < QUESTIONS.length) {
+      const typingTimer = setTimeout(() => setIsTyping(true), 0);
       const timer = setTimeout(() => {
         setIsTyping(false);
-        const q = questions[currentQuestion];
+        const q = QUESTIONS[currentQuestion];
         setMessages(prev => [...prev, {
           id: `juke-${currentQuestion}`,
           type: 'juke',
@@ -55,8 +58,11 @@ export default function OptionB_ChatStyle() {
           component: q.component,
           timestamp: new Date(),
         }]);
-      }, questions[currentQuestion].delay);
-      return () => clearTimeout(timer);
+      }, QUESTIONS[currentQuestion].delay);
+      return () => {
+        clearTimeout(typingTimer);
+        clearTimeout(timer);
+      };
     }
   }, [currentQuestion]);
 
@@ -217,7 +223,7 @@ export default function OptionB_ChatStyle() {
         )}
 
         {/* Final CTA */}
-        {currentQuestion >= questions.length && (
+        {currentQuestion >= QUESTIONS.length && (
           <div className="viz-chat-final">
             <button className="viz-chat-final-btn">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">

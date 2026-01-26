@@ -6,7 +6,6 @@
  */
 
 import { useOnboarding, OnboardingProvider } from './context/OnboardingProvider';
-import { useAuth } from '../../hooks/useAuth';
 
 import GenreStep from './steps/GenreStep';
 import ArtistStep from './steps/ArtistStep';
@@ -20,7 +19,6 @@ import './onboarding.css';
 
 function WizardContent() {
   const { state, goBack, canGoBack, progress, clearDraft, dispatch } = useOnboarding();
-  const auth = useAuth();
   const token = localStorage.getItem('juke-auth-state')
     ? JSON.parse(localStorage.getItem('juke-auth-state') || '{}').token
     : '';

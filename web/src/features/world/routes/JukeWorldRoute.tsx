@@ -135,10 +135,9 @@ export default function JukeWorldRoute() {
     if (state?.welcomeUser && !welcomeHandled.current) {
       welcomeHandled.current = true;
 
-      // Show welcome message
-      setWelcomeMessage("Welcome to Juke World! You're now on the map.");
-
-      // Auto-hide message after 5 seconds
+      const showTimer = setTimeout(() => {
+        setWelcomeMessage("Welcome to Juke World! You're now on the map.");
+      }, 0);
       const hideTimer = setTimeout(() => setWelcomeMessage(null), 5000);
 
       // Zoom to user's location if available
@@ -155,7 +154,10 @@ export default function JukeWorldRoute() {
       // Clear location state to prevent re-triggering
       window.history.replaceState({}, document.title);
 
-      return () => clearTimeout(hideTimer);
+      return () => {
+        clearTimeout(showTimer);
+        clearTimeout(hideTimer);
+      };
     }
   }, [location.state]);
 

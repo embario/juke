@@ -27,7 +27,7 @@ export default function GenreStep({ token }: Props) {
     async function loadGenres() {
       setIsLoading(true);
       try {
-        const data = await fetchFeaturedGenres(token);
+        const data = await fetchFeaturedGenres();
         setGenres(data);
       } catch (err) {
         console.error('Failed to load genres:', err);

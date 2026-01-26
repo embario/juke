@@ -1,12 +1,12 @@
 # Juke Platform • Agent Handbook
 
-This document orients AI agents to the entire repository. Each major subproject also carries its own `agent.md` for deep dives:
+This document orients AI agents to the entire repository. Each major subproject also carries its own `AGENTS.md` for deep dives:
 
-- [backend/agent.md](backend/agent.md)
-- [mobile/android/agent.md](mobile/android/agent.md)
-- [mobile/ios/agent.md](mobile/ios/agent.md)
+- [backend/AGENTS.md](backend/AGENTS.md)
+- [mobile/android/AGENTS.md](mobile/android/AGENTS.md)
+- [mobile/ios/AGENTS.md](mobile/ios/AGENTS.md)
 - [mobile/ios/shotclock/ARCHITECTURE.md](mobile/ios/shotclock/ARCHITECTURE.md) — ShotClock (Power Hour) iOS app
-- [web/agent.md](web/agent.md)
+- [web/AGENTS.md](web/AGENTS.md)
 
 ## High-Level Architecture
 
