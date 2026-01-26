@@ -34,6 +34,7 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
    cp template.env .env  # fill secrets
    docker compose up --build
    ```
+   - Prefer running project commands via Docker/Compose (`docker compose exec <service> ...`) rather than local host execution to match runtime environments.
    - API → BACKEND_URL from `.env`
    - Web console → FRONTEND_URL from `.env`
    - Recommender engine → RECOMMENDER_ENGINE_BASE_URL from `.env`

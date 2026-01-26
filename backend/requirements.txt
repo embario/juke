@@ -17,3 +17,4 @@ redis
 requests
 gunicorn
 whitenoise
+openai

@@ -112,10 +112,10 @@ struct CreateSessionView: View {
                             // Enable Trivia Toggle
                             Toggle(isOn: $enableTrivia) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Show Trivia")
+                                    Text("Bonus Trivia")
                                         .font(.subheadline.weight(.medium))
                                         .foregroundColor(TuneTriviaPalette.text)
-                                    Text("Display fun facts after each reveal")
+                                    Text("Extra trivia question per round (+50 pts)")
                                         .font(.caption)
                                         .foregroundColor(TuneTriviaPalette.muted)
                                 }

@@ -25,6 +25,12 @@ struct GamePlayView: View {
     @State private var hasSubmittedGuess = false
     @State private var isSubmitting = false
 
+    // Trivia state
+    @State private var selectedTriviaOption: String?
+    @State private var hasSubmittedTrivia = false
+    @State private var triviaResult: TriviaSubmitResponse?
+    @State private var isSubmittingTrivia = false
+
     // Audio player
     @State private var audioPlayer: AVPlayer?
     @State private var isPlaying = false
@@ -195,19 +201,6 @@ struct GamePlayView: View {
                         Text(round.artistName)
                             .font(.title3)
                             .foregroundColor(TuneTriviaPalette.secondary)
-
-                        if let trivia = round.trivia {
-                            TuneTriviaCard(accentColor: TuneTriviaPalette.highlight) {
-                                HStack(alignment: .top, spacing: 8) {
-                                    Image(systemName: "lightbulb.fill")
-                                        .foregroundColor(TuneTriviaPalette.highlight)
-                                    Text(trivia)
-                                        .font(.subheadline)
-                                        .foregroundColor(TuneTriviaPalette.text)
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
                     }
                     .padding(.horizontal, 24)
                 }
@@ -291,6 +284,12 @@ struct GamePlayView: View {
                     .padding(.horizontal, 24)
                 }
 
+                // Trivia Question Section (shown after reveal when trivia is enabled)
+                if round.status == .revealed && round.hasTrivia {
+                    triviaSection(round: round, detail: detail)
+                        .padding(.horizontal, 24)
+                }
+
                 // Host controls
                 if isHost {
                     TuneTriviaCard {
@@ -329,6 +328,124 @@ struct GamePlayView: View {
         }
     }
 
+    // MARK: - Trivia Section
+
+    @ViewBuilder
+    private func triviaSection(round: TuneTriviaRound, detail: SessionDetailResponse) -> some View {
+        let canAnswer = !isHost && detail.session.mode == .party
+
+        TuneTriviaCard(accentColor: TuneTriviaPalette.highlight) {
+            VStack(spacing: 16) {
+                // Header
+                HStack(spacing: 8) {
+                    Image(systemName: "brain.head.profile")
+                        .foregroundColor(TuneTriviaPalette.highlight)
+                    Text("Bonus Trivia")
+                        .font(.headline)
+                        .foregroundColor(TuneTriviaPalette.text)
+                    Spacer()
+                    Text("+50 pts")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(TuneTriviaPalette.highlight)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(TuneTriviaPalette.highlight.opacity(0.2))
+                        )
+                }
+
+                // Question
+                if let question = round.triviaQuestion {
+                    Text(question)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(TuneTriviaPalette.text)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                // Options
+                if let options = round.triviaOptions {
+                    if canAnswer && !hasSubmittedTrivia {
+                        // Interactive options for party mode players
+                        VStack(spacing: 10) {
+                            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+                                TriviaOptionButton(
+                                    label: optionLabel(index: index),
+                                    text: option,
+                                    isSelected: selectedTriviaOption == option,
+                                    isDisabled: isSubmittingTrivia
+                                ) {
+                                    selectedTriviaOption = option
+                                }
+                            }
+                        }
+
+                        // Submit button
+                        Button {
+                            Task { await submitTrivia(roundId: round.id) }
+                        } label: {
+                            if isSubmittingTrivia {
+                                TuneTriviaSpinner()
+                            } else {
+                                Text("Submit Answer")
+                            }
+                        }
+                        .buttonStyle(TuneTriviaButtonStyle(variant: .primary))
+                        .disabled(selectedTriviaOption == nil || isSubmittingTrivia)
+                        .padding(.top, 4)
+
+                    } else if hasSubmittedTrivia, let result = triviaResult {
+                        // Show trivia result
+                        VStack(spacing: 10) {
+                            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+                                TriviaResultRow(
+                                    label: optionLabel(index: index),
+                                    text: option,
+                                    isCorrectAnswer: option == result.correctAnswer,
+                                    wasSelected: option == selectedTriviaOption
+                                )
+                            }
+                        }
+
+                        // Result message
+                        HStack(spacing: 8) {
+                            Image(systemName: result.correct ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundColor(result.correct ? TuneTriviaPalette.secondary : TuneTriviaPalette.accent)
+                            Text(result.correct ? "Correct! +\(result.pointsEarned) pts" : "Incorrect!")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(result.correct ? TuneTriviaPalette.secondary : TuneTriviaPalette.accent)
+                        }
+                        .padding(.top, 4)
+
+                    } else {
+                        // Read-only for host or host-mode (show options without interactivity)
+                        VStack(spacing: 8) {
+                            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+                                HStack(spacing: 8) {
+                                    Text(optionLabel(index: index))
+                                        .font(.caption.weight(.bold))
+                                        .foregroundColor(TuneTriviaPalette.highlight)
+                                        .frame(width: 24)
+                                    Text(option)
+                                        .font(.subheadline)
+                                        .foregroundColor(TuneTriviaPalette.text)
+                                    Spacer()
+                                }
+                                .padding(.vertical, 6)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func optionLabel(index: Int) -> String {
+        let labels = ["A", "B", "C", "D"]
+        return index < labels.count ? labels[index] : "\(index + 1)"
+    }
+
     // MARK: - Actions
 
     private func loadSession() async {
@@ -354,11 +471,14 @@ struct GamePlayView: View {
             sessionDetail = try await tuneTriviaService.getSession(id: sessionId, token: session.token)
             updateCurrentRound()
 
-            // Reset guess state if round changed
+            // Reset guess and trivia state if round changed
             if currentRound?.id != oldRound?.id {
                 hasSubmittedGuess = false
                 songGuess = ""
                 artistGuess = ""
+                selectedTriviaOption = nil
+                hasSubmittedTrivia = false
+                triviaResult = nil
                 stopAudio()
             }
         } catch {
@@ -390,6 +510,28 @@ struct GamePlayView: View {
         isSubmitting = false
     }
 
+    private func submitTrivia(roundId: Int) async {
+        guard let answer = selectedTriviaOption else { return }
+
+        isSubmittingTrivia = true
+
+        do {
+            let result = try await tuneTriviaService.submitTriviaAnswer(
+                roundId: roundId,
+                triviaGuess: answer,
+                token: session.token
+            )
+            triviaResult = result
+            hasSubmittedTrivia = true
+            // Refresh session to get updated scores
+            await loadSession()
+        } catch {
+            errorMessage = "Failed to submit trivia answer."
+        }
+
+        isSubmittingTrivia = false
+    }
+
     private func revealRound() async {
         guard let token = session.token else { return }
 
@@ -412,6 +554,9 @@ struct GamePlayView: View {
             hasSubmittedGuess = false
             songGuess = ""
             artistGuess = ""
+            selectedTriviaOption = nil
+            hasSubmittedTrivia = false
+            triviaResult = nil
             await loadSession()
         } catch {
             // Handle error
@@ -477,7 +622,123 @@ struct GamePlayView: View {
     }
 }
 
-// MARK: - Subviews
+// MARK: - Trivia Subviews
+
+struct TriviaOptionButton: View {
+    let label: String
+    let text: String
+    let isSelected: Bool
+    let isDisabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Text(label)
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(isSelected ? .white : TuneTriviaPalette.highlight)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        Circle()
+                            .fill(isSelected ? TuneTriviaPalette.highlight : TuneTriviaPalette.highlight.opacity(0.2))
+                    )
+
+                Text(text)
+                    .font(.subheadline)
+                    .foregroundColor(TuneTriviaPalette.text)
+                    .multilineTextAlignment(.leading)
+
+                Spacer()
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isSelected ? TuneTriviaPalette.highlight.opacity(0.15) : TuneTriviaPalette.panel)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(
+                        isSelected ? TuneTriviaPalette.highlight : Color.clear,
+                        lineWidth: 2
+                    )
+            )
+        }
+        .disabled(isDisabled)
+    }
+}
+
+struct TriviaResultRow: View {
+    let label: String
+    let text: String
+    let isCorrectAnswer: Bool
+    let wasSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(.caption.weight(.bold))
+                .foregroundColor(iconColor)
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle()
+                        .fill(iconColor.opacity(0.2))
+                )
+
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(TuneTriviaPalette.text)
+                .multilineTextAlignment(.leading)
+
+            Spacer()
+
+            if isCorrectAnswer {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(TuneTriviaPalette.secondary)
+            } else if wasSelected && !isCorrectAnswer {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(TuneTriviaPalette.accent)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(backgroundColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(borderColor, lineWidth: isCorrectAnswer || wasSelected ? 2 : 0)
+        )
+    }
+
+    private var iconColor: Color {
+        if isCorrectAnswer {
+            return TuneTriviaPalette.secondary
+        } else if wasSelected {
+            return TuneTriviaPalette.accent
+        }
+        return TuneTriviaPalette.muted
+    }
+
+    private var backgroundColor: Color {
+        if isCorrectAnswer {
+            return TuneTriviaPalette.secondary.opacity(0.1)
+        } else if wasSelected {
+            return TuneTriviaPalette.accent.opacity(0.1)
+        }
+        return TuneTriviaPalette.panel
+    }
+
+    private var borderColor: Color {
+        if isCorrectAnswer {
+            return TuneTriviaPalette.secondary
+        } else if wasSelected {
+            return TuneTriviaPalette.accent
+        }
+        return Color.clear
+    }
+}
+
+// MARK: - Existing Subviews
 
 struct AudioControlsView: View {
     @Binding var isPlaying: Bool

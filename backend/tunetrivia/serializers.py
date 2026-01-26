@@ -7,6 +7,7 @@ from .models import (
     TuneTriviaGuess,
     TuneTriviaLeaderboardEntry,
 )
+from .services import TriviaGenerationService
 
 
 # ============================================================================
@@ -34,43 +35,85 @@ class AddPlayerSerializer(serializers.Serializer):
 # ============================================================================
 
 class TuneTriviaRoundSerializer(serializers.ModelSerializer):
-    """Serializer for round data."""
+    """Serializer for round data with structured trivia fields."""
+    trivia_question = serializers.SerializerMethodField()
+    trivia_options = serializers.SerializerMethodField()
+    trivia_answer = serializers.SerializerMethodField()
 
     class Meta:
         model = TuneTriviaRound
         fields = [
             'id', 'round_number', 'status',
             'track_name', 'artist_name', 'album_name',
-            'album_art_url', 'preview_url', 'trivia',
+            'album_art_url', 'preview_url',
+            'trivia_question', 'trivia_options', 'trivia_answer',
             'started_at', 'revealed_at'
         ]
         read_only_fields = fields
 
+    def _parse_trivia(self, obj):
+        return TriviaGenerationService.parse_trivia(obj.trivia)
+
+    def get_trivia_question(self, obj):
+        data = self._parse_trivia(obj)
+        return data.get('question') if data else None
+
+    def get_trivia_options(self, obj):
+        data = self._parse_trivia(obj)
+        return data.get('options') if data else None
+
+    def get_trivia_answer(self, obj):
+        # Only expose the correct answer once the round is finished
+        if obj.status != TuneTriviaRound.Status.FINISHED:
+            return None
+        data = self._parse_trivia(obj)
+        return data.get('answer') if data else None
+
     def to_representation(self, instance):
-        """Hide track info if round is still playing (not revealed)."""
+        """Hide track info and trivia while the round is still playing."""
         data = super().to_representation(instance)
         if instance.status == TuneTriviaRound.Status.PLAYING:
-            # Hide answers during gameplay
             data['track_name'] = '???'
             data['artist_name'] = '???'
             data['album_name'] = ''
             data['album_art_url'] = ''
-            data['trivia'] = None
+            data['trivia_question'] = None
+            data['trivia_options'] = None
+            data['trivia_answer'] = None
         return data
 
 
 class TuneTriviaRoundRevealedSerializer(serializers.ModelSerializer):
-    """Serializer for round data after reveal (shows all info)."""
+    """Serializer for round data after reveal (shows song info + trivia question)."""
+    trivia_question = serializers.SerializerMethodField()
+    trivia_options = serializers.SerializerMethodField()
+    trivia_answer = serializers.SerializerMethodField()
 
     class Meta:
         model = TuneTriviaRound
         fields = [
             'id', 'round_number', 'status',
             'track_name', 'artist_name', 'album_name',
-            'album_art_url', 'preview_url', 'trivia',
+            'album_art_url', 'preview_url',
+            'trivia_question', 'trivia_options', 'trivia_answer',
             'started_at', 'revealed_at'
         ]
         read_only_fields = fields
+
+    def _parse_trivia(self, obj):
+        return TriviaGenerationService.parse_trivia(obj.trivia)
+
+    def get_trivia_question(self, obj):
+        data = self._parse_trivia(obj)
+        return data.get('question') if data else None
+
+    def get_trivia_options(self, obj):
+        data = self._parse_trivia(obj)
+        return data.get('options') if data else None
+
+    def get_trivia_answer(self, obj):
+        # Revealed serializer still hides the answer (players are answering)
+        return None
 
 
 # ============================================================================
@@ -85,17 +128,25 @@ class TuneTriviaGuessSerializer(serializers.ModelSerializer):
         model = TuneTriviaGuess
         fields = [
             'id', 'player', 'player_name',
-            'song_guess', 'artist_guess',
-            'song_correct', 'artist_correct', 'points_earned',
-            'submitted_at'
+            'song_guess', 'artist_guess', 'trivia_guess',
+            'song_correct', 'artist_correct', 'trivia_correct',
+            'points_earned', 'submitted_at'
         ]
-        read_only_fields = ['id', 'player', 'song_correct', 'artist_correct', 'points_earned', 'submitted_at']
+        read_only_fields = [
+            'id', 'player', 'song_correct', 'artist_correct',
+            'trivia_correct', 'points_earned', 'submitted_at'
+        ]
 
 
 class SubmitGuessSerializer(serializers.Serializer):
-    """Input serializer for submitting a guess."""
+    """Input serializer for submitting a song/artist guess."""
     song_guess = serializers.CharField(max_length=300, required=False, allow_blank=True, allow_null=True)
     artist_guess = serializers.CharField(max_length=300, required=False, allow_blank=True, allow_null=True)
+
+
+class SubmitTriviaSerializer(serializers.Serializer):
+    """Input serializer for submitting a trivia answer."""
+    trivia_guess = serializers.CharField(max_length=300)
 
 
 # ============================================================================
@@ -180,6 +231,7 @@ class LeaderboardEntrySerializer(serializers.ModelSerializer):
         model = TuneTriviaLeaderboardEntry
         fields = [
             'id', 'display_name', 'total_score', 'total_games',
-            'total_correct_songs', 'total_correct_artists', 'last_played_at'
+            'total_correct_songs', 'total_correct_artists',
+            'total_correct_trivia', 'last_played_at'
         ]
         read_only_fields = fields

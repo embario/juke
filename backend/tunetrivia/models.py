@@ -152,10 +152,12 @@ class TuneTriviaGuess(models.Model):
     # Guesses
     song_guess = models.CharField(max_length=300, blank=True, null=True)
     artist_guess = models.CharField(max_length=300, blank=True, null=True)
+    trivia_guess = models.CharField(max_length=300, blank=True, null=True)
 
     # Scoring
     song_correct = models.BooleanField(default=False)
     artist_correct = models.BooleanField(default=False)
+    trivia_correct = models.BooleanField(default=False)
     points_earned = models.IntegerField(default=0)
 
     # Timestamps
@@ -181,6 +183,7 @@ class TuneTriviaLeaderboardEntry(models.Model):
     total_games = models.IntegerField(default=0)
     total_correct_songs = models.IntegerField(default=0)
     total_correct_artists = models.IntegerField(default=0)
+    total_correct_trivia = models.IntegerField(default=0)
 
     # Timestamps
     last_played_at = models.DateTimeField(auto_now=True)

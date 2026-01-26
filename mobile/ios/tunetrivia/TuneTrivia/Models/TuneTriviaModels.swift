@@ -90,9 +90,16 @@ struct TuneTriviaRound: Codable, Identifiable {
     let albumName: String?
     let albumArtUrl: String?
     let previewUrl: String?
-    let trivia: String?
+    let triviaQuestion: String?
+    let triviaOptions: [String]?
+    let triviaAnswer: String?
     let startedAt: String?
     let revealedAt: String?
+
+    /// Whether this round has a trivia question available.
+    var hasTrivia: Bool {
+        triviaQuestion != nil && triviaOptions != nil && (triviaOptions?.count ?? 0) == 4
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -103,7 +110,9 @@ struct TuneTriviaRound: Codable, Identifiable {
         case albumName = "album_name"
         case albumArtUrl = "album_art_url"
         case previewUrl = "preview_url"
-        case trivia
+        case triviaQuestion = "trivia_question"
+        case triviaOptions = "trivia_options"
+        case triviaAnswer = "trivia_answer"
         case startedAt = "started_at"
         case revealedAt = "revealed_at"
     }
@@ -124,8 +133,10 @@ struct TuneTriviaGuess: Codable, Identifiable {
     let playerName: String
     let songGuess: String?
     let artistGuess: String?
+    let triviaGuess: String?
     let songCorrect: Bool
     let artistCorrect: Bool
+    let triviaCorrect: Bool
     let pointsEarned: Int
     let submittedAt: String
 
@@ -134,8 +145,10 @@ struct TuneTriviaGuess: Codable, Identifiable {
         case playerName = "player_name"
         case songGuess = "song_guess"
         case artistGuess = "artist_guess"
+        case triviaGuess = "trivia_guess"
         case songCorrect = "song_correct"
         case artistCorrect = "artist_correct"
+        case triviaCorrect = "trivia_correct"
         case pointsEarned = "points_earned"
         case submittedAt = "submitted_at"
     }
@@ -150,6 +163,7 @@ struct LeaderboardEntry: Codable, Identifiable {
     let totalGames: Int
     let totalCorrectSongs: Int
     let totalCorrectArtists: Int
+    let totalCorrectTrivia: Int
     let lastPlayedAt: String
 
     enum CodingKeys: String, CodingKey {
@@ -159,6 +173,7 @@ struct LeaderboardEntry: Codable, Identifiable {
         case totalGames = "total_games"
         case totalCorrectSongs = "total_correct_songs"
         case totalCorrectArtists = "total_correct_artists"
+        case totalCorrectTrivia = "total_correct_trivia"
         case lastPlayedAt = "last_played_at"
     }
 }
@@ -211,6 +226,28 @@ struct AddTrackRequest: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case trackId = "track_id"
+    }
+}
+
+struct SubmitTriviaRequest: Encodable {
+    let triviaGuess: String
+
+    enum CodingKeys: String, CodingKey {
+        case triviaGuess = "trivia_guess"
+    }
+}
+
+struct TriviaSubmitResponse: Codable {
+    let correct: Bool
+    let correctAnswer: String
+    let pointsEarned: Int
+    let totalScore: Int
+
+    enum CodingKeys: String, CodingKey {
+        case correct
+        case correctAnswer = "correct_answer"
+        case pointsEarned = "points_earned"
+        case totalScore = "total_score"
     }
 }
 

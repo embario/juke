@@ -57,7 +57,8 @@ docker compose up --build
 
 ## Testing & Tooling
 
-- Run backend tests either via Docker (`docker compose exec backend python manage.py test`) or locally (activate venv, install `requirements.txt`).
+ - Run backend tests either via Docker (`docker compose exec backend python manage.py test`). Tests can take longer than 10s; use a higher timeout when invoking from tooling.
+- Linting: `ruff check .` (config in `backend/pyproject.toml`); legacy `flake8` uses `backend/setup.cfg` if needed.
 - Coverage-critical suites under `tests/api/` assume stubbed Spotify responses; keep fixtures in `tests/fixtures/` in sync.
 - Management command smoke tests live under `tests/unit/`.
 

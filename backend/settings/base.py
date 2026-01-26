@@ -310,6 +310,10 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 RECOMMENDER_ENGINE_BASE_URL = _required_env("RECOMMENDER_ENGINE_BASE_URL")
 RECOMMENDER_ENGINE_TIMEOUT = int(os.environ.get('RECOMMENDER_ENGINE_TIMEOUT', '15'))
 
+# OpenAI / TuneTrivia
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+TUNETRIVIA_TRIVIA_MODEL = os.environ.get('TUNETRIVIA_TRIVIA_MODEL', 'gpt-4o-mini')
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.0/howto/static-files/

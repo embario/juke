@@ -186,9 +186,13 @@ struct LeaderboardRow: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(TuneTriviaPalette.text)
 
-                Text("\(entry.totalGames) games played")
-                    .font(.caption)
-                    .foregroundColor(TuneTriviaPalette.muted)
+                HStack(spacing: 6) {
+                    Text("\(entry.totalGames) games")
+                    Text("·")
+                    Text("\(entry.totalCorrectTrivia) trivia")
+                }
+                .font(.caption)
+                .foregroundColor(TuneTriviaPalette.muted)
             }
 
             Spacer()

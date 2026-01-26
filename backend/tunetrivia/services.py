@@ -1,6 +1,8 @@
 """
 TuneTrivia services for track selection and trivia generation.
 """
+import json
+import logging
 import random
 from typing import Optional
 
@@ -8,6 +10,8 @@ from django.conf import settings
 
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
+
+logger = logging.getLogger(__name__)
 
 
 class TrackSelectionService:
@@ -227,18 +231,123 @@ class TrackSelectionService:
         }
 
 
+TRIVIA_PROMPT = """Generate a fun music trivia question about the song "{song_title}" by {artist_name}.
+The question should be about one of the following:
+- The year the song was released
+- The album it appeared on
+- A fun fact about the song's creation or history
+- Chart performance or awards
+- Cultural impact or appearances in media
+
+You MUST respond with valid JSON only. No extra text, no markdown fences.
+The JSON must have exactly these keys:
+{{
+  "question": "The trivia question text",
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "answer": "The correct option (must be one of the four options)"
+}}
+
+Rules:
+- The "answer" value MUST exactly match one of the four "options" strings.
+- Make the question fun and engaging for a party game setting.
+- Ensure the wrong options are plausible but clearly incorrect.
+- Keep the question and options concise."""
+
+
 class TriviaGenerationService:
-    """Service for generating trivia about tracks."""
+    """Service for generating AI-powered trivia questions about tracks."""
+
+    def __init__(self):
+        api_key = getattr(settings, 'OPENAI_API_KEY', '')
+        self._enabled = bool(api_key)
+        if self._enabled:
+            from openai import OpenAI
+            self._client = OpenAI(api_key=api_key)
+            self._model = getattr(settings, 'TUNETRIVIA_TRIVIA_MODEL', 'gpt-4o-mini')
+        else:
+            self._client = None
+            self._model = None
 
     def generate_trivia(self, track_info: dict) -> Optional[str]:
         """
-        Generate trivia for a track.
-        For now, returns basic info. Can be enhanced with external APIs.
+        Generate a trivia question for a track using OpenAI.
+        Returns a JSON string with question, options, and answer.
+        Returns None if generation fails or OpenAI is not configured.
         """
-        artist = track_info.get('artist_name', 'Unknown')
-        album = track_info.get('album_name', '')
+        if not self._enabled:
+            logger.warning("OpenAI API key not configured; skipping trivia generation.")
+            return None
 
-        if album:
-            return f"This song appears on the album '{album}' by {artist}."
+        song_title = track_info.get('track_name', 'Unknown')
+        artist_name = track_info.get('artist_name', 'Unknown')
 
-        return f"This song is performed by {artist}."
+        prompt = TRIVIA_PROMPT.format(
+            song_title=song_title,
+            artist_name=artist_name,
+        )
+
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a music trivia expert for a party game app. "
+                            "Respond only with valid JSON. No markdown, no explanation."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.8,
+                max_tokens=300,
+            )
+
+            content = response.choices[0].message.content.strip()
+            # Strip markdown fences if the model wraps the JSON
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+            trivia_data = json.loads(content)
+            return self._validate_and_serialize(trivia_data)
+
+        except Exception:
+            logger.exception(
+                "Failed to generate trivia for '%s' by '%s'",
+                song_title,
+                artist_name,
+            )
+            return None
+
+    @staticmethod
+    def _validate_and_serialize(data: dict) -> Optional[str]:
+        """Validate the trivia JSON structure and return serialized string."""
+        question = data.get('question')
+        options = data.get('options')
+        answer = data.get('answer')
+
+        if not question or not isinstance(question, str):
+            return None
+        if not options or not isinstance(options, list) or len(options) != 4:
+            return None
+        if not answer or answer not in options:
+            return None
+
+        return json.dumps({
+            'question': question,
+            'options': options,
+            'answer': answer,
+        })
+
+    @staticmethod
+    def parse_trivia(trivia_json: Optional[str]) -> Optional[dict]:
+        """Parse a stored trivia JSON string into a dict."""
+        if not trivia_json:
+            return None
+        try:
+            data = json.loads(trivia_json)
+            if 'question' in data and 'options' in data and 'answer' in data:
+                return data
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return None

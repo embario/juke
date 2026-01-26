@@ -28,6 +28,7 @@ from .serializers import (
     AddPlayerSerializer,
     AwardPointsSerializer,
     SubmitGuessSerializer,
+    SubmitTriviaSerializer,
     LeaderboardEntrySerializer,
 )
 from .services import TrackSelectionService, TriviaGenerationService
@@ -338,7 +339,9 @@ class TuneTriviaSessionViewSet(viewsets.ModelViewSet):
                     'album_name': '',
                     'album_art_url': '',
                     'preview_url': '',
-                    'trivia': None,
+                    'trivia_question': None,
+                    'trivia_options': None,
+                    'trivia_answer': None,
                     'started_at': None,
                     'revealed_at': None,
                     'game_finished': True
@@ -597,8 +600,10 @@ class TuneTriviaSessionViewSet(viewsets.ModelViewSet):
             # Count correct guesses
             correct_songs = player.guesses.filter(song_correct=True).count()
             correct_artists = player.guesses.filter(artist_correct=True).count()
+            correct_trivia = player.guesses.filter(trivia_correct=True).count()
             entry.total_correct_songs += correct_songs
             entry.total_correct_artists += correct_artists
+            entry.total_correct_trivia += correct_trivia
 
             entry.save()
 
@@ -711,6 +716,82 @@ class TuneTriviaRoundViewSet(viewsets.ReadOnlyModelViewSet):
         guesses = round_obj.guesses.all()
         output = TuneTriviaGuessSerializer(guesses, many=True)
         return Response(output.data)
+
+    @action(detail=True, methods=['post'], url_path='trivia')
+    def submit_trivia(self, request, id=None):
+        """Submit a trivia answer for a round (during REVEALED phase)."""
+        round_obj = self.get_object()
+        session = round_obj.session
+
+        if round_obj.status != TuneTriviaRound.Status.REVEALED:
+            return Response(
+                {'detail': 'Trivia answers can only be submitted during the reveal phase.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Verify trivia is enabled and exists for this round
+        trivia_data = TriviaGenerationService.parse_trivia(round_obj.trivia)
+        if not trivia_data:
+            return Response(
+                {'detail': 'No trivia question for this round.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get the player
+        try:
+            player = session.players.get(user=request.user)
+        except TuneTriviaPlayer.DoesNotExist:
+            return Response(
+                {'detail': 'You are not a player in this session.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = SubmitTriviaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        trivia_guess = serializer.validated_data['trivia_guess']
+
+        correct_answer = trivia_data['answer']
+        is_correct = trivia_guess.strip().lower() == correct_answer.strip().lower()
+
+        # Points awarded for a correct trivia answer
+        trivia_points = 50 if is_correct else 0
+
+        # Get or create the guess record
+        guess, created = TuneTriviaGuess.objects.get_or_create(
+            round=round_obj,
+            player=player,
+            defaults={
+                'trivia_guess': trivia_guess,
+                'trivia_correct': is_correct,
+            }
+        )
+
+        if not created:
+            # Player already has a guess record (from song/artist phase)
+            if guess.trivia_guess:
+                return Response(
+                    {'detail': 'You have already submitted a trivia answer for this round.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            guess.trivia_guess = trivia_guess
+            guess.trivia_correct = is_correct
+            guess.points_earned += trivia_points
+            guess.save()
+        else:
+            guess.points_earned = trivia_points
+            guess.save()
+
+        # Update player total score
+        if trivia_points > 0:
+            player.total_score += trivia_points
+            player.save()
+
+        return Response({
+            'correct': is_correct,
+            'correct_answer': correct_answer,
+            'points_earned': trivia_points,
+            'total_score': player.total_score,
+        })
 
 
 class TuneTriviaLeaderboardViewSet(viewsets.ReadOnlyModelViewSet):

@@ -183,6 +183,17 @@ final class TuneTriviaService {
         )
     }
 
+    func submitTriviaAnswer(roundId: Int, triviaGuess: String, token: String?) async throws -> TriviaSubmitResponse {
+        let request = SubmitTriviaRequest(triviaGuess: triviaGuess)
+        let bodyData = try encoder.encode(request)
+        return try await client.send(
+            "/api/v1/tunetrivia/rounds/\(roundId)/trivia/",
+            method: .post,
+            token: token,
+            body: bodyData
+        )
+    }
+
     // MARK: - Players (Host Mode)
 
     func addManualPlayer(sessionId: Int, displayName: String, token: String) async throws -> TuneTriviaPlayer {

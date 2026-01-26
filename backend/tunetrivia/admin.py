@@ -59,7 +59,16 @@ class TuneTriviaPlayerAdmin(admin.ModelAdmin):
 class TuneTriviaGuessInline(admin.TabularInline):
     model = TuneTriviaGuess
     extra = 0
-    readonly_fields = ('player', 'song_guess', 'artist_guess', 'song_correct', 'artist_correct', 'points_earned')
+    readonly_fields = (
+        'player',
+        'song_guess',
+        'artist_guess',
+        'trivia_guess',
+        'song_correct',
+        'artist_correct',
+        'trivia_correct',
+        'points_earned',
+    )
 
 
 @admin.register(TuneTriviaRound)
@@ -73,14 +82,24 @@ class TuneTriviaRoundAdmin(admin.ModelAdmin):
 
 @admin.register(TuneTriviaGuess)
 class TuneTriviaGuessAdmin(admin.ModelAdmin):
-    list_display = ('player', 'round', 'song_guess', 'artist_guess', 'song_correct', 'artist_correct', 'points_earned')
-    list_filter = ('song_correct', 'artist_correct')
+    list_display = (
+        'player',
+        'round',
+        'song_guess',
+        'artist_guess',
+        'trivia_guess',
+        'song_correct',
+        'artist_correct',
+        'trivia_correct',
+        'points_earned',
+    )
+    list_filter = ('song_correct', 'artist_correct', 'trivia_correct')
     search_fields = ('player__display_name', 'song_guess', 'artist_guess')
     readonly_fields = ('id', 'submitted_at')
 
 
 @admin.register(TuneTriviaLeaderboardEntry)
 class TuneTriviaLeaderboardEntryAdmin(admin.ModelAdmin):
-    list_display = ('display_name', 'user', 'total_score', 'total_games', 'last_played_at')
+    list_display = ('display_name', 'user', 'total_score', 'total_games', 'total_correct_trivia', 'last_played_at')
     search_fields = ('display_name', 'user__username')
     readonly_fields = ('id', 'last_played_at')
