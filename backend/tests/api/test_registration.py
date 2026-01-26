@@ -10,6 +10,7 @@ from tests.utils import REGISTRATION_VERIFY_RE
 class TestRegistration(APITestCase):
     register_url = '/api/v1/auth/accounts/register/'
     verify_url = '/api/v1/auth/accounts/verify-registration/'
+    resend_url = '/api/v1/auth/accounts/resend-registration/'
 
     def test_register_fail_missing_username(self):
         data = {'password': 'testpassword'}
@@ -161,9 +162,14 @@ class TestRegistration(APITestCase):
         self.assertFalse(new_user.is_active)
         self.assertIsNotNone(new_user.auth_token)
 
-        # Splice out verification data from email body
-        verify_url = outbox[0].body.split("<a href=\"")[-1].split("\">here</a>")[0]
-        match = REGISTRATION_VERIFY_RE.match(verify_url)
+        # Extract verification data from email body (text or html)
+        match = REGISTRATION_VERIFY_RE.search(outbox[0].body)
+        if match is None and getattr(outbox[0], 'alternatives', None):
+            for alt_body, mimetype in outbox[0].alternatives:
+                if 'text/html' in mimetype:
+                    match = REGISTRATION_VERIFY_RE.search(alt_body)
+                    if match is not None:
+                        break
         self.assertIsNotNone(match)
         verify_data = match.groupdict()
         self.assertEqual(int(verify_data['user_id']), new_user.id)
@@ -172,8 +178,52 @@ class TestRegistration(APITestCase):
         response = self.client.post(self.verify_url, verify_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('detail', response.data)
-        self.assertEqual(response.data['detail'], "User verified successfully")
+        self.assertEqual(response.data['detail'], "Account verified.")
+        self.assertIn('token', response.data)
+        self.assertEqual(response.data['username'], 'test')
         new_user.refresh_from_db()
 
         # Now user should be active
         self.assertTrue(new_user.is_active)
+
+    def test_resend_registration_verification(self):
+        from django.core.mail import outbox
+
+        data = {
+            'username': 'test',
+            'password': 'testpassword',
+            'password_confirm': 'testpassword',
+            'email': 'test@test.com',
+        }
+
+        response = self.client.post(self.register_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(len(outbox), 1)
+
+        response = self.client.post(self.resend_url, {'email': 'test@test.com'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(outbox), 2)
+
+    def test_resend_registration_verification_missing_user(self):
+        response = self.client.post(self.resend_url, {'email': 'missing@test.com'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'No account found for that email or username.')
+
+    def test_resend_registration_verification_active_user(self):
+        data = {
+            'username': 'test',
+            'password': 'testpassword',
+            'password_confirm': 'testpassword',
+            'email': 'test@test.com',
+        }
+
+        response = self.client.post(self.register_url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        user = JukeUser.objects.get(username='test')
+        user.is_active = True
+        user.save(update_fields=['is_active'])
+
+        response = self.client.post(self.resend_url, {'email': 'test@test.com'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], 'Account is already verified. Please sign in.')

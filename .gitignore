@@ -6,9 +6,25 @@ __pycache__/
 .vscode
 node_modules
 .gradle/
+.android-emulator/
 
 # Local logs
 logs/
+
+# Env/editor backups
+.env~
+
+# Screenshots
+screenshots/
+
+# Xcode user data
+mobile/ios/**/xcuserdata/
+mobile/ios/**/project.xcworkspace/xcuserdata/
+
+# Frontend build/cache artifacts
+web/.vite/
+web/storybook-static/
+web/tsconfig*.tsbuildinfo
 
 
 backend/static/media/albums/*.png

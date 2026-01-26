@@ -10,53 +10,61 @@ import JukeWorldRoute from './features/world/routes/JukeWorldRoute';
 import OnboardingVisualizations from './features/auth/components/onboarding/visualizations';
 import OnboardingRoute from './features/auth/routes/OnboardingRoute';
 
-const router = createBrowserRouter([
+const router = createBrowserRouter(
+  [
+    {
+      path: '/',
+      element: <AppLayout />,
+      children: [
+        {
+          index: true,
+          element: <LibraryRoute />,
+        },
+        {
+          path: 'login',
+          element: <LoginRoute />,
+        },
+        {
+          path: 'register',
+          element: <RegisterRoute />,
+        },
+        {
+          path: 'verify-user/',
+          element: <VerifyUserRoute />,
+        },
+        {
+          path: 'profiles',
+          element: <MusicProfileRoute />,
+        },
+        {
+          path: 'profiles/:username',
+          element: <MusicProfileRoute />,
+        },
+      ],
+    },
+    {
+      path: '/world',
+      element: <JukeWorldRoute />,
+    },
+    {
+      path: '/onboarding',
+      element: <OnboardingRoute />,
+    },
+    {
+      path: '/onboarding-demo',
+      element: <OnboardingVisualizations />,
+    },
+    {
+      path: '*',
+      element: <NotFoundRoute />,
+    },
+  ],
   {
-    path: '/',
-    element: <AppLayout />,
-    children: [
-      {
-        index: true,
-        element: <LibraryRoute />,
-      },
-      {
-        path: 'login',
-        element: <LoginRoute />,
-      },
-      {
-        path: 'register',
-        element: <RegisterRoute />,
-      },
-      {
-        path: 'verify-user/',
-        element: <VerifyUserRoute />,
-      },
-      {
-        path: 'profiles',
-        element: <MusicProfileRoute />,
-      },
-      {
-        path: 'profiles/:username',
-        element: <MusicProfileRoute />,
-      },
-    ],
+    future: {
+      v7_startTransition: true,
+      v7_relativeSplatPath: true,
+    },
   },
-  {
-    path: '/world',
-    element: <JukeWorldRoute />,
-  },
-  {
-    path: '/onboarding',
-    element: <OnboardingRoute />,
-  },
-  {
-    path: '/onboarding-demo',
-    element: <OnboardingVisualizations />,
-  },
-  {
-    path: '*',
-    element: <NotFoundRoute />,
-  },
-]);
+);
 
 export default router;

@@ -234,11 +234,29 @@ body.no-scroll .app-shell__content {
   border-radius: var(--radius-sm);
   color: var(--clr-muted);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
 }
 
 .sidebar__link--active {
   background: rgba(249, 115, 22, 0.15);
   color: var(--clr-text);
+}
+
+.sidebar__link--danger {
+  color: var(--clr-error);
+}
+
+.sidebar__link--danger:hover,
+.sidebar__link--danger:focus-visible {
+  background: var(--clr-error-soft);
+  color: #fee2e2;
 }
 
 .sidebar__footnote {

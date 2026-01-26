@@ -135,7 +135,13 @@ function seededRandom(seed: number): () => number {
  */
 const GLOBAL_SCATTER_RATIO = 0.20;
 
-export function generateMockPoints(count: number = 2000): GlobePoint[] {
+export type SeedUserPoint = {
+  username: string;
+  lat?: number;
+  lng?: number;
+};
+
+export function generateMockPoints(count: number = 2000, seedUser?: SeedUserPoint): GlobePoint[] {
   const rng = seededRandom(42);
   const points: GlobePoint[] = [];
   const totalWeight = CITY_CENTERS.reduce((sum, c) => sum + c.weight, 0);
@@ -199,6 +205,21 @@ export function generateMockPoints(count: number = 2000): GlobePoint[] {
       clout: Math.round(clout * 100) / 100,
       top_genre: genre,
       display_name: username.replace(/[_\d]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim(),
+    });
+  }
+
+  if (seedUser) {
+    const fallbackCity = CITY_CENTERS[0];
+    const seedLat = seedUser.lat ?? fallbackCity.lat;
+    const seedLng = seedUser.lng ?? fallbackCity.lng;
+    points.unshift({
+      id: 0,
+      username: seedUser.username,
+      lat: Math.round(Math.max(-85, Math.min(85, seedLat)) * 100) / 100,
+      lng: Math.round(((seedLng + 180) % 360 - 180) * 100) / 100,
+      clout: 0.85,
+      top_genre: SUPER_GENRES[0],
+      display_name: seedUser.username.replace(/[_\d]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim(),
     });
   }
 

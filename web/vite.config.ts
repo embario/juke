@@ -1,25 +1,32 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath, URL } from 'node:url';
+import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import viteCompression from 'vite-plugin-compression';
+import { loadEnv } from 'vite';
 
-const BACKEND_URL = process.env.BACKEND_URL ?? '';
-const BACKEND_TARGET = process.env.BACKEND_TARGET ?? BACKEND_URL;
-const RUNTIME_ENV = (process.env.JUKE_RUNTIME_ENV ?? 'development').toLowerCase();
-const API_BASE_URL = process.env.VITE_API_BASE_URL ?? BACKEND_URL;
-const WEB_PORT = process.env.WEB_PORT ?? process.env.FRONTEND_PORT ?? '';
-const PROD_LIKE_ENVIRONMENTS = new Set(['staging', 'production']);
-const SHOULD_PRECOMPRESS_ASSETS = PROD_LIKE_ENVIRONMENTS.has(RUNTIME_ENV);
-const createCompressionPlugin = viteCompression as unknown as typeof import('vite-plugin-compression')['default'];
+export default defineConfig(({ mode }) => {
+  const repoRoot = resolve(process.cwd(), '..');
+  const rootEnv = loadEnv(mode, repoRoot, '');
+  const localEnv = loadEnv(mode, process.cwd(), '');
+  const env = { ...rootEnv, ...localEnv };
+  const BACKEND_URL = env.BACKEND_URL ?? process.env.BACKEND_URL ?? '';
+  const BACKEND_TARGET = env.BACKEND_TARGET ?? process.env.BACKEND_TARGET ?? BACKEND_URL;
+  const RUNTIME_ENV = (env.JUKE_RUNTIME_ENV ?? process.env.JUKE_RUNTIME_ENV ?? 'development').toLowerCase();
+  const API_BASE_URL = env.VITE_API_BASE_URL ?? process.env.VITE_API_BASE_URL ?? BACKEND_URL;
+  const WEB_PORT = env.WEB_PORT ?? env.FRONTEND_PORT ?? process.env.WEB_PORT ?? process.env.FRONTEND_PORT ?? '';
+  const PROD_LIKE_ENVIRONMENTS = new Set(['staging', 'production']);
+  const SHOULD_PRECOMPRESS_ASSETS = PROD_LIKE_ENVIRONMENTS.has(RUNTIME_ENV);
+  const createCompressionPlugin = viteCompression as unknown as typeof import('vite-plugin-compression')['default'];
 
-if (!BACKEND_TARGET) {
-  throw new Error('BACKEND_URL must be defined for the frontend dev server.');
-}
-if (!WEB_PORT || Number.isNaN(Number(WEB_PORT))) {
-  throw new Error('WEB_PORT must be defined for the frontend dev server.');
-}
+  if (!BACKEND_TARGET) {
+    throw new Error('BACKEND_URL must be defined for the frontend dev server.');
+  }
+  if (!WEB_PORT || Number.isNaN(Number(WEB_PORT))) {
+    throw new Error('WEB_PORT must be defined for the frontend dev server.');
+  }
 
-export default defineConfig({
+  return {
   plugins: [
     react(),
     ...(SHOULD_PRECOMPRESS_ASSETS
@@ -72,4 +79,5 @@ export default defineConfig({
     setupFiles: './src/setupTests.ts',
     css: true,
   },
+  };
 });

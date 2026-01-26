@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState, type MutableRefObject } from 'react';
 import Globe, { GlobeMethods } from 'react-globe.gl';
 import * as THREE from 'three';
 import { GlobePoint } from '../types';
@@ -21,12 +21,14 @@ type Props = {
   points: GlobePoint[];
   width: number;
   height: number;
+  globeRef?: MutableRefObject<GlobeMethods | null>;
   onPointClick?: (point: GlobePoint) => void;
   onCameraChange?: (pov: { lat: number; lng: number; altitude: number }) => void;
 };
 
-export default function JukeGlobe({ points, width, height, onPointClick, onCameraChange }: Props) {
-  const globeRef = useRef<GlobeMethods | undefined>(undefined);
+export default function JukeGlobe({ points, width, height, globeRef: externalRef, onPointClick, onCameraChange }: Props) {
+  const internalRef = useRef<GlobeMethods | null>(null);
+  const globeRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [countries, setCountries] = useState<CountryFeature[]>([]);
 
@@ -59,8 +61,8 @@ export default function JukeGlobe({ points, width, height, onPointClick, onCamer
     const globe = globeRef.current;
     if (!globe) return;
     const controls = globe.controls();
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.4;
+    controls.autoRotate = false;
+    controls.autoRotateSpeed = 0.0;
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.DOLLY,
@@ -68,7 +70,7 @@ export default function JukeGlobe({ points, width, height, onPointClick, onCamer
     };
     controls.enablePan = false;
     globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
-  }, []);
+  }, [globeRef]);
 
   // Debounced camera change handler for LOD
   useEffect(() => {
@@ -89,7 +91,7 @@ export default function JukeGlobe({ points, width, height, onPointClick, onCamer
       controls.removeEventListener('change', handler);
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [onCameraChange]);
+  }, [globeRef, onCameraChange]);
 
   const handlePointClick = useCallback(
     (point: object) => {

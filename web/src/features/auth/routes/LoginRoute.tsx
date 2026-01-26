@@ -10,6 +10,7 @@ const LoginRoute = () => {
   const location = useLocation();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const redirectTo = (location.state as { redirectTo?: string } | null)?.redirectTo ?? '/';
 
   const oauthError = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -29,9 +30,9 @@ const LoginRoute = () => {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/', { replace: true });
+      navigate(redirectTo, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, redirectTo]);
 
   useEffect(() => {
     document.body.classList.add('no-scroll');
@@ -45,7 +46,7 @@ const LoginRoute = () => {
     setError(null);
     try {
       await login(payload);
-      navigate('/', { replace: true });
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to authenticate.');
     } finally {

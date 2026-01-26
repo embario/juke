@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '@shared/api/apiClient';
+import { useAuth } from '../hooks/useAuth';
 
 type VerificationState = 'loading' | 'success' | 'error';
 
 export default function VerifyUserRoute() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { isAuthenticated, authenticateWithToken } = useAuth();
   const [state, setState] = useState<VerificationState>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -23,14 +25,23 @@ export default function VerifyUserRoute() {
       }
 
       try {
-        await apiClient.post('/api/v1/auth/accounts/verify-registration/', {
-          user_id: userId,
-          timestamp: timestamp,
-          signature: signature,
-        });
+        const response = await apiClient.post<{ token?: string; username?: string }>(
+          '/api/v1/auth/accounts/verify-registration/',
+          {
+            user_id: userId,
+            timestamp: timestamp,
+            signature: signature,
+          },
+        );
+        if (response?.token && response?.username) {
+          authenticateWithToken(response.token, response.username);
+        }
         setState('success');
-        // Redirect to login after 3 seconds
-        setTimeout(() => navigate('/login'), 3000);
+        const redirectTo = '/onboarding';
+        const signedIn = response?.token && response?.username ? true : isAuthenticated;
+        const redirectTarget = signedIn ? redirectTo : '/login';
+        const state = signedIn ? undefined : { redirectTo };
+        setTimeout(() => navigate(redirectTarget, { replace: true, state }), 1500);
       } catch (err) {
         setState('error');
         setErrorMessage(
@@ -40,7 +51,7 @@ export default function VerifyUserRoute() {
     };
 
     verifyUser();
-  }, [searchParams, navigate]);
+  }, [searchParams, navigate, isAuthenticated, authenticateWithToken]);
 
   return (
     <div className="card" style={{ maxWidth: 480, margin: '80px auto', textAlign: 'center' }}>
@@ -57,11 +68,17 @@ export default function VerifyUserRoute() {
             <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
             <h2>Account Verified!</h2>
             <p className="muted">
-              Your account has been verified. Redirecting you to login...
+              Your account has been verified. Redirecting you to onboarding...
             </p>
-            <a href="/login" className="btn" data-variant="primary" style={{ marginTop: 16 }}>
-              Go to Login
-            </a>
+            {isAuthenticated ? (
+              <a href="/onboarding" className="btn" data-variant="primary" style={{ marginTop: 16 }}>
+                Go to Onboarding
+              </a>
+            ) : (
+              <a href="/login" className="btn" data-variant="primary" style={{ marginTop: 16 }}>
+                Sign in to continue
+              </a>
+            )}
           </>
         )}
 

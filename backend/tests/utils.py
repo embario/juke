@@ -5,7 +5,7 @@ import random
 from catalog import models
 
 REGISTRATION_VERIFY_RE = re.compile(
-    "https://.*user_id=(?P<user_id>[^&amp;]*).*timestamp=(?P<timestamp>[^&amp]*).*signature=(?P<signature>.*)"
+    "https?://.*user_id=(?P<user_id>[^&amp;]*).*timestamp=(?P<timestamp>[^&amp]*).*signature=(?P<signature>.*)"
 )
 
 

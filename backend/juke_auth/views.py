@@ -5,6 +5,7 @@ from django.contrib.auth import login, logout
 from django.http import HttpResponseRedirect, JsonResponse
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils.module_loading import import_string
 
 from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
@@ -15,6 +16,10 @@ from rest_framework.authtoken.serializers import AuthTokenSerializer
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_registration.api.views.register import RegisterView
+try:
+    from rest_registration.api.views import VerifyRegistrationView
+except ImportError:  # pragma: no cover - fallback for older rest_registration layouts
+    from rest_registration.api.views.register import VerifyRegistrationView
 
 from social_django.utils import load_backend, load_strategy
 from social_core.exceptions import AuthConnectionError
@@ -61,6 +66,34 @@ def spotify_complete(request, *args, **kwargs):
             detail='Spotify authentication failed. Please try again.',
             status_code=status.HTTP_400_BAD_REQUEST,
         )
+
+
+def _send_register_verification_email(user, request=None):
+    sender_path = settings.REST_REGISTRATION.get(
+        'REGISTER_VERIFICATION_EMAIL_SENDER',
+        'rest_registration.verification_notifications.send_register_verification_email_notification',
+    )
+    sender = import_string(sender_path)
+    attempts = [
+        {'user': user, 'request': request, 'user_address': user.email},
+        {'user': user, 'request': request},
+        {'user': user, 'user_address': user.email},
+        {'user': user, 'email': user.email},
+        {'user': user},
+    ]
+    for kwargs in attempts:
+        try:
+            sender(**kwargs)
+            return
+        except TypeError:
+            continue
+    sender(user)
+
+
+def _login_user(request, user):
+    auth_backends = getattr(settings, 'AUTHENTICATION_BACKENDS', []) or []
+    backend = auth_backends[0] if auth_backends else 'django.contrib.auth.backends.ModelBackend'
+    login(request, user, backend=backend)
 
 
 class JukeUserViewSet(viewsets.ModelViewSet):
@@ -180,7 +213,7 @@ class TokenLoginView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
         token, _ = Token.objects.get_or_create(user=user)
-        login(request, user)
+        _login_user(request, user)
         return Response({'token': token.key}, status=status.HTTP_200_OK)
 
 
@@ -232,3 +265,73 @@ class JukeRegisterView(RegisterView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         return super().post(request, *args, **kwargs)
+
+
+class ResendRegistrationVerificationView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        if getattr(settings, 'DISABLE_REGISTRATION', False):
+            return Response(
+                {'detail': 'Registration is temporarily disabled. Please try again later.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        email = (request.data.get('email') or '').strip()
+        username = (request.data.get('username') or '').strip()
+        if not email and not username:
+            return Response(
+                {'detail': 'Email or username is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = None
+        if email:
+            user = JukeUser.objects.filter(email__iexact=email).first()
+        if not user and username:
+            user = JukeUser.objects.filter(username__iexact=username).first()
+
+        if not user:
+            return Response(
+                {'detail': 'No account found for that email or username.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if user.is_active:
+            return Response(
+                {'detail': 'Account is already verified. Please sign in.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        _send_register_verification_email(user, request=request)
+
+        return Response(
+            {'detail': 'Verification email sent. Please check your inbox.'},
+            status=status.HTTP_200_OK,
+        )
+
+
+class JukeVerifyRegistrationView(VerifyRegistrationView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code != status.HTTP_200_OK:
+            return response
+
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return response
+
+        user = JukeUser.objects.filter(pk=user_id).first()
+        if not user:
+            return response
+
+        token, _ = Token.objects.get_or_create(user=user)
+        _login_user(request, user)
+        return Response(
+            {'detail': 'Account verified.', 'token': token.key, 'username': user.username},
+            status=status.HTTP_200_OK,
+        )

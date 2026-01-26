@@ -19,5 +19,6 @@ export type AuthContextValue = AuthState & {
   isAuthenticated: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
+  resendRegistrationVerification: (email: string) => Promise<void>;
   logout: () => void;
 };

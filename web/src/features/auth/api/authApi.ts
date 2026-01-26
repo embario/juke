@@ -21,3 +21,11 @@ export const registerRequest = async (payload: RegisterPayload) => {
     password_confirm: payload.passwordConfirm,
   });
 };
+
+export const resendRegistrationVerificationRequest = async (email: string) => {
+  return apiClient.post('/api/v1/auth/accounts/resend-registration/', { email });
+};
+
+export const validateTokenRequest = async (token: string) => {
+  return apiClient.get('/api/v1/music-profiles/me/', { token });
+};

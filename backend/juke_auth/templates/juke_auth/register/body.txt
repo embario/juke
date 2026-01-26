@@ -1,5 +1,6 @@
+{% autoescape off %}
 Welcome to Juke! Let's get listening.
 
-Please verify your account by visiting: {{ verification_url }}
-
-If your email client renders HTML, you can also click <a href="{{ verification_url }}">here</a> to verify instantly.
+Please verify your account by visiting:
+{{ verification_url }}
+{% endautoescape %}

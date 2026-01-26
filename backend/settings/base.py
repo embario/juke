@@ -40,7 +40,7 @@ def _required_env(name: str) -> str:
 DEBUG = RUNTIME_ENV == "development"
 
 BACKEND_URL = _required_env("BACKEND_URL").rstrip('/')
-FRONTEND_URL = _required_env("FRONTEND_URL")
+FRONTEND_URL = _required_env("FRONTEND_URL").rstrip('/')
 LOGIN_REDIRECT_URL = FRONTEND_URL
 LOGOUT_REDIRECT_URL = FRONTEND_URL
 SOCIAL_AUTH_LOGIN_REDIRECT_URL = FRONTEND_URL
@@ -75,7 +75,7 @@ EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
 # Use console email backend in development to avoid SMTP auth issues
 # Emails will be printed to the terminal instead of being sent
 if RUNTIME_ENV == "development":
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    EMAIL_BACKEND = 'juke_auth.email_backends.DecodingConsoleEmailBackend'
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
@@ -88,14 +88,22 @@ def _env_flag(name, default=False):
 
 DISABLE_REGISTRATION = _env_flag('DISABLE_REGISTRATION', False)
 
+_frontend_base = f"{FRONTEND_URL}/"
+
 REST_REGISTRATION = {
     'REGISTER_VERIFICATION_ENABLED': not DISABLE_REGISTRATION,
     'REGISTER_EMAIL_VERIFICATION_ENABLED': not DISABLE_REGISTRATION,
     'RESET_PASSWORD_VERIFICATION_ENABLED': not DISABLE_REGISTRATION,
 
-    'REGISTER_VERIFICATION_URL': os.environ.get('REGISTER_VERIFICATION_URL', 'https://frontend-host/verify-user/'),
-    'RESET_PASSWORD_VERIFICATION_URL': os.environ.get('RESET_PASSWORD_VERIFICATION_URL', 'https://frontend-host/reset-password/'),
-    'REGISTER_EMAIL_VERIFICATION_URL': os.environ.get('REGISTER_EMAIL_VERIFICATION_URL', 'https://frontend-host/verify-email/'),
+    'REGISTER_VERIFICATION_URL': os.environ.get(
+        'REGISTER_VERIFICATION_URL', urljoin(_frontend_base, 'verify-user/')
+    ),
+    'RESET_PASSWORD_VERIFICATION_URL': os.environ.get(
+        'RESET_PASSWORD_VERIFICATION_URL', urljoin(_frontend_base, 'reset-password/')
+    ),
+    'REGISTER_EMAIL_VERIFICATION_URL': os.environ.get(
+        'REGISTER_EMAIL_VERIFICATION_URL', urljoin(_frontend_base, 'verify-email/')
+    ),
 
     'VERIFICATION_FROM_EMAIL': os.environ.get("EMAIL_HOST_USER"),
 

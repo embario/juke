@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { loginRequest, logoutRequest, registerRequest } from '../api/authApi';
+import { loginRequest, logoutRequest, registerRequest, resendRegistrationVerificationRequest, validateTokenRequest } from '../api/authApi';
 import type { AuthContextValue, AuthState, LoginPayload, RegisterPayload } from '../types';
+import { ApiError } from '@shared/api/apiClient';
 
 const STORAGE_KEY = 'juke-auth-state';
 
@@ -45,13 +46,48 @@ export const AuthProvider = ({ children }: Props) => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
+  useEffect(() => {
+    if (!state.token) {
+      return undefined;
+    }
+
+    let active = true;
+
+    const validate = async () => {
+      try {
+        await validateTokenRequest(state.token);
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          setState(defaultState);
+        }
+      }
+    };
+
+    void validate();
+
+    return () => {
+      active = false;
+    };
+  }, [state.token]);
+
   const login = useCallback(async (payload: LoginPayload) => {
     const response = await loginRequest(payload);
     setState({ token: response.token, username: payload.username });
   }, []);
 
+  const authenticateWithToken = useCallback((token: string, username: string) => {
+    setState({ token, username });
+  }, []);
+
   const register = useCallback(async (payload: RegisterPayload) => {
     await registerRequest(payload);
+  }, []);
+
+  const resendRegistrationVerification = useCallback(async (email: string) => {
+    await resendRegistrationVerificationRequest(email);
   }, []);
 
   const logout = useCallback(() => {
@@ -71,9 +107,11 @@ export const AuthProvider = ({ children }: Props) => {
     ...state,
     login,
     register,
+    resendRegistrationVerification,
     logout,
+    authenticateWithToken,
     isAuthenticated: Boolean(state.token),
-  }), [login, logout, register, state]);
+  }), [login, logout, register, resendRegistrationVerification, authenticateWithToken, state]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

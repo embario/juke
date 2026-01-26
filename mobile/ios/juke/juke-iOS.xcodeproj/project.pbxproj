@@ -46,6 +46,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		03D584A52F25636A00BCC68D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		03DBEAD727F2326F0032F689 /* juke-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "juke-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		03DBEADA27F2326F0032F689 /* juke_iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = juke_iOSApp.swift; sourceTree = "<group>"; };
 		03DBEADC27F2326F0032F689 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -118,6 +119,7 @@
 		03DBEAD927F2326F0032F689 /* juke-iOS */ = {
 			isa = PBXGroup;
 			children = (
+				03D584A52F25636A00BCC68D /* Info.plist */,
 				03DBEADA27F2326F0032F689 /* juke_iOSApp.swift */,
 				03DBEADC27F2326F0032F689 /* ContentView.swift */,
 				03DBEADE27F232700032F689 /* Assets.xcassets */,
@@ -131,6 +133,31 @@
 				04A0F0B22A8A7F2D00000001 /* DesignSystem */,
 			);
 			path = "juke-iOS";
+			sourceTree = "<group>";
+		};
+		03DBEAE027F232700032F689 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				03DBEAE127F232700032F689 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		03DBEAEA27F232700032F689 /* juke-iOSTests */ = {
+			isa = PBXGroup;
+			children = (
+				03DBEAEB27F232700032F689 /* juke_iOSTests.swift */,
+			);
+			path = "juke-iOSTests";
+			sourceTree = "<group>";
+		};
+		03DBEAF427F232700032F689 /* juke-iOSUITests */ = {
+			isa = PBXGroup;
+			children = (
+				03DBEAF527F232700032F689 /* juke_iOSUITests.swift */,
+				03DBEAF727F232700032F689 /* juke_iOSUITestsLaunchTests.swift */,
+			);
+			path = "juke-iOSUITests";
 			sourceTree = "<group>";
 		};
 		04A0F0A12A8A7F2D00000001 /* Networking */ = {
@@ -176,31 +203,6 @@
 				04A0F0B12A8A7F2D00000001 /* JukeDesignSystem.swift */,
 			);
 			path = DesignSystem;
-			sourceTree = "<group>";
-		};
-		03DBEAE027F232700032F689 /* Preview Content */ = {
-			isa = PBXGroup;
-			children = (
-				03DBEAE127F232700032F689 /* Preview Assets.xcassets */,
-			);
-			path = "Preview Content";
-			sourceTree = "<group>";
-		};
-		03DBEAEA27F232700032F689 /* juke-iOSTests */ = {
-			isa = PBXGroup;
-			children = (
-				03DBEAEB27F232700032F689 /* juke_iOSTests.swift */,
-			);
-			path = "juke-iOSTests";
-			sourceTree = "<group>";
-		};
-		03DBEAF427F232700032F689 /* juke-iOSUITests */ = {
-			isa = PBXGroup;
-			children = (
-				03DBEAF527F232700032F689 /* juke_iOSUITests.swift */,
-				03DBEAF727F232700032F689 /* juke_iOSUITestsLaunchTests.swift */,
-			);
-			path = "juke-iOSUITests";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -510,6 +512,7 @@
 				DISABLE_REGISTRATION = NO;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "juke-iOS/Info.plist";
 				INFOPLIST_KEY_BACKEND_URL = "$(BACKEND_URL)";
 				INFOPLIST_KEY_DISABLE_REGISTRATION = "$(DISABLE_REGISTRATION)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -543,6 +546,7 @@
 				DISABLE_REGISTRATION = NO;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "juke-iOS/Info.plist";
 				INFOPLIST_KEY_BACKEND_URL = "$(BACKEND_URL)";
 				INFOPLIST_KEY_DISABLE_REGISTRATION = "$(DISABLE_REGISTRATION)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

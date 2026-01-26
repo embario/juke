@@ -1,31 +1,13 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import JukeGlobe from '../components/JukeGlobe';
 import GlobeOverlayNav from '../components/GlobeOverlayNav';
 import UserDetailModal from '../components/UserDetailModal';
 import { useGlobePoints } from '../hooks/useGlobePoints';
 import { useUserDetail } from '../hooks/useUserDetail';
-import { generateMockPoints } from '../mockData';
 import { GlobePoint } from '../types';
 import { useAuth } from '../../auth/hooks/useAuth';
 import type { GlobeMethods } from 'react-globe.gl';
-
-// Use mock data when API is unavailable (dev without backend)
-const USE_MOCK = true;
-const MOCK_TOTAL = 50000;
-const MAX_VISIBLE_POINTS = 8000;
-
-/**
- * Client-side LOD: given camera altitude, return a clout threshold.
- * Lower altitude (more zoomed in) → lower threshold → more points visible.
- */
-function getCloutThreshold(altitude: number): number {
-  if (altitude > 2.0) return 0.5;      // Globe view: only top users
-  if (altitude > 1.2) return 0.25;     // Continent level
-  if (altitude > 0.7) return 0.1;      // Country level
-  if (altitude > 0.4) return 0.03;     // Region level
-  return 0.0;                           // City level: show everyone
-}
 
 /**
  * Approximate bounding box visible from camera POV at given altitude.
@@ -41,43 +23,17 @@ function getBoundingBox(lat: number, lng: number, altitude: number) {
   };
 }
 
-/**
- * Filter points by bounding box and clout threshold.
- */
-function filterPoints(
-  allPoints: GlobePoint[],
-  lat: number,
-  lng: number,
-  altitude: number,
-): GlobePoint[] {
-  const threshold = getCloutThreshold(altitude);
-  const bbox = getBoundingBox(lat, lng, altitude);
-
-  // At very high altitude, skip bbox (entire globe is visible)
-  const useBbox = altitude < 2.5;
-
-  const filtered: GlobePoint[] = [];
-  for (const p of allPoints) {
-    if (p.clout < threshold) continue;
-    if (useBbox) {
-      if (p.lat < bbox.minLat || p.lat > bbox.maxLat) continue;
-      if (p.lng < bbox.minLng || p.lng > bbox.maxLng) continue;
-    }
-    filtered.push(p);
-    if (filtered.length >= MAX_VISIBLE_POINTS) break;
-  }
-  return filtered;
-}
 
 // Welcome state from onboarding
 type WelcomeState = {
   welcomeUser?: boolean;
   focusLat?: number;
   focusLng?: number;
+  focusUsername?: string;
 };
 
 export default function JukeWorldRoute() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, username, token } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -85,26 +41,9 @@ export default function JukeWorldRoute() {
   const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
   const welcomeHandled = useRef(false);
+  const welcomeSelectionDone = useRef(false);
+  const welcomeTargetRef = useRef<{ username?: string; lat?: number; lng?: number } | null>(null);
   const globeRef = useRef<GlobeMethods | null>(null);
-
-  // Full dataset (sorted by clout DESC for efficient LOD filtering)
-  const allMockPoints = useMemo(() => {
-    if (!USE_MOCK) return [];
-    const pts = generateMockPoints(MOCK_TOTAL);
-    pts.sort((a, b) => b.clout - a.clout);
-    return pts;
-  }, []);
-
-  const initialVisiblePoints = useMemo(() => {
-    if (!USE_MOCK || allMockPoints.length === 0) return [];
-    return filterPoints(allMockPoints, 20, 0, 2.5);
-  }, [allMockPoints]);
-
-  const [visiblePoints, setVisiblePoints] = useState<GlobePoint[]>(initialVisiblePoints);
-
-  // Auth token from localStorage (matches existing auth pattern)
-  const token = useMemo(() => localStorage.getItem('token'), []);
-
   const { points: apiPoints, loadPoints } = useGlobePoints(token);
   const { userDetail, loading: userLoading, loadUser, clearUser } = useUserDetail(token);
 
@@ -121,9 +60,8 @@ export default function JukeWorldRoute() {
     }
   }, [isAuthenticated, navigate]);
 
-  // Initial load: show high-clout global view
   useEffect(() => {
-    if (!USE_MOCK && !initialLoadDone.current) {
+    if (!initialLoadDone.current) {
       initialLoadDone.current = true;
       loadPoints({ min_lat: -90, max_lat: 90, min_lng: -180, max_lng: 180, zoom: 1 });
     }
@@ -134,6 +72,13 @@ export default function JukeWorldRoute() {
     const state = location.state as WelcomeState | null;
     if (state?.welcomeUser && !welcomeHandled.current) {
       welcomeHandled.current = true;
+      if (state.focusLat != null && state.focusLng != null) {
+        welcomeTargetRef.current = {
+          username: state.focusUsername || username || undefined,
+          lat: state.focusLat,
+          lng: state.focusLng,
+        };
+      }
 
       const showTimer = setTimeout(() => {
         setWelcomeMessage("Welcome to Juke World! You're now on the map.");
@@ -145,10 +90,22 @@ export default function JukeWorldRoute() {
         // Delay slightly to let globe initialize
         setTimeout(() => {
           globeRef.current?.pointOfView(
-            { lat: state.focusLat!, lng: state.focusLng!, altitude: 0.5 },
-            2000 // 2 second animation
+            { lat: state.focusLat!, lng: state.focusLng!, altitude: 0.38 },
+            1400
           );
-        }, 500);
+        }, 200);
+      }
+
+      if (state.focusLat != null && state.focusLng != null) {
+        const bbox = getBoundingBox(state.focusLat, state.focusLng, 0.38);
+        loadPoints({
+          min_lat: bbox.minLat,
+          max_lat: bbox.maxLat,
+          min_lng: bbox.minLng,
+          max_lng: bbox.maxLng,
+          zoom: 12,
+          limit: 5000,
+        });
       }
 
       // Clear location state to prevent re-triggering
@@ -159,39 +116,83 @@ export default function JukeWorldRoute() {
         clearTimeout(hideTimer);
       };
     }
-  }, [location.state]);
+  }, [location.state, username, loadPoints]);
+
+  useEffect(() => {
+    const target = welcomeTargetRef.current;
+    if (!target || welcomeSelectionDone.current) {
+      return;
+    }
+    if (!target.username) {
+      return;
+    }
+
+    const matchedPoint = apiPoints.find((point) => point.username === target.username);
+
+    if (matchedPoint) {
+      welcomeSelectionDone.current = true;
+      const timer = setTimeout(() => {
+        setSelectedPoint(matchedPoint);
+        if (globeRef.current) {
+          globeRef.current.pointOfView(
+            { lat: matchedPoint.lat, lng: matchedPoint.lng, altitude: 0.38 },
+            1200,
+          );
+        }
+        loadUser(target.username);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+
+    if (target.lat != null && target.lng != null) {
+      const fallbackPoint = {
+        id: -1,
+        username: target.username,
+        lat: target.lat,
+        lng: target.lng,
+        clout: 0.2,
+        top_genre: 'other',
+        display_name: target.username,
+      };
+      welcomeSelectionDone.current = true;
+      const timer = setTimeout(() => {
+        setSelectedPoint(fallbackPoint);
+        if (globeRef.current) {
+          globeRef.current.pointOfView(
+            { lat: fallbackPoint.lat, lng: fallbackPoint.lng, altitude: 0.38 },
+            1200,
+          );
+        }
+        loadUser(target.username);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [apiPoints, loadUser]);
 
   // Camera change handler — triggers LOD re-filter
   const handleCameraChange = useCallback(
     (pov: { lat: number; lng: number; altitude: number }) => {
-      if (USE_MOCK) {
-        const filtered = filterPoints(allMockPoints, pov.lat, pov.lng, pov.altitude);
-        setVisiblePoints(filtered);
-      } else {
-        const zoom = Math.max(1, Math.min(20, Math.round(20 - pov.altitude * 5)));
-        const latSpan = Math.min(180, pov.altitude * 40);
-        const lngSpan = Math.min(360, pov.altitude * 60);
-        loadPoints({
-          min_lat: Math.max(-90, pov.lat - latSpan / 2),
-          max_lat: Math.min(90, pov.lat + latSpan / 2),
-          min_lng: Math.max(-180, pov.lng - lngSpan / 2),
-          max_lng: Math.min(180, pov.lng + lngSpan / 2),
-          zoom,
-        });
-      }
+      const zoom = Math.max(1, Math.min(20, Math.round(20 - pov.altitude * 5)));
+      const latSpan = Math.min(180, pov.altitude * 40);
+      const lngSpan = Math.min(360, pov.altitude * 60);
+      loadPoints({
+        min_lat: Math.max(-90, pov.lat - latSpan / 2),
+        max_lat: Math.min(90, pov.lat + latSpan / 2),
+        min_lng: Math.max(-180, pov.lng - lngSpan / 2),
+        max_lng: Math.min(180, pov.lng + lngSpan / 2),
+        zoom,
+      });
     },
-    [allMockPoints, loadPoints],
+    [loadPoints],
   );
 
-  const points = USE_MOCK ? visiblePoints : apiPoints;
+  const points = apiPoints;
 
   // Handle point click
   const handlePointClick = useCallback(
     (point: GlobePoint) => {
       setSelectedPoint(point);
-      if (!USE_MOCK) {
-        loadUser(point.username);
-      }
+      loadUser(point.username);
     },
     [loadUser],
   );
@@ -201,29 +202,7 @@ export default function JukeWorldRoute() {
     clearUser();
   }, [clearUser]);
 
-  // Build mock user detail from the selected point
-  const mockUserDetail = useMemo(() => {
-    if (!selectedPoint || !USE_MOCK) return null;
-    return {
-      id: selectedPoint.id,
-      username: selectedPoint.username,
-      name: null,
-      display_name: selectedPoint.display_name,
-      tagline: `${selectedPoint.top_genre.charAt(0).toUpperCase() + selectedPoint.top_genre.slice(1)} enthusiast`,
-      bio: '',
-      location: `${selectedPoint.lat.toFixed(2)}, ${selectedPoint.lng.toFixed(2)}`,
-      avatar_url: '',
-      favorite_genres: [selectedPoint.top_genre, 'rock', 'jazz'],
-      favorite_artists: ['Artist One', 'Artist Two', 'Artist Three'],
-      favorite_albums: [],
-      favorite_tracks: [],
-      created_at: '',
-      modified_at: '',
-      is_owner: false,
-    };
-  }, [selectedPoint]);
-
-  const displayUser = USE_MOCK ? mockUserDetail : userDetail;
+  const displayUser = userDetail;
 
   return (
     <div
@@ -241,6 +220,7 @@ export default function JukeWorldRoute() {
           points={points}
           width={dimensions.width}
           height={dimensions.height}
+          globeRef={globeRef}
           onPointClick={handlePointClick}
           onCameraChange={handleCameraChange}
         />
@@ -331,7 +311,7 @@ export default function JukeWorldRoute() {
           {points.length.toLocaleString()} users visible
         </span>
         <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-          / {USE_MOCK ? MOCK_TOTAL.toLocaleString() : '—'} total
+          / — total
         </span>
       </div>
 

@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../hooks/useAuth';
 import { useOnboarding } from '../context/OnboardingProvider';
 import { saveOnboardingProfile, getSpotifyOAuthUrl } from '../api/onboardingApi';
 
@@ -16,6 +17,7 @@ type Props = {
 
 export default function ConnectStep({ token }: Props) {
   const navigate = useNavigate();
+  const { username } = useAuth();
   const { state, dispatch, clearDraft, currentStepIndex, totalSteps } = useOnboarding();
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,13 +41,15 @@ export default function ConnectStep({ token }: Props) {
         window.location.href = getSpotifyOAuthUrl();
       } else {
         // Navigate to Juke World with welcome state
-        navigate('/world', {
-          state: {
-            welcomeUser: true,
-            focusLat: data.location?.lat,
-            focusLng: data.location?.lng,
-          },
-        });
+        const focusState = data.location
+          ? {
+              welcomeUser: true,
+              focusLat: data.location.lat,
+              focusLng: data.location.lng,
+              focusUsername: username ?? undefined,
+            }
+          : { welcomeUser: true };
+        navigate('/world', { state: focusState });
       }
     } catch {
       setError('Failed to save your profile. Please try again.');

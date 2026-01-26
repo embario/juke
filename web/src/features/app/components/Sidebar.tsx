@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/hooks/useAuth';
 import SidebarSearch from './SidebarSearch';
 
@@ -8,7 +8,8 @@ type Props = {
 };
 
 const Sidebar = ({ isOpen, onClose }: Props) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'sidebar__link sidebar__link--active' : 'sidebar__link';
@@ -17,6 +18,12 @@ const Sidebar = ({ isOpen, onClose }: Props) => {
     if (typeof window !== 'undefined' && window.innerWidth <= 960) {
       onClose();
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    handleNavClick();
+    navigate('/login');
   };
 
   return (
@@ -39,7 +46,7 @@ const Sidebar = ({ isOpen, onClose }: Props) => {
         <NavLink to="/world" className={linkClass} onClick={handleNavClick}>
           Juke World
         </NavLink>
-        {!isAuthenticated && (
+        {!isAuthenticated ? (
           <>
             <NavLink to="/login" className={linkClass} onClick={handleNavClick}>
               Sign in
@@ -48,6 +55,10 @@ const Sidebar = ({ isOpen, onClose }: Props) => {
               Register
             </NavLink>
           </>
+        ) : (
+          <button type="button" className="sidebar__link sidebar__link--danger" onClick={handleLogout}>
+            Sign out
+          </button>
         )}
       </nav>
       <p className="sidebar__footnote">Frontend build {new Date().getFullYear()}</p>

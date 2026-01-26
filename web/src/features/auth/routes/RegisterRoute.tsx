@@ -8,11 +8,14 @@ import { formatFieldErrors } from '@shared/utils/errorFormatters';
 import StatusBanner from '@uikit/components/StatusBanner';
 
 const RegisterRoute = () => {
-  const { register } = useAuth();
+  const { register, resendRegistrationVerification } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const registrationDisabled = (() => {
     const value = import.meta.env.DISABLE_REGISTRATION ?? '';
     return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
@@ -26,6 +29,8 @@ const RegisterRoute = () => {
     setIsSubmitting(true);
     setError(null);
     setSuccess(null);
+    setResendMessage(null);
+    setResendError(null);
     try {
       await register(payload);
       setSuccess('Registration submitted! Verify your inbox before signing in.');
@@ -41,6 +46,30 @@ const RegisterRoute = () => {
       setIsSubmitting(false);
     }
   };
+
+  const handleResendVerification = async (email: string) => {
+    if (!email) {
+      setResendError('Enter your email to resend verification.');
+      return;
+    }
+    setIsResending(true);
+    setResendMessage(null);
+    setResendError(null);
+    try {
+      await resendRegistrationVerification(email);
+      setResendMessage('Verification email sent. Please check your inbox.');
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setResendError(err.message ?? 'Failed to resend verification email.');
+      } else {
+        setResendError(err instanceof Error ? err.message : 'Failed to resend verification email.');
+      }
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const showResendAction = Boolean(error && /already exists|exists/i.test(error));
 
   useEffect(() => {
     document.body.classList.add('no-scroll');
@@ -63,10 +92,15 @@ const RegisterRoute = () => {
       ) : (
         <RegisterForm
           onSubmit={handleSubmit}
+          onResendVerification={handleResendVerification}
           isSubmitting={isSubmitting}
           isDisabled={registrationDisabled}
+          isResending={isResending}
+          showResendAction={showResendAction}
           serverError={error}
           successMessage={success}
+          resendMessage={resendMessage}
+          resendError={resendError}
         />
       )}
     </section>

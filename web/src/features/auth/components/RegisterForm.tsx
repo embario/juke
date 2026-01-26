@@ -6,20 +6,30 @@ import type { RegisterPayload } from '../types';
 
 type Props = {
   onSubmit: (payload: RegisterPayload) => Promise<void> | void;
+  onResendVerification?: (email: string) => Promise<void> | void;
   isSubmitting?: boolean;
   isDisabled?: boolean;
+  isResending?: boolean;
+  showResendAction?: boolean;
   serverError?: string | null;
   successMessage?: string | null;
+  resendMessage?: string | null;
+  resendError?: string | null;
 };
 
 type FormErrors = Partial<Record<keyof RegisterPayload, string>>;
 
 const RegisterForm = ({
   onSubmit,
+  onResendVerification,
   isSubmitting = false,
   isDisabled = false,
+  isResending = false,
+  showResendAction = false,
   serverError = null,
   successMessage = null,
+  resendMessage = null,
+  resendError = null,
 }: Props) => {
   const [form, setForm] = useState<RegisterPayload>({
     username: '',
@@ -102,7 +112,19 @@ const RegisterForm = ({
           onChange={(event) => setForm((prev) => ({ ...prev, passwordConfirm: event.target.value }))}
         />
         <StatusBanner variant="success" message={successMessage} />
+        <StatusBanner variant="success" message={resendMessage} />
         <StatusBanner variant="error" message={serverError} />
+        <StatusBanner variant="error" message={resendError} />
+        {showResendAction && onResendVerification ? (
+          <Button
+            type="button"
+            variant="link"
+            disabled={isResending || isDisabled || !form.email}
+            onClick={() => onResendVerification(form.email)}
+          >
+            {isResending ? 'Resending…' : 'Resend verification email'}
+          </Button>
+        ) : null}
         <Button type="submit" disabled={isSubmitting || isDisabled} data-variant="primary">
           {isDisabled ? 'Registration disabled' : isSubmitting ? 'Submitting…' : 'Create account'}
         </Button>
