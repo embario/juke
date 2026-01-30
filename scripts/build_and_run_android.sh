@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ANDROID_ROOT="${REPO_ROOT}/mobile/android"
+ENV_FILE="${ENV_FILE:-${REPO_ROOT}/.env}"
 source "${SCRIPT_DIR}/load_env.sh"
 ANDROID_PROJECT_NAME=""
 ANDROID_APP_DIR=""
@@ -29,6 +30,32 @@ AVDMANAGER=""
 EMULATOR=""
 ADB=""
 EMULATOR_GPU_MODE="${EMULATOR_GPU_MODE:-host}"
+TRANSLATE_ANDROID_HOSTS="${TRANSLATE_ANDROID_HOSTS:-true}"
+
+translate_android_host() {
+    local url="$1"
+    if [[ -z "${url}" ]]; then
+        echo "${url}"
+        return 0
+    fi
+    echo "${url}" | sed -E 's#(https?://)(localhost|127\\.0\\.0\\.1)#\\110.0.2.2#g'
+}
+
+apply_android_env_overrides() {
+    if [[ "${TRANSLATE_ANDROID_HOSTS}" != "true" ]]; then
+        return 0
+    fi
+    if [[ -n "${BACKEND_URL:-}" ]]; then
+        BACKEND_URL="$(translate_android_host "${BACKEND_URL}")"
+        export BACKEND_URL
+    fi
+    if [[ -n "${FRONTEND_URL:-}" ]]; then
+        FRONTEND_URL="$(translate_android_host "${FRONTEND_URL}")"
+        export FRONTEND_URL
+    fi
+}
+
+apply_android_env_overrides
 
 usage() {
     cat <<EOF

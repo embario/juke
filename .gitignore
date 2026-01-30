@@ -32,7 +32,7 @@ backend/static/media/artists/*.png
 backend/staticfiles/
 
 # Database
-data/
+/data/
 
 # C extensions
 *.so
