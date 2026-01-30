@@ -5,6 +5,7 @@ from rest_framework.response import Response
 
 from catalog import serializers, controller
 from catalog.services.playback import PlaybackService
+from catalog.services.featured_genres import get_featured_genres
 from catalog.models import Genre, Artist, Album, Track
 from catalog.tasks import sync_spotify_genres_task
 
@@ -32,6 +33,11 @@ class GenreViewSet(MusicResourceViewSet):
     queryset = Genre.objects.all()
     serializer_class = serializers.GenreSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=['get'])
+    def featured(self, request):
+        payload = get_featured_genres()
+        return Response(payload)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAdminUser])
     def refresh(self, request):

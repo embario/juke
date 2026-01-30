@@ -8,6 +8,13 @@ struct RegisterResponse: Decodable {
     let detail: String?
 }
 
+struct VerifyResponse: Decodable {
+    let token: String?
+    let username: String?
+}
+
+struct EmptyResponse: Decodable {}
+
 struct LoginRequest: Encodable {
     let username: String
     let password: String
@@ -53,6 +60,49 @@ final class AuthService {
         let body = try encoder.encode(payload)
         return try await client.send(
             "/api/v1/auth/accounts/register/",
+            method: .post,
+            body: body
+        )
+    }
+
+    func logout(token: String) async throws {
+        // Best-effort session revocation — backend returns 204 with empty body
+        let _: EmptyResponse = try await client.send(
+            "/api/v1/auth/session/logout/",
+            method: .post,
+            token: token
+        )
+    }
+
+    func resendVerification(email: String) async throws -> RegisterResponse {
+        struct ResendRequest: Encodable {
+            let email: String
+        }
+        let payload = ResendRequest(email: email)
+        let body = try encoder.encode(payload)
+        return try await client.send(
+            "/api/v1/auth/accounts/resend-registration/",
+            method: .post,
+            body: body
+        )
+    }
+
+    func verifyRegistration(userId: String, timestamp: String, signature: String) async throws -> VerifyResponse {
+        struct VerifyRequest: Encodable {
+            let userId: String
+            let timestamp: String
+            let signature: String
+
+            enum CodingKeys: String, CodingKey {
+                case userId = "user_id"
+                case timestamp
+                case signature
+            }
+        }
+        let payload = VerifyRequest(userId: userId, timestamp: timestamp, signature: signature)
+        let body = try encoder.encode(payload)
+        return try await client.send(
+            "/api/v1/auth/accounts/verify-registration/",
             method: .post,
             body: body
         )

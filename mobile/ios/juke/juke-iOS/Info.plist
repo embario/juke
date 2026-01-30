@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>embario.juke-iOS</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>juke</string>
+			</array>
+		</dict>
+	</array>
+	<key>BACKEND_URL</key>
+	<string>http://127.0.0.1:8000</string>
+	<key>FRONTEND_URL</key>
+	<string>http://127.0.0.1:5173</string>
+	<key>CFBundleDisplayName</key>
+	<string>Juke</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>127.0.0.1</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>

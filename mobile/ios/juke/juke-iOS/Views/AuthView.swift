@@ -27,7 +27,12 @@ struct AuthView: View {
                                 accountFields
                                 securityFields
                                 JukeStatusBanner(message: viewModel.successMessage, variant: .success)
+                                JukeStatusBanner(message: viewModel.resendMessage, variant: .success)
                                 JukeStatusBanner(message: viewModel.errorMessage, variant: .error)
+                                JukeStatusBanner(message: viewModel.resendError, variant: .error)
+                                if viewModel.showResendAction {
+                                    resendButton
+                                }
                                 submitButton
                                 Text("By continuing you agree to keep the vibes immaculate.")
                                     .font(.footnote)
@@ -129,6 +134,17 @@ struct AuthView: View {
         }
     }
 
+    private var resendButton: some View {
+        Button(action: resendVerification) {
+            Text(viewModel.isResending ? "Resending…" : "Resend verification email")
+                .font(.subheadline)
+                .foregroundColor(JukePalette.accent)
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isResending || viewModel.email.trimmingCharacters(in: .whitespaces).isEmpty)
+        .opacity(viewModel.isResending || viewModel.email.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+    }
+
     private var submitButton: some View {
         Button(action: submit) {
             if viewModel.isLoading {
@@ -163,6 +179,12 @@ struct AuthView: View {
     private func submit() {
         Task {
             await viewModel.submit()
+        }
+    }
+
+    private func resendVerification() {
+        Task {
+            await viewModel.resendVerification()
         }
     }
 }

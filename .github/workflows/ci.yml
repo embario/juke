@@ -7,6 +7,33 @@ on:
     branches: [ master ]
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ios_juke: ${{ steps.filter.outputs.ios_juke }}
+      ios_tunetrivia: ${{ steps.filter.outputs.ios_tunetrivia }}
+      ios_shotclock: ${{ steps.filter.outputs.ios_shotclock }}
+      android_juke: ${{ steps.filter.outputs.android_juke }}
+      android_shotclock: ${{ steps.filter.outputs.android_shotclock }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Detect mobile changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ios_juke:
+              - 'mobile/ios/juke/**'
+            ios_tunetrivia:
+              - 'mobile/ios/tunetrivia/**'
+            ios_shotclock:
+              - 'mobile/ios/shotclock/**'
+            android_juke:
+              - 'mobile/android/juke/**'
+            android_shotclock:
+              - 'mobile/android/shotclock/**'
+
   build:
     runs-on: ubuntu-latest
     env:
@@ -49,3 +76,63 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose -f docker-compose.ci.yml down
+
+  ios_tests_juke:
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.ios_juke == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run iOS tests
+        run: bash scripts/test_mobile.sh --ios-only -p juke
+
+  ios_tests_tunetrivia:
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.ios_tunetrivia == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run iOS tests
+        run: bash scripts/test_mobile.sh --ios-only -p tunetrivia
+
+  ios_tests_shotclock:
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.ios_shotclock == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run iOS tests
+        run: bash scripts/test_mobile.sh --ios-only -p shotclock
+
+  android_tests_juke:
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.android_juke == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Run Android unit tests
+        run: bash scripts/test_mobile.sh --android-only -p juke
+
+  android_tests_shotclock:
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.android_shotclock == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Run Android unit tests
+        run: bash scripts/test_mobile.sh --android-only -p shotclock

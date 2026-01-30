@@ -34,6 +34,17 @@ docker compose up --build
 - Celery beat: `docker compose up beat`.
 - Recommender FastAPI container: `recommender-engine` service exposes `/embed` and `/recommend` (see `recommender_engine/app/main.py`).
 
+## Troubleshooting Permissions (MANDATORY)
+
+- When problems occur during testing or development, agents are authorized to inspect backend, web, and iOS/Android logs in their respective locations and Docker containers.
+- No explicit virtualenv is required; agents must use Docker containers for troubleshooting and log inspection.
+
+## Iterative Mobile Development Loop (MANDATORY)
+
+- For each change, rebuild and rerun using the platform build script (`scripts/build_and_run_ios.sh -p <project>` or `scripts/build_and_run_android.sh -p <project>`).
+- Capture the PIDs printed by the script (Android emulator PID + app PID; iOS app PID) and use them to scope log inspection.
+- Review the per-run logs saved by the scripts before checking backend/web logs in Docker containers.
+
 ## HTTP Surfaces
 
 - API URLs grouped under `settings/urls.py`:

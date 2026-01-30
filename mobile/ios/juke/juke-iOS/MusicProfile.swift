@@ -20,6 +20,7 @@ struct MusicProfile: Identifiable, Codable {
     let favoriteArtists: [String]
     let favoriteAlbums: [String]
     let favoriteTracks: [String]
+    let onboardingCompletedAt: Date?
     let createdAt: Date?
     let modifiedAt: Date?
     let isOwner: Bool
@@ -37,6 +38,7 @@ struct MusicProfile: Identifiable, Codable {
         case favoriteArtists = "favorite_artists"
         case favoriteAlbums = "favorite_albums"
         case favoriteTracks = "favorite_tracks"
+        case onboardingCompletedAt = "onboarding_completed_at"
         case createdAt = "created_at"
         case modifiedAt = "modified_at"
         case isOwner = "is_owner"
@@ -55,6 +57,7 @@ struct MusicProfile: Identifiable, Codable {
         favoriteArtists: [String],
         favoriteAlbums: [String],
         favoriteTracks: [String],
+        onboardingCompletedAt: Date?,
         createdAt: Date?,
         modifiedAt: Date?,
         isOwner: Bool
@@ -71,6 +74,7 @@ struct MusicProfile: Identifiable, Codable {
         self.favoriteArtists = favoriteArtists
         self.favoriteAlbums = favoriteAlbums
         self.favoriteTracks = favoriteTracks
+        self.onboardingCompletedAt = onboardingCompletedAt
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.isOwner = isOwner
@@ -94,6 +98,7 @@ struct MusicProfile: Identifiable, Codable {
             favoriteArtists: try container.decodeIfPresent([String].self, forKey: .favoriteArtists) ?? [],
             favoriteAlbums: try container.decodeIfPresent([String].self, forKey: .favoriteAlbums) ?? [],
             favoriteTracks: try container.decodeIfPresent([String].self, forKey: .favoriteTracks) ?? [],
+            onboardingCompletedAt: try container.decodeIfPresent(Date.self, forKey: .onboardingCompletedAt),
             createdAt: try container.decodeIfPresent(Date.self, forKey: .createdAt),
             modifiedAt: try container.decodeIfPresent(Date.self, forKey: .modifiedAt),
             isOwner: try container.decode(Bool.self, forKey: .isOwner)

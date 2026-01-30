@@ -44,12 +44,24 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
 3. **Testing**
    - Backend: `docker compose exec backend python manage.py test`
    - Frontend: `cd web && npm test`
-   - Mobile: `scripts/test_mobile.sh` (runs both iOS and Android test suites; see `scripts/test_mobile.sh --help` for options)
+   - Mobile: `scripts/test_mobile.sh -p <project>` (required: `juke`, `shotclock`, or `tunetrivia`; `--ios-only`, `--android-only`, `-s <sim>`, `-o <os>` options; defaults to iPhone 17 Pro / iOS 26.2)
 4. **Mobile config (.env)**
    - Mobile build/test scripts load `.env` via `scripts/load_env.sh`; set `BACKEND_URL` and `DISABLE_REGISTRATION` there to configure iOS + Android builds consistently.
 5. **iOS workflow**
    - When editing iOS app code, run `scripts/build_and_run_ios.sh -p <project>` after each change to verify the update in the simulator.
-4. **Environment switches**
+6. **Mobile build/run requirements (MANDATORY)**
+   - All iOS and Android app runs must use `scripts/build_and_run_ios.sh` and `scripts/build_and_run_android.sh` to ensure correct environment setup, device targeting, and log capture.
+   - When failures occur, always note the PID printed by the build script (Android emulator PID and app PID; iOS app PID) and reference it when inspecting logs.
+   - Android builds require a valid `-p <project>` argument; ask the user which project (e.g., `juke` or `shotclock`) before running.
+7. **Troubleshooting permissions (MANDATORY)**
+   - When problems occur during testing or development, agents are authorized to inspect backend, web, and iOS/Android logs in their respective locations and Docker containers.
+   - No explicit virtualenv is required; agents must use Docker containers for troubleshooting and log inspection.
+   - No explicit permission is required to read log files or use `logcat`.
+8. **Iterative mobile development loop (MANDATORY)**
+   - For each change, rebuild and rerun using the platform build script (`scripts/build_and_run_ios.sh -p <project>` or `scripts/build_and_run_android.sh -p <project>`).
+   - Capture the PIDs printed by the script (Android emulator PID + app PID; iOS app PID) and use them to scope log inspection.
+   - Review the per-run logs saved by the scripts before checking backend/web logs in Docker containers.
+9. **Environment switches**
    - `JUKE_RUNTIME_ENV` (development/staging/production) drives both Django settings (DEBUG, security toggles) and the web container entrypoint.
    - In Docker: `development` keeps the live Vite dev server, while `staging`/`production` invoke `npm run build:*`, copy the compressed assets, and hand them to NGINX (see `web/docker-entrypoint.sh`).
    - `SPOTIFY_USE_STUB_DATA=1` forces stubbed catalog data; defaults to `True` when running tests.

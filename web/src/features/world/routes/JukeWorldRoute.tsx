@@ -39,12 +39,14 @@ export default function JukeWorldRoute() {
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [selectedPoint, setSelectedPoint] = useState<GlobePoint | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null);
+  const [globeReady, setGlobeReady] = useState(false);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const initialLoadDone = useRef(false);
   const welcomeHandled = useRef(false);
   const welcomeSelectionDone = useRef(false);
   const welcomeTargetRef = useRef<{ username?: string; lat?: number; lng?: number } | null>(null);
   const globeRef = useRef<GlobeMethods | null>(null);
-  const { points: apiPoints, loadPoints } = useGlobePoints(token);
+  const { points: apiPoints, loadPoints, loading: pointsLoading } = useGlobePoints(token);
   const { userDetail, loading: userLoading, loadUser, clearUser } = useUserDetail(token);
 
   // Handle window resize
@@ -67,9 +69,33 @@ export default function JukeWorldRoute() {
     }
   }, [loadPoints]);
 
-  // Handle welcome user from onboarding
   useEffect(() => {
+    if (!pointsLoading && initialLoadDone.current) {
+      setInitialDataLoaded(true);
+    }
+  }, [pointsLoading]);
+
+  const readWelcomeState = () => {
     const state = location.state as WelcomeState | null;
+    const params = new URLSearchParams(location.search);
+    const welcomeFromQuery = params.get('welcome') === '1' || params.get('welcome') === 'true';
+    const focusLat = params.get('focusLat');
+    const focusLng = params.get('focusLng');
+    const focusUsername = params.get('focusUsername');
+    const parsedLat = focusLat ? Number(focusLat) : undefined;
+    const parsedLng = focusLng ? Number(focusLng) : undefined;
+
+    return {
+      welcomeUser: state?.welcomeUser || welcomeFromQuery,
+      focusLat: state?.focusLat ?? (Number.isFinite(parsedLat) ? parsedLat : undefined),
+      focusLng: state?.focusLng ?? (Number.isFinite(parsedLng) ? parsedLng : undefined),
+      focusUsername: state?.focusUsername ?? focusUsername ?? undefined,
+    } satisfies WelcomeState;
+  };
+
+  // Handle welcome user from onboarding (state or query params)
+  useEffect(() => {
+    const state = readWelcomeState();
     if (state?.welcomeUser && !welcomeHandled.current) {
       welcomeHandled.current = true;
       if (state.focusLat != null && state.focusLng != null) {
@@ -108,15 +134,15 @@ export default function JukeWorldRoute() {
         });
       }
 
-      // Clear location state to prevent re-triggering
-      window.history.replaceState({}, document.title);
+      // Clear location state + query params to prevent re-triggering
+      window.history.replaceState({}, document.title, window.location.pathname);
 
       return () => {
         clearTimeout(showTimer);
         clearTimeout(hideTimer);
       };
     }
-  }, [location.state, username, loadPoints]);
+  }, [location.state, location.search, username, loadPoints]);
 
   useEffect(() => {
     const target = welcomeTargetRef.current;
@@ -215,7 +241,7 @@ export default function JukeWorldRoute() {
       }}
     >
       {/* Globe */}
-      <div style={{ position: 'absolute', inset: 0 }}>
+      <div style={{ position: 'absolute', inset: 0, touchAction: 'none' }}>
         <JukeGlobe
           points={points}
           width={dimensions.width}
@@ -223,6 +249,7 @@ export default function JukeWorldRoute() {
           globeRef={globeRef}
           onPointClick={handlePointClick}
           onCameraChange={handleCameraChange}
+          onGlobeReady={() => setGlobeReady(true)}
         />
       </div>
 
@@ -314,6 +341,26 @@ export default function JukeWorldRoute() {
           / — total
         </span>
       </div>
+
+      {/* Loading veil */}
+      {!globeReady || !initialDataLoaded ? (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'radial-gradient(circle at top, rgba(5,10,30,0.9), rgba(2,2,10,0.98))',
+            zIndex: 4,
+            color: '#fff',
+            fontFamily: 'Space Grotesk, sans-serif',
+            letterSpacing: '0.3px',
+          }}
+        >
+          Loading Juke World...
+        </div>
+      ) : null}
 
       {/* Genre legend */}
       <div

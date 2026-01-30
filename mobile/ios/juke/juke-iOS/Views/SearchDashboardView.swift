@@ -11,31 +11,46 @@ struct SearchDashboardView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                JukeBackground()
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
-                        heroCard
-                        searchSurface
-                        if viewModel.isLoading {
-                            JukeCard {
-                                HStack(spacing: 12) {
-                                    JukeSpinner()
-                                    Text("Cranking up the signal…")
-                                        .foregroundColor(JukePalette.muted)
-                                    Spacer()
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    JukeBackground()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay(alignment: .top) {
+                            ScrollView(showsIndicators: false) {
+                                VStack(spacing: 24) {
+                                    heroCard
+                                    searchSurface
+                                    if viewModel.isLoading {
+                                        JukeCard {
+                                            HStack(spacing: 12) {
+                                                JukeSpinner()
+                                                Text("Cranking up the signal…")
+                                                    .foregroundColor(JukePalette.muted)
+                                                Spacer()
+                                            }
+                                        }
+                                    }
+                                    JukeStatusBanner(message: viewModel.errorMessage, variant: .error)
+                                    resultsStack
                                 }
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 32)
+                                .padding(.bottom, 64)
                             }
                         }
-                        JukeStatusBanner(message: viewModel.errorMessage, variant: .error)
-                        resultsStack
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 32)
                 }
+                PlaybackBarView(session: session)
             }
             .navigationTitle("Discover")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    NavigationLink {
+                        JukeWorldView()
+                    } label: {
+                        Label("Juke World", systemImage: "globe")
+                            .tint(JukePalette.accent)
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Log Out", action: session.logout)
                         .tint(JukePalette.accent)

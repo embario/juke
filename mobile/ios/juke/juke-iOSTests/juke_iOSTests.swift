@@ -54,7 +54,8 @@ class juke_iOSTests: XCTestCase {
     func testAPIConfigurationEnvOverridesPlist() {
         let config = APIConfiguration(
             environment: ["BACKEND_URL": "http://env.example.com"],
-            plistValue: "http://plist.example.com"
+            backendPlist: "http://plist.example.com",
+            frontendPlist: nil
         )
 
         XCTAssertEqual(config.baseURL.absoluteString, "http://env.example.com")
@@ -63,10 +64,62 @@ class juke_iOSTests: XCTestCase {
     func testAPIConfigurationPlistFallback() {
         let config = APIConfiguration(
             environment: [:],
-            plistValue: "http://plist.example.com"
+            backendPlist: "http://plist.example.com",
+            frontendPlist: nil
         )
 
         XCTAssertEqual(config.baseURL.absoluteString, "http://plist.example.com")
     }
 
+}
+
+@MainActor
+final class OnboardingStoreTests: XCTestCase {
+    private func makeDefaults() -> UserDefaults {
+        let suiteName = "juke-iOS.tests.onboarding.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
+    func testDraftPersistsPerUserKey() {
+        let defaults = makeDefaults()
+        let storeA = OnboardingStore(userKey: "user-a", defaults: defaults)
+        storeA.toggleFavoriteGenre("rock")
+
+        let storeA2 = OnboardingStore(userKey: "user-a", defaults: defaults)
+        XCTAssertEqual(storeA2.data.favoriteGenres, ["rock"])
+
+        let storeB = OnboardingStore(userKey: "user-b", defaults: defaults)
+        XCTAssertTrue(storeB.data.favoriteGenres.isEmpty)
+    }
+
+    func testMarkCompletedClearsDraft() {
+        let defaults = makeDefaults()
+        let store = OnboardingStore(userKey: "user-a", defaults: defaults)
+        store.toggleFavoriteGenre("pop")
+        store.markCompleted()
+
+        XCTAssertTrue(OnboardingStore.isCompleted(for: "user-a", defaults: defaults))
+        let refreshed = OnboardingStore(userKey: "user-a", defaults: defaults)
+        XCTAssertTrue(refreshed.data.favoriteGenres.isEmpty)
+    }
+
+    func testFavoriteGenreToggleRespectsLimit() {
+        let defaults = makeDefaults()
+        let store = OnboardingStore(userKey: "user-a", defaults: defaults)
+        store.toggleFavoriteGenre("rock")
+        store.toggleFavoriteGenre("pop")
+        store.toggleFavoriteGenre("jazz")
+        store.toggleFavoriteGenre("hiphop")
+
+        XCTAssertEqual(store.data.favoriteGenres.count, 3)
+        XCTAssertFalse(store.data.favoriteGenres.contains("hiphop"))
+    }
+
+    func testSearchCitiesIsCaseInsensitiveAndLimited() {
+        let results = searchCities("an")
+        XCTAssertTrue(results.contains(where: { $0.name == "San Francisco" }))
+        XCTAssertLessThanOrEqual(results.count, 10)
+    }
 }

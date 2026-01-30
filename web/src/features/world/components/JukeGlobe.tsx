@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useState, type MutableRefObject } from 'react';
-import Globe, { GlobeMethods } from 'react-globe.gl';
+import type { GlobeMethods } from 'react-globe.gl';
 import * as THREE from 'three';
 import { GlobePoint } from '../types';
 import { getGenreColor } from '../constants';
@@ -24,13 +24,106 @@ type Props = {
   globeRef?: MutableRefObject<GlobeMethods | null>;
   onPointClick?: (point: GlobePoint) => void;
   onCameraChange?: (pov: { lat: number; lng: number; altitude: number }) => void;
+  onGlobeReady?: () => void;
 };
 
-export default function JukeGlobe({ points, width, height, globeRef: externalRef, onPointClick, onCameraChange }: Props) {
+export default function JukeGlobe({
+  points,
+  width,
+  height,
+  globeRef: externalRef,
+  onPointClick,
+  onCameraChange,
+  onGlobeReady,
+}: Props) {
   const internalRef = useRef<GlobeMethods | null>(null);
   const globeRef = externalRef ?? internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [countries, setCountries] = useState<CountryFeature[]>([]);
+  const [webglSupported, setWebglSupported] = useState(true);
+  const [GlobeComponent, setGlobeComponent] = useState<React.ComponentType<any> | null>(null);
+
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      if (event.message?.includes('WebGL') || event.message?.includes('react-globe')) {
+        setWebglSupported(false);
+      }
+    };
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const message = String(event.reason ?? '');
+      if (message.includes('WebGL') || message.includes('react-globe') || message.includes('VERTEX')) {
+        setWebglSupported(false);
+      }
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkWebglAndLoad = async () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        const supported = !!gl;
+        setWebglSupported(supported);
+        if (!supported) return;
+
+        try {
+          const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+          renderer.getContext();
+          renderer.dispose();
+        } catch {
+          setWebglSupported(false);
+          return;
+        }
+
+        const mod = await import('react-globe.gl');
+        if (!cancelled) {
+          setGlobeComponent(() => mod.default);
+        }
+      } catch {
+        setWebglSupported(false);
+      }
+    };
+
+    checkWebglAndLoad();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!webglSupported || !GlobeComponent) {
+    return (
+      <div
+        style={{
+          width,
+          height,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#fff',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+          background: 'rgba(0,0,0,0.85)',
+          textAlign: 'center',
+          padding: 24,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>WebGL Unavailable</div>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>
+            Juke World needs WebGL to render. Try a physical device or enable GPU/WebGL in your emulator settings.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Load country boundaries for vector polygon overlay
   useEffect(() => {
@@ -63,10 +156,18 @@ export default function JukeGlobe({ points, width, height, globeRef: externalRef
     const controls = globe.controls();
     controls.autoRotate = false;
     controls.autoRotateSpeed = 0.0;
+    controls.enableZoom = true;
+    controls.enableRotate = true;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.DOLLY,
       RIGHT: THREE.MOUSE.ROTATE,
+    };
+    controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY,
     };
     controls.enablePan = false;
     globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
@@ -126,7 +227,12 @@ export default function JukeGlobe({ points, width, height, globeRef: externalRef
         font-family: system-ui, sans-serif;
         color: #fff;
         font-size: 13px;
-        min-width: 120px;
+        min-width: 140px;
+        max-width: 220px;
+        box-sizing: border-box;
+        line-height: 1.25;
+        word-break: break-word;
+        white-space: normal;
       ">
         <div style="font-weight: 600; margin-bottom: 4px;">${p.display_name}</div>
         <div style="color: #aaa; font-size: 11px;">@${p.username}</div>
@@ -158,7 +264,7 @@ export default function JukeGlobe({ points, width, height, globeRef: externalRef
   const polygonAltitude = useCallback(() => 0.005, []);
 
   return (
-    <Globe
+    <GlobeComponent
       ref={globeRef}
       width={width}
       height={height}
@@ -185,6 +291,7 @@ export default function JukeGlobe({ points, width, height, globeRef: externalRef
       pointResolution={8}
       pointsMerge={false}
       pointsTransitionDuration={800}
+      onGlobeReady={onGlobeReady}
     />
   );
 }

@@ -275,6 +275,7 @@ private fun ProfileScreenPreview() {
         favoriteArtists = listOf("Tool", "Boards of Canada"),
         favoriteAlbums = listOf("Lateralus"),
         favoriteTracks = listOf("Disposition"),
+        onboardingCompletedAt = null,
         isOwner = true,
     )
     ProfileScreen(

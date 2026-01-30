@@ -15,6 +15,7 @@ data class MusicProfile(
     val favoriteArtists: List<String>,
     val favoriteAlbums: List<String>,
     val favoriteTracks: List<String>,
+    val onboardingCompletedAt: String?,
     val isOwner: Boolean,
 )
 
@@ -37,6 +38,7 @@ fun MusicProfileDto.toDomain(): MusicProfile = MusicProfile(
     favoriteArtists = favoriteArtists,
     favoriteAlbums = favoriteAlbums,
     favoriteTracks = favoriteTracks,
+    onboardingCompletedAt = onboardingCompletedAt,
     isOwner = isOwner ?: false,
 )
 

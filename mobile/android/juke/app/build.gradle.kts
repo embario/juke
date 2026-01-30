@@ -13,6 +13,9 @@ android {
     val backendUrl = System.getenv("BACKEND_URL")
         ?: project.findProperty("juke.apiBaseUrl") as String?
         ?: error("BACKEND_URL must be set (env var or juke.apiBaseUrl property).")
+    val frontendUrl = System.getenv("FRONTEND_URL")
+        ?: project.findProperty("juke.frontendUrl") as String?
+        ?: backendUrl
     val disableRegistrationRaw = (System.getenv("DISABLE_REGISTRATION")
         ?: project.findProperty("juke.disableRegistration") as String?
         ?: "false")
@@ -32,6 +35,7 @@ android {
         }
 
         buildConfigField("String", "BACKEND_URL", "\"$backendUrl\"")
+        buildConfigField("String", "FRONTEND_URL", "\"$frontendUrl\"")
         buildConfigField("boolean", "DISABLE_REGISTRATION", disableRegistration)
     }
 
@@ -99,7 +103,9 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
+    implementation("io.coil-kt:coil:2.7.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     testImplementation("junit:junit:4.13.2")

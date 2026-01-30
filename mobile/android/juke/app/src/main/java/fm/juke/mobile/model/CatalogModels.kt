@@ -2,7 +2,9 @@ package fm.juke.mobile.model
 
 import fm.juke.mobile.data.network.dto.AlbumDto
 import fm.juke.mobile.data.network.dto.ArtistDto
+import fm.juke.mobile.data.network.dto.FeaturedGenreDto
 import fm.juke.mobile.data.network.dto.TrackDto
+import fm.juke.mobile.data.network.dto.FeaturedArtistDto
 
 enum class CatalogResourceType(val label: String) {
     ARTISTS("Artists"),
@@ -38,6 +40,19 @@ data class Track(
     val spotifyUri: String,
 )
 
+data class FeaturedArtist(
+    val id: String,
+    val name: String,
+    val imageUrl: String,
+)
+
+data class FeaturedGenre(
+    val id: String,
+    val name: String,
+    val spotifyId: String,
+    val topArtists: List<FeaturedArtist>,
+)
+
 fun ArtistDto.toDomain(): Artist = Artist(
     id = id ?: hashCode(),
     name = name.orEmpty(),
@@ -64,4 +79,17 @@ fun TrackDto.toDomain(): Track = Track(
     trackNumber = trackNumber ?: 0,
     explicit = explicit ?: false,
     spotifyUri = spotifyData?.uri.orEmpty(),
+)
+
+fun FeaturedArtistDto.toDomain(): FeaturedArtist = FeaturedArtist(
+    id = id.orEmpty(),
+    name = name.orEmpty(),
+    imageUrl = imageUrl.orEmpty(),
+)
+
+fun FeaturedGenreDto.toDomain(): FeaturedGenre = FeaturedGenre(
+    id = id.orEmpty(),
+    name = name.orEmpty(),
+    spotifyId = spotifyId.orEmpty(),
+    topArtists = topArtists.map { it.toDomain() },
 )

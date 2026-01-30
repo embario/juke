@@ -4,6 +4,7 @@ import logging
 
 from celery import shared_task
 
+from catalog.services.featured_genres import refresh_featured_genres
 from catalog.services.genre_sync import sync_spotify_genres
 
 logger = logging.getLogger(__name__)
@@ -26,3 +27,16 @@ def sync_spotify_genres_task(self):
         'source': result.source,
         'synced_at': result.synced_at,
     }
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={'max_retries': 3},
+    name='catalog.tasks.refresh_featured_genres',
+)
+def refresh_featured_genres_task(self):
+    payload = refresh_featured_genres(enforce_budget=False)
+    logger.info('Featured genres refresh task finished: %s genres', len(payload))
+    return {'count': len(payload)}

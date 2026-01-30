@@ -1,17 +1,18 @@
 [
   {
-    "input": ["branding/juke_logo_equalizer_sunset_drift_trail.svg"],
+    "input": ["branding/juke/appicon-without-word.svg"],
     "output": [
-      ["mobile/android/juke/brand_assets/mipmap-mdpi/ic_launcher.png", "48:48"],
-      ["mobile/android/juke/brand_assets/mipmap-mdpi/ic_launcher_round.png", "48:48"],
-      ["mobile/android/juke/brand_assets/mipmap-hdpi/ic_launcher.png", "72:72"],
-      ["mobile/android/juke/brand_assets/mipmap-hdpi/ic_launcher_round.png", "72:72"],
-      ["mobile/android/juke/brand_assets/mipmap-xhdpi/ic_launcher.png", "96:96"],
-      ["mobile/android/juke/brand_assets/mipmap-xhdpi/ic_launcher_round.png", "96:96"],
-      ["mobile/android/juke/brand_assets/mipmap-xxhdpi/ic_launcher.png", "144:144"],
-      ["mobile/android/juke/brand_assets/mipmap-xxhdpi/ic_launcher_round.png", "144:144"],
-      ["mobile/android/juke/brand_assets/mipmap-xxxhdpi/ic_launcher.png", "192:192"],
-      ["mobile/android/juke/brand_assets/mipmap-xxxhdpi/ic_launcher_round.png", "192:192"]
+      ["mobile/android/juke/app/src/main/res/mipmap-mdpi/ic_launcher.png", "48:48"],
+      ["mobile/android/juke/app/src/main/res/mipmap-mdpi/ic_launcher_round.png", "48:48"],
+      ["mobile/android/juke/app/src/main/res/mipmap-hdpi/ic_launcher.png", "72:72"],
+      ["mobile/android/juke/app/src/main/res/mipmap-hdpi/ic_launcher_round.png", "72:72"],
+      ["mobile/android/juke/app/src/main/res/mipmap-xhdpi/ic_launcher.png", "96:96"],
+      ["mobile/android/juke/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png", "96:96"],
+      ["mobile/android/juke/app/src/main/res/mipmap-xxhdpi/ic_launcher.png", "144:144"],
+      ["mobile/android/juke/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png", "144:144"],
+      ["mobile/android/juke/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png", "192:192"],
+      ["mobile/android/juke/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png", "192:192"],
+      ["mobile/android/juke/app/src/main/res/drawable/ic_launcher_foreground.png", "432:432"]
     ]
   }
 ]

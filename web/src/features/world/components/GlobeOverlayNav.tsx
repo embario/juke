@@ -1,7 +1,25 @@
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function GlobeOverlayNav() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const params = new URLSearchParams(location.search);
+  const isNative = params.get('native') === '1';
+
+  if (isNative) {
+    return null;
+  }
+
+  const handleHome = () => {
+    const messageHandler = (window as { webkit?: { messageHandlers?: { jukeWorld?: { postMessage: (payload: object) => void } } } })
+      .webkit?.messageHandlers?.jukeWorld;
+    if (messageHandler) {
+      messageHandler.postMessage({ type: 'exit' });
+      return;
+    }
+    navigate('/');
+  };
 
   return (
     <div
@@ -22,7 +40,7 @@ export default function GlobeOverlayNav() {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto' }}>
         <button
-          onClick={() => navigate('/')}
+          onClick={handleHome}
           style={{
             background: 'rgba(255,255,255,0.1)',
             border: '1px solid rgba(255,255,255,0.15)',

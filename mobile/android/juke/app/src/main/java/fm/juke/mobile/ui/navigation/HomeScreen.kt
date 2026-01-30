@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -28,6 +29,8 @@ import fm.juke.mobile.core.design.components.JukeBackground
 import fm.juke.mobile.data.local.SessionSnapshot
 import fm.juke.mobile.ui.profile.ProfileRoute
 import fm.juke.mobile.ui.search.CatalogRoute
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.unit.dp
 
 private enum class HomeTab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     PROFILE("Profile", Icons.Outlined.AccountCircle),
@@ -38,6 +41,7 @@ private enum class HomeTab(val label: String, val icon: androidx.compose.ui.grap
 @Composable
 fun HomeScreen(
     session: SessionSnapshot,
+    onOpenWorld: () -> Unit,
     onLogout: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(HomeTab.PROFILE) }
@@ -46,6 +50,16 @@ fun HomeScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(text = "@${session.username}") },
+                navigationIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.Public,
+                        contentDescription = "Juke World",
+                        tint = JukePalette.Accent,
+                        modifier = Modifier
+                            .padding(start = 12.dp)
+                            .clickable(onClick = onOpenWorld),
+                    )
+                },
                 actions = {
                     TextButton(
                         onClick = onLogout,

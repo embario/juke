@@ -37,6 +37,17 @@ The helper script:
 
 Logs from `xcodebuild` stream to `/tmp/juke-ios-build.log` for quick inspection after failures.
 
+## Troubleshooting Permissions (MANDATORY)
+
+- When problems occur during testing or development, agents are authorized to inspect backend, web, and iOS/Android logs in their respective locations and Docker containers.
+- No explicit virtualenv is required; agents must use Docker containers for troubleshooting and log inspection.
+
+## Iterative Mobile Development Loop (MANDATORY)
+
+- For each change, rebuild and rerun using the platform build script (`scripts/build_and_run_ios.sh -p <project>` or `scripts/build_and_run_android.sh -p <project>`).
+- Capture the PIDs printed by the script (Android emulator PID + app PID; iOS app PID) and use them to scope log inspection.
+- Review the per-run logs saved by the scripts before checking backend/web logs in Docker containers.
+
 ## Configuration Touchpoints
 
 - API base URL: use an `xcconfig` file or `Info.plist` entry so it stays aligned with backend environments (set via `.env` for local Docker).
@@ -47,6 +58,7 @@ Logs from `xcodebuild` stream to `/tmp/juke-ios-build.log` for quick inspection 
 
 - Unit tests: `juke-iOSTests` target (`⌘U` in Xcode or `xcodebuild test -scheme juke-iOS -destination "platform=iOS Simulator,name=iPhone 17 Pro"`).
 - UI tests: `juke-iOSUITests` target; keep selectors resilient to design tweaks by referencing accessibility identifiers.
+- Repo script: `scripts/test_mobile.sh -p <project> --ios-only` (required: `juke`, `shotclock`, or `tunetrivia`; defaults to iPhone 17 Pro / iOS 26.2; override with `-s <sim>` / `-o <os>`).
 
 ## Release Checklist for Agents
 

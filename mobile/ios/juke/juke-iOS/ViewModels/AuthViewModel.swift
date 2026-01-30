@@ -10,8 +10,13 @@ final class AuthViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var successMessage: String?
+    @Published var showResendAction: Bool = false
+    @Published var isResending: Bool = false
+    @Published var resendMessage: String?
+    @Published var resendError: String?
 
     private let session: SessionStore
+    private let authService: AuthService
     private let configuration: AppConfiguration
     private let registrationDisabledMessage = "Registration is temporarily disabled. Please try again later."
 
@@ -22,6 +27,7 @@ final class AuthViewModel: ObservableObject {
     init(session: SessionStore, configuration: AppConfiguration = .shared) {
         self.session = session
         self.configuration = configuration
+        self.authService = AuthService()
     }
 
     func setMode(registering: Bool) {
@@ -33,11 +39,17 @@ final class AuthViewModel: ObservableObject {
         isRegistering = registering
         errorMessage = nil
         successMessage = nil
+        showResendAction = false
+        resendMessage = nil
+        resendError = nil
     }
 
     func submit() async {
         errorMessage = nil
         successMessage = nil
+        showResendAction = false
+        resendMessage = nil
+        resendError = nil
         isLoading = true
         defer { isLoading = false }
 
@@ -67,7 +79,31 @@ final class AuthViewModel: ObservableObject {
                 passwordConfirm = ""
             }
         } catch {
-            errorMessage = error.localizedDescription
+            let desc = error.localizedDescription
+            errorMessage = desc
+            // Show resend action if server indicates account already exists
+            if desc.lowercased().contains("already exists") || desc.lowercased().contains("exists") {
+                showResendAction = true
+            }
+        }
+    }
+
+    func resendVerification() async {
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedEmail.isEmpty else {
+            resendError = "Enter your email to resend verification."
+            return
+        }
+        isResending = true
+        resendMessage = nil
+        resendError = nil
+        defer { isResending = false }
+
+        do {
+            _ = try await authService.resendVerification(email: trimmedEmail)
+            resendMessage = "Verification email sent. Please check your inbox."
+        } catch {
+            resendError = error.localizedDescription
         }
     }
 }

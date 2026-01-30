@@ -15,14 +15,16 @@ LOGS_DIR="${REPO_ROOT}/logs"
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") -p project [-s simulator] [--boot-sim]
+Usage: $(basename "$0") -p project [-s simulator] [--boot-simulator]
 
 Options:
-  -p  iOS project name under ${IOS_ROOT} (required)
+  -p  iOS project name under ${IOS_ROOT} (required: juke, tunetrivia, shotclock)
   -s  Simulator name or UUID (default: ${SIM_TARGET_DEFAULT})
-  --boot-sim  Boot and target the specified simulator, even if another is booted
+  --boot-simulator  Boot and target the specified simulator, even if another is booted
 EOF
 }
+
+ALLOWED_PROJECTS=("juke" "tunetrivia" "shotclock")
 
 list_available_projects() {
     local project
@@ -32,12 +34,23 @@ list_available_projects() {
     done | sort
 }
 
+is_allowed_project() {
+    local candidate="$1"
+    local project
+    for project in "${ALLOWED_PROJECTS[@]}"; do
+        if [[ "${candidate}" == "${project}" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 USE_BOOTED_SIM=true
 FORCE_BOOT_SIM=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --boot-sim)
+        --boot-simulator)
             FORCE_BOOT_SIM=true
             USE_BOOTED_SIM=false
             shift
@@ -84,6 +97,12 @@ if [[ -z "${IOS_PROJECT_NAME}" ]]; then
     exit 2
 fi
 
+if ! is_allowed_project "${IOS_PROJECT_NAME}"; then
+    echo "Unsupported iOS project '${IOS_PROJECT_NAME}'." >&2
+    echo "Supported projects: ${ALLOWED_PROJECTS[*]}" >&2
+    exit 2
+fi
+
 if [[ -z "${SIM_TARGET}" ]]; then
     SIM_TARGET="${SIM_TARGET_DEFAULT}"
 fi
@@ -103,6 +122,12 @@ fi
 
 # Derive project-specific values from IOS_PROJECT_NAME
 case "${IOS_PROJECT_NAME}" in
+    juke)
+        XCODEPROJ_NAME="juke-iOS.xcodeproj"
+        SCHEME_NAME="juke-iOS"
+        BUNDLE_ID="embario.juke-iOS"
+        APP_NAME="juke-iOS.app"
+        ;;
     shotclock)
         XCODEPROJ_NAME="ShotClock.xcodeproj"
         SCHEME_NAME="ShotClock"
@@ -116,10 +141,8 @@ case "${IOS_PROJECT_NAME}" in
         APP_NAME="TuneTrivia.app"
         ;;
     *)
-        XCODEPROJ_NAME="juke-iOS.xcodeproj"
-        SCHEME_NAME="juke-iOS"
-        BUNDLE_ID="embario.juke-iOS"
-        APP_NAME="juke-iOS.app"
+        echo "Unsupported iOS project '${IOS_PROJECT_NAME}'." >&2
+        exit 2
         ;;
 esac
 
@@ -177,6 +200,28 @@ set_plist_value() {
     fi
 }
 
+ensure_core_simulator() {
+    local attempt=1
+    local max_attempts=3
+    local wait_seconds=2
+    while [[ "${attempt}" -le "${max_attempts}" ]]; do
+        echo "Checking CoreSimulator availability (attempt ${attempt}/${max_attempts})..."
+        if xcrun simctl list devices available >/dev/null 2>&1; then
+            return 0
+        fi
+        if [[ "${attempt}" -eq 1 ]]; then
+            echo "CoreSimulator not responding; launching Simulator.app..."
+            open -a Simulator >/dev/null 2>&1 || true
+        fi
+        echo "Retrying in ${wait_seconds}s..."
+        sleep "${wait_seconds}"
+        attempt=$((attempt + 1))
+    done
+    echo "CoreSimulator still unavailable after ${max_attempts} attempts." >&2
+    echo "Tip: open Simulator.app once to initialize runtimes, then retry." >&2
+    return 1
+}
+
 run_with_timeout() {
     local timeout_cmd=""
     if command -v gtimeout >/dev/null 2>&1; then
@@ -193,6 +238,10 @@ run_with_timeout() {
 }
 
 mkdir -p "${DERIVED_DATA_PATH}" "${LOGS_DIR}"
+
+if ! ensure_core_simulator; then
+    exit 1
+fi
 
 if "${USE_BOOTED_SIM}"; then
     if BOOTED_INFO="$(resolve_booted_device)"; then

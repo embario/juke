@@ -11,9 +11,15 @@ import fm.juke.mobile.data.repository.ProfileRepository
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.dnsoverhttps.DnsOverHttps
+import okhttp3.Dns
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import coil.ImageLoader
+import java.net.InetAddress
+import android.os.Build
 
 object ServiceLocator {
     private lateinit var appContext: Context
@@ -34,6 +40,44 @@ object ServiceLocator {
     private val okHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
+            .build()
+    }
+
+    val imageLoader: ImageLoader by lazy {
+        ensureInitialized()
+        val baseClient = okHttpClient.newBuilder().build()
+        val client = if (BuildConfig.DEBUG && !isEmulator()) {
+            val bootstrap = listOf(
+                InetAddress.getByName("8.8.8.8"),
+                InetAddress.getByName("8.8.4.4"),
+                InetAddress.getByName("1.1.1.1"),
+                InetAddress.getByName("1.0.0.1"),
+            )
+            val bootstrapDns = object : Dns {
+                override fun lookup(hostname: String): List<InetAddress> {
+                    val normalized = hostname.trimEnd('.').lowercase()
+                    return if (normalized == "dns.google") {
+                        bootstrap
+                    } else {
+                        Dns.SYSTEM.lookup(hostname)
+                    }
+                }
+            }
+            val dohClient = baseClient.newBuilder()
+                .dns(bootstrapDns)
+                .build()
+            val doh = DnsOverHttps.Builder()
+                .client(dohClient)
+                .url("https://dns.google/dns-query".toHttpUrl())
+                .build()
+            baseClient.newBuilder()
+                .dns(doh)
+                .build()
+        } else {
+            baseClient
+        }
+        ImageLoader.Builder(appContext)
+            .okHttpClient(client)
             .build()
     }
 
@@ -78,9 +122,28 @@ object ServiceLocator {
         return "$raw/"
     }
 
+    internal fun normalizedFrontendUrl(rawFrontendUrl: String = BuildConfig.FRONTEND_URL): String {
+        val raw = rawFrontendUrl.trimEnd('/')
+        return "$raw/"
+    }
+
     private fun ensureInitialized() {
         check(::appContext.isInitialized) {
             "ServiceLocator.init(Context) must be called before accessing dependencies."
         }
+    }
+
+    private fun isEmulator(): Boolean {
+        val fingerprint = Build.FINGERPRINT
+        return fingerprint.startsWith("generic") ||
+            fingerprint.startsWith("unknown") ||
+            Build.MODEL.contains("google_sdk", ignoreCase = true) ||
+            Build.MODEL.contains("Emulator", ignoreCase = true) ||
+            Build.MODEL.contains("Android SDK built for", ignoreCase = true) ||
+            Build.MANUFACTURER.contains("Genymotion", ignoreCase = true) ||
+            (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic")) ||
+            Build.PRODUCT.contains("sdk", ignoreCase = true) ||
+            Build.PRODUCT.contains("emulator", ignoreCase = true) ||
+            Build.PRODUCT.contains("simulator", ignoreCase = true)
     }
 }

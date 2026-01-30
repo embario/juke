@@ -22,6 +22,7 @@ class MusicProfile(models.Model):
     favorite_artists = models.JSONField(blank=True, default=list)
     favorite_albums = models.JSONField(blank=True, default=list)
     favorite_tracks = models.JSONField(blank=True, default=list)
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True)
     city_lat = models.FloatField(
         null=True, blank=True, db_index=True,
         help_text='Latitude rounded to 2 decimal places (~1.1km / city-centroid precision)',
@@ -30,6 +31,7 @@ class MusicProfile(models.Model):
         null=True, blank=True, db_index=True,
         help_text='Longitude rounded to 2 decimal places (~1.1km / city-centroid precision)',
     )
+    custom_data = models.JSONField(blank=True, default=dict)
     clout = models.FloatField(
         default=0.0,
         help_text='Streaming clout metric, 0.0-1.0',

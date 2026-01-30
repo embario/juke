@@ -5,24 +5,31 @@ struct APIConfiguration {
     static let shared = APIConfiguration()
 
     let baseURL: URL
+    let frontendURL: URL
 
     init(bundle: Bundle = .main, processInfo: ProcessInfo = .processInfo) {
-        let plistValue = bundle.object(forInfoDictionaryKey: "BACKEND_URL") as? String
-        self.init(environment: processInfo.environment, plistValue: plistValue)
+        let backendPlist = bundle.object(forInfoDictionaryKey: "BACKEND_URL") as? String
+        let frontendPlist = bundle.object(forInfoDictionaryKey: "FRONTEND_URL") as? String
+        self.init(environment: processInfo.environment, backendPlist: backendPlist, frontendPlist: frontendPlist)
     }
 
-    init(environment: [String: String], plistValue: String?) {
+    init(environment: [String: String], backendPlist: String?, frontendPlist: String? = nil) {
         if let overrideURLString = environment["BACKEND_URL"], let url = URL(string: overrideURLString) {
             baseURL = url
-            return
-        }
-
-        if let plistValue, let url = URL(string: plistValue) {
+        } else if let backendPlist, let url = URL(string: backendPlist) {
             baseURL = url
-            return
+        } else {
+            fatalError("BACKEND_URL must be set in the environment or Info.plist.")
         }
 
-        fatalError("BACKEND_URL must be set in the environment or Info.plist.")
+        if let overrideURLString = environment["FRONTEND_URL"], let url = URL(string: overrideURLString) {
+            frontendURL = url
+        } else if let frontendPlist, let url = URL(string: frontendPlist) {
+            frontendURL = url
+        } else {
+            // Default: assume frontend is served from the same origin as backend
+            frontendURL = baseURL
+        }
     }
 }
 
