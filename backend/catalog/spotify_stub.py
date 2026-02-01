@@ -155,5 +155,101 @@ def track_detail(uri: str) -> Dict[str, Any]:
     return _build_track(0, spotify_id=spotify_id, name=f"Stub Track {spotify_id[-4:]}" if spotify_id else None)
 
 
+def artist_albums(artist_id: str, album_types: str = 'album') -> Dict[str, Any]:
+    """Stub for spotipy.Spotify.artist_albums().
+
+    Returns 2 deterministic albums for the given artist, each with the artist
+    wired into the ``artists`` list so that the serializer can link them.
+    """
+    artist_stub = {'id': artist_id, 'name': f"Stub Artist {artist_id[-4:]}"}
+    items = [
+        _build_album(
+            i,
+            spotify_id=f"{artist_id}-album-{i}",
+            name=f"Stub Album {artist_id[-4:]}-{i}",
+            release_date=f"200{i}-06-15",
+            total_tracks=3,
+            artists=[artist_stub],
+        )
+        for i in range(2)
+    ]
+    return {
+        'href': f"https://stub.local/artists/{artist_id}/albums",
+        'items': items,
+        'limit': len(items),
+        'offset': 0,
+        'total': len(items),
+        'previous': None,
+        'next': None,
+    }
+
+
+def album_tracks(album_id: str) -> Dict[str, Any]:
+    """Stub for spotipy.Spotify.album_tracks().
+
+    Returns 3 deterministic tracks for the given album.  The nested ``album``
+    payload uses the same album_id so that SpotifyTrackSerializer can
+    get-or-create the Album FK correctly.
+    """
+    album_stub = _build_album(0, spotify_id=album_id, name=f"Stub Album {album_id[-4:]}", total_tracks=3)
+    items = [
+        _build_track(
+            i,
+            spotify_id=f"{album_id}-track-{i}",
+            name=f"Stub Track {album_id[-4:]}-{i}",
+            album=album_stub,
+            track_number=i + 1,
+            duration_ms=180000 + i * 10000,
+        )
+        for i in range(3)
+    ]
+    return {
+        'href': f"https://stub.local/albums/{album_id}/tracks",
+        'items': items,
+        'limit': len(items),
+        'offset': 0,
+        'total': len(items),
+        'previous': None,
+        'next': None,
+    }
+
+
 def genre_seeds() -> List[str]:
     return list(GENRE_SEEDS)
+
+
+def _deterministic_float(spotify_id: str, seed: int, lo: float = 0.0, hi: float = 1.0) -> float:
+    """Produce a stable float in [lo, hi) from a spotify_id and an integer seed."""
+    import hashlib
+    digest = hashlib.sha256(f"{spotify_id}:{seed}".encode()).hexdigest()
+    # Take 8 hex chars → 32-bit int → normalise to [0, 1)
+    raw = int(digest[:8], 16) / 0xFFFFFFFF
+    return round(lo + raw * (hi - lo), 4)
+
+
+def audio_features(track_ids: List[str]) -> List[Dict[str, Any]]:
+    """Return stub audio-feature payloads matching Spotify's audio_features response shape.
+
+    Each track gets deterministic values derived from its spotify_id so that the
+    same ID always produces the same features across test runs.
+    """
+    results: List[Dict[str, Any]] = []
+    for tid in track_ids:
+        results.append({
+            'id': tid,
+            'type': 'track',
+            'uri': f"spotify:track:{tid}",
+            'energy': _deterministic_float(tid, 0),
+            'valence': _deterministic_float(tid, 1),
+            'tempo': _deterministic_float(tid, 2, 60.0, 200.0),
+            'key': int(_deterministic_float(tid, 3, 0, 12)),
+            'mode': 'minor' if _deterministic_float(tid, 4) < 0.5 else 'major',
+            'danceability': _deterministic_float(tid, 5),
+            'acousticness': _deterministic_float(tid, 6),
+            'instrumentalness': _deterministic_float(tid, 7),
+            'liveness': _deterministic_float(tid, 8),
+            'speechiness': _deterministic_float(tid, 9),
+            'loudness': _deterministic_float(tid, 10, -60.0, 0.0),
+            'time_signature': int(_deterministic_float(tid, 11, 2, 7)),
+        })
+    return results

@@ -44,3 +44,24 @@ class TrackEmbedding(EmbeddingBase):
 
     def __str__(self) -> str:
         return f"Embedding(track={self.track.name})"
+
+
+class TrackAudioFeatures(models.Model):
+    track = models.OneToOneField(Track, related_name='audio_features', on_delete=models.CASCADE)
+    energy = models.FloatField()
+    valence = models.FloatField()
+    tempo = models.FloatField()
+    key = models.IntegerField()
+    mode = models.CharField(max_length=5)
+    danceability = models.FloatField()
+    acousticness = models.FloatField()
+    instrumentalness = models.FloatField()
+    liveness = models.FloatField()
+    speechiness = models.FloatField()
+    loudness = models.FloatField()
+    time_signature = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"AudioFeatures(track={self.track.name})"

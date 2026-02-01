@@ -7,6 +7,7 @@ from celery import shared_task
 from catalog.models import Artist, Album, Track
 from recommender.models import ArtistEmbedding, AlbumEmbedding, TrackEmbedding
 from recommender.services.client import generate_embedding
+from recommender.services.audio_ingest import ingest_training_data as _ingest_training_data
 
 logger = logging.getLogger(__name__)
 
@@ -60,3 +61,38 @@ def sync_track_embedding(track_id: int):
     embedding, _ = TrackEmbedding.objects.get_or_create(track=track, defaults={'model_version': MODEL_VERSION})
     _upsert_embedding(embedding, payload)
     logger.info('Track embedding synced for %s', track.name)
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={'max_retries': 3},
+    name='recommender.tasks.ingest_training_data',
+)
+def ingest_training_data(self):
+    track_count = Track.objects.count()
+    if track_count == 0:
+        logger.warning(
+            'ingest_training_data: catalog is empty (0 tracks) — '
+            'run "manage.py crawl_catalog" first.'
+        )
+        return {
+            'ingested': 0,
+            'skipped': 0,
+            'failed': 0,
+            'failed_track_ids': [],
+            'warning': 'catalog is empty',
+        }
+
+    result = _ingest_training_data()
+    logger.info(
+        'ingest_training_data finished: ingested=%d skipped=%d failed=%d',
+        result.ingested, result.skipped, result.failed,
+    )
+    return {
+        'ingested': result.ingested,
+        'skipped': result.skipped,
+        'failed': result.failed,
+        'failed_track_ids': result.failed_track_ids,
+    }

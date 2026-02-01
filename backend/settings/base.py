@@ -298,6 +298,8 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_DEFAULT_QUEUE = 'default'
 CELERY_TASK_ROUTES = {
     'catalog.tasks.sync_spotify_genres': {'queue': 'catalog'},
+    'catalog.tasks.crawl_catalog': {'queue': 'catalog'},
+    'recommender.tasks.ingest_training_data': {'queue': 'recommender'},
 }
 CELERY_BEAT_SCHEDULE = {
     'sync-spotify-genres-daily': {
