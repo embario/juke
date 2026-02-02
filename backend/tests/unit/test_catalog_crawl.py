@@ -156,7 +156,8 @@ class CrawlCatalogTests(TestCase):
             if call_count['n'] == 1:
                 raise Exception('Spotify 429')
             from catalog import spotify_stub
-            return list(spotify_stub.artist_albums(artist_id).get('items', []))
+            items = list(spotify_stub.artist_albums(artist_id).get('items', []))
+            return items, len(items)
 
         mock_albums.side_effect = fail_first
         result = crawl_catalog()
@@ -181,7 +182,8 @@ class CrawlCatalogTests(TestCase):
             if call_count['n'] == 1:
                 raise Exception('network error')
             from catalog import spotify_stub
-            return list(spotify_stub.search_response('artist').get('items', []))
+            items = list(spotify_stub.search_response('artist').get('items', []))
+            return items, len(items)
 
         mock_search.side_effect = fail_first
         result = crawl_catalog()
@@ -211,7 +213,7 @@ class CrawlCatalogTests(TestCase):
             collider['name'] = 'Collider Track'
             # track_number stays the same as items[0] → collision.
             items.append(collider)
-            return items
+            return items, len(items)
 
         mock_tracks.side_effect = tracks_with_duplicate
         result = crawl_catalog()
