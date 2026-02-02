@@ -77,11 +77,11 @@ class CrawlCatalogTests(TestCase):
         self.assertEqual(result2.albums_created, 0)
         self.assertEqual(result2.tracks_created, 0)
 
-        # Every album and track is skipped; no Spotify fetches or DB writes
-        # happen for already-persisted subtrees.
-        self.assertEqual(result2.albums_skipped, _TOTAL_ALBUMS)
-        # Tracks are never even reached (album skip returns early), so
-        # tracks_skipped stays 0.
+        # Fully hydrated artists are skipped; duplicates across genre seeds are
+        # counted separately.
+        self.assertEqual(result2.artists_fully_hydrated_skipped, _UNIQUE_ARTISTS)
+        self.assertEqual(result2.artists_skipped, _ARTISTS_SKIPPED)
+        self.assertEqual(result2.albums_skipped, 0)
         self.assertEqual(result2.tracks_skipped, 0)
 
         # DB counts unchanged.
@@ -106,7 +106,7 @@ class CrawlCatalogTests(TestCase):
         # Artist 0's 2 albums already existed → skipped entirely (no track
         # fetch or save for them).  9 × 2 = 18 new albums.
         self.assertEqual(result.albums_created, 18)
-        self.assertEqual(result.albums_skipped, 2)
+        self.assertEqual(result.albums_skipped, 0)
         # Because album skip returns early, artist 0's tracks are never visited.
         # 9 × 2 × 3 = 54 new tracks; 0 tracks skipped.
         self.assertEqual(result.tracks_created, 54)
@@ -135,7 +135,7 @@ class CrawlCatalogTests(TestCase):
         # That album should have been re-crawled (not skipped).
         # 1 album re-crawled × 3 tracks = 3 tracks created.  All other albums
         # already had tracks → skipped.
-        self.assertEqual(result.albums_skipped, _TOTAL_ALBUMS - 1)
+        self.assertEqual(result.albums_skipped, 1)
         self.assertEqual(result.tracks_created, _TRACKS_PER_ALBUM)
         # The album's tracks are back.
         self.assertEqual(
@@ -151,7 +151,7 @@ class CrawlCatalogTests(TestCase):
         records the failure."""
         call_count = {'n': 0}
 
-        def fail_first(artist_id):
+        def fail_first(artist_id, *args, **kwargs):
             call_count['n'] += 1
             if call_count['n'] == 1:
                 raise Exception('Spotify 429')
@@ -166,18 +166,18 @@ class CrawlCatalogTests(TestCase):
         # persisted before the fetch, so all 10 artists are created.
         self.assertEqual(len(result.failed_artist_ids), 1)
         self.assertEqual(result.artists_created, _UNIQUE_ARTISTS)
-        # 9 successful artists × 2 albums × 3 tracks = 54 tracks created.
-        self.assertEqual(result.tracks_created, (_UNIQUE_ARTISTS - 1) * _ALBUMS_PER_ARTIST * _TRACKS_PER_ALBUM)
-        # The failed artist has no albums or tracks in the DB.
+        # The failed artist is retried in the partial pass, so the full
+        # catalog is still hydrated.
+        self.assertEqual(result.tracks_created, _TOTAL_TRACKS)
         failed_id = result.failed_artist_ids[0]
-        self.assertEqual(Album.objects.filter(artists__spotify_id=failed_id).count(), 0)
+        self.assertEqual(Album.objects.filter(artists__spotify_id=failed_id).count(), _ALBUMS_PER_ARTIST)
 
     @mock.patch('catalog.services.catalog_crawl._search_artists_by_genre')
     def test_genre_search_failure_continues(self, mock_search):
         """If one genre search raises, remaining seeds are still processed."""
         call_count = {'n': 0}
 
-        def fail_first(genre_seed):
+        def fail_first(genre_seed, *args, **kwargs):
             call_count['n'] += 1
             if call_count['n'] == 1:
                 raise Exception('network error')
@@ -202,7 +202,7 @@ class CrawlCatalogTests(TestCase):
         import copy
         from catalog import spotify_stub
 
-        def tracks_with_duplicate(album_id):
+        def tracks_with_duplicate(album_id, *args, **kwargs):
             """Return 3 normal tracks plus a 4th that collides on track_number
             with track 0."""
             data = spotify_stub.album_tracks(album_id)

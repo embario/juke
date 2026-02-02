@@ -558,6 +558,7 @@ def crawl_catalog(
     pre_existing_artist_ids: set[str] = set(
         Artist.objects.values_list('spotify_id', flat=True)
     )
+    run_created_artist_ids: set[str] = set()
     seen_artist_ids: set[str] = set()  # dedup across genre searches
 
     def _emit(event: str, **data) -> None:
@@ -658,6 +659,7 @@ def crawl_catalog(
                     artist_hydrated = _crawl_artist(
                         artist_payload,
                         pre_existing_artist_ids,
+                        run_created_artist_ids,
                         result,
                         memo=memo,
                         rate_limiter=rate_limiter,
@@ -701,8 +703,6 @@ def crawl_catalog(
         if _memo_is_member(memo, 'hydrated_artists', artist_id):
             _memo_remove(memo, 'partial_artists', artist_id)
             continue
-        if artist_id in seen_artist_ids:
-            continue
         max_retries = int(memo.get('max_artist_retries', 5))
         retries = int(_memo_hash_get(memo, 'partial_artist_retries', artist_id) or 0)
         if retries >= max_retries:
@@ -728,6 +728,7 @@ def crawl_catalog(
             artist_hydrated = _crawl_artist(
                 artist_payload,
                 pre_existing_artist_ids,
+                run_created_artist_ids,
                 result,
                 memo=memo,
                 rate_limiter=rate_limiter,
@@ -762,6 +763,7 @@ def crawl_catalog(
 def _crawl_artist(
     artist_payload: dict,
     pre_existing_artist_ids: set[str],
+    run_created_artist_ids: set[str],
     result: CrawlResult,
     memo: dict,
     rate_limiter: SpotifyRateLimiter | None = None,
@@ -775,8 +777,9 @@ def _crawl_artist(
     if artist_id in pre_existing_artist_ids:
         result.artists_updated += 1
         logger.debug('crawl: artist "%s" already existed, still crawling albums', artist_name)
-    else:
+    elif artist_id not in run_created_artist_ids:
         result.artists_created += 1
+        run_created_artist_ids.add(artist_id)
         logger.info('crawl: artist created — %s', artist_name)
 
     # Fetch and persist albums.  Spotipy's artist_albums response includes only
