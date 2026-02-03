@@ -59,8 +59,10 @@ class SpotifyArtistSerializer(SpotifyResourceSerializer):
                 name=validated_data['name'],
                 spotify_id=validated_data['id'],
             )
-            action = "created" if created else "updated"
-            logger.info(f"Artist '{instance.name}' {action}.")
+            if created:
+                logger.info(f"Artist '{instance.name}' created.")
+            else:
+                logger.debug(f"Artist '{instance.name}' updated.")
 
             # Add Genres
             for genre_name in validated_data['genres']:
@@ -87,6 +89,8 @@ class SpotifyAlbumSerializer(SpotifyResourceSerializer):
     album_type = serializers.CharField(required=True)
     images = serializers.ListField(write_only=True, allow_empty=True)
     artists = serializers.ListField(write_only=True, allow_empty=False)
+    release_date = serializers.CharField(write_only=True)
+    release_date_precision = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = Album
@@ -95,8 +99,10 @@ class SpotifyAlbumSerializer(SpotifyResourceSerializer):
     def create(self, validated_data):
         with transaction.atomic():
             instance, created = Album.get_or_create_with_validated_data(data=validated_data)
-            action = "created" if created else "updated"
-            logger.info(f"Album '{instance.name}' {action}.")
+            if created:
+                logger.info(f"Album '{instance.name}' created.")
+            else:
+                logger.debug(f"Album '{instance.name}' updated.")
 
             # Add Artists
             for artist_data in validated_data['artists']:
@@ -131,12 +137,16 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
             album, album_created = Album.get_or_create_with_validated_data(
                 data=validated_data['album']
             )
-            action = "created" if album_created else "updated"
-            logger.info(f"Album '{album.name}' {action}.")
+            if album_created:
+                logger.info(f"Album '{album.name}' created.")
+            else:
+                logger.debug(f"Album '{album.name}' updated.")
 
             instance, track_created = Track.get_or_create_with_validated_data(album=album, data=validated_data)
-            action = "created" if track_created else "updated"
-            logger.info(f"Track '{instance.name}' {action}.")
+            if track_created:
+                logger.info(f"Track '{instance.name}' created.")
+            else:
+                logger.debug(f"Track '{instance.name}' updated.")
 
             # Add other Spotify Data
             instance.spotify_data = {

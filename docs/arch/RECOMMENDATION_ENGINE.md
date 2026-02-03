@@ -79,14 +79,17 @@ All acceptance criteria met.  116 tests passing.
   - Album subtree skip: an album is skipped entirely (no track fetch, no re-save) when it already exists *and* has tracks.  Albums created by the on-demand HTTP path (which persist the album but not its tracks) are re-crawled.
   - Per-track `IntegrityError` catch: Spotify occasionally returns duplicate `track_number` values on an album (live versions, reissues).  These are logged as failed tracks and do not abort the album or artist.
   - Artist name consistency: the crawl rewrites album and track payloads' nested artist/album references with the canonical data already persisted, preventing unique-constraint collisions from name mismatches between Spotify's minimal stubs and the rows we created.
+- For crawl output/terminology: "updated" means the entity already existed in the DB, so the crawl skips creating it (artist/album/track/genre).
 - `catalog/tasks.py` — `crawl_catalog_task` Celery task shell + route on `catalog` queue.
-- `catalog/management/commands/crawl_catalog.py` — operator-invoked management command.
+- `catalog/management/commands/crawl_catalog.py` — operator-invoked management command (supports `--loop`, `--loop-sleep`, `--request-delay`, `--max-retries`, `--retry-backoff`).
 - `tests/unit/test_catalog_crawl.py` — 10 tests covering full crawl counts, DB population, artist↔album and album↔track linkage, idempotency (second run skips all album subtrees), partial-resume (pre-existing artist's albums skipped, rest created), album-without-tracks not skipped, per-artist fetch failure continuation, genre-search failure continuation, and duplicate-track-number isolation.
 
 **Operator sequence (current state):**
 
 ```bash
-python manage.py crawl_catalog          # 1. Populate Artist / Album / Track
+python manage.py crawl_catalog                     # single crawl (default request delay 0.2s)
+python manage.py crawl_catalog --loop              # run continuously (sleep 900s between cycles)
+python manage.py crawl_catalog --loop --loop-sleep 300 --request-delay 0.5
 # then enqueue or call ingest_training_data to populate TrackAudioFeatures
 ```
 

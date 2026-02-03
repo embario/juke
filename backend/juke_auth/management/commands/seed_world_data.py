@@ -70,10 +70,12 @@ class Command(BaseCommand):
         clear = options['clear']
 
         if clear:
-            deleted_count, _ = JukeUser.objects.filter(
-                username__startswith='jw_'
-            ).delete()
-            self.stdout.write(f'Cleared {deleted_count} existing seeded records.')
+            seeded_users = JukeUser.objects.filter(username__startswith='jw_')
+            profile_count, _ = MusicProfile.objects.filter(user__in=seeded_users).delete()
+            deleted_count, _ = seeded_users.delete()
+            self.stdout.write(
+                f'Cleared {deleted_count} seeded users and {profile_count} profiles.'
+            )
 
         self.stdout.write(f'Seeding {count} synthetic users for Juke World...')
 

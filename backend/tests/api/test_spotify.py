@@ -73,7 +73,7 @@ class TestSpotify(APITestCase):
         artist.refresh_from_db()
         self.assertTrue(artist.genres.count() > 0)
         self.assertNotEqual(artist.spotify_data, {})
-        mock_logger.info.assert_called_with("Artist 'TOOL' updated.")
+        mock_logger.debug.assert_called_with("Artist 'TOOL' updated.")
 
     def test_list_artists_internal_ok(self):
         resp = self.client.get(self.artist_url, format='json')
@@ -111,7 +111,7 @@ class TestSpotify(APITestCase):
         self.assertNotEqual(album.spotify_data, {})
         self.assertEqual(resp.data['total_tracks'], 13)  # This is correct.
         self.assertEqual(resp.data['release_date'], '2001-05-15')  # This is correct.
-        mock_logger.info.assert_called_with("Album 'Lateralus' updated.")
+        mock_logger.debug.assert_called_with("Album 'Lateralus' updated.")
 
     def test_list_albums_internal_ok(self):
         resp = self.client.get(self.album_url, format='json')
@@ -171,7 +171,7 @@ class TestSpotify(APITestCase):
         self.assertEqual(track.album.total_tracks, 13)
         self.assertEqual(str(track.album.release_date), '2001-05-15')
 
-        calls = mock_logger.info.call_args_list
+        calls = mock_logger.debug.call_args_list
         self.assertEqual(calls[0][0][0], "Album 'Lateralus' updated.")
         self.assertEqual(calls[1][0][0], "Track 'Disposition' updated.")
 
