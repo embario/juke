@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from catalog import serializers, controller
 from catalog.services.playback import PlaybackService
 from catalog.services.featured_genres import get_featured_genres
-from catalog.models import Genre, Artist, Album, Track
+from catalog.models import Genre, Artist, Album, Track, SearchHistory
 from catalog.tasks import sync_spotify_genres_task
 
 log = logging.getLogger(__name__)
@@ -120,3 +120,24 @@ class PlaybackViewSet(viewsets.ViewSet):
         if state is None:
             return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(state)
+
+
+class SearchHistoryViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for creating and viewing search history.
+    Users can only see their own search history.
+    """
+    serializer_class = serializers.SearchHistorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Return search history for the authenticated user only."""
+        return SearchHistory.objects.filter(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        """Create a new search history entry with engaged resources."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        log.info(f"Search history created for user {request.user.username}: '{request.data.get('search_query')}'")
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

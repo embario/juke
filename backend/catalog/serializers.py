@@ -3,7 +3,7 @@ import logging
 from django.db import transaction
 from rest_framework import serializers
 
-from catalog.models import MusicResource, Genre, Artist, Album, Track
+from catalog.models import MusicResource, Genre, Artist, Album, Track, SearchHistory, SearchHistoryResource
 
 logger = logging.getLogger(__name__)
 
@@ -193,3 +193,58 @@ class PlayRequestSerializer(PlaybackProviderSerializer):
 
 class PlaybackStateQuerySerializer(serializers.Serializer):
     provider = serializers.CharField(required=False, allow_blank=True)
+
+
+class SearchHistoryResourceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for individual resources engaged during a search session.
+    """
+    class Meta:
+        model = SearchHistoryResource
+        fields = ['resource_type', 'resource_id', 'resource_name']
+
+    def validate_resource_type(self, value):
+        """Ensure resource_type is one of the allowed choices."""
+        valid_types = [choice[0] for choice in SearchHistoryResource.RESOURCE_TYPE_CHOICES]
+        if value not in valid_types:
+            raise serializers.ValidationError(
+                f"Invalid resource_type. Must be one of: {', '.join(valid_types)}"
+            )
+        return value
+
+
+class SearchHistorySerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating search history entries with engaged resources.
+    """
+    engaged_resources = SearchHistoryResourceSerializer(many=True)
+
+    class Meta:
+        model = SearchHistory
+        fields = ['search_query', 'engaged_resources', 'timestamp']
+        read_only_fields = ['timestamp']
+
+    def validate_search_query(self, value):
+        """Ensure search query is not empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Search query cannot be empty.")
+        return value.strip()
+
+    def create(self, validated_data):
+        """Create SearchHistory and associated SearchHistoryResource entries."""
+        engaged_resources_data = validated_data.pop('engaged_resources')
+
+        # Create the search history entry
+        search_history = SearchHistory.objects.create(
+            user=self.context['request'].user,
+            search_query=validated_data['search_query']
+        )
+
+        # Create associated resources
+        for resource_data in engaged_resources_data:
+            SearchHistoryResource.objects.create(
+                search_history=search_history,
+                **resource_data
+            )
+
+        return search_history

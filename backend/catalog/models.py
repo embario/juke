@@ -162,3 +162,57 @@ class ArtistImageResource(models.Model):
 class AlbumImageResource(models.Model):
     image = models.ImageField(upload_to='static/media/albums/')
     album = models.ForeignKey(Album, related_name='images', on_delete=models.PROTECT)
+
+
+class SearchHistory(models.Model):
+    """
+    Tracks user search queries and the resources they engaged with.
+    Used for analytics and future personalization features.
+    """
+    user = models.ForeignKey('juke_auth.JukeUser', on_delete=models.CASCADE, related_name='search_history')
+    search_query = models.CharField(max_length=500, blank=False, null=False)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['user', '-timestamp']),
+        ]
+        verbose_name_plural = 'Search histories'
+
+    def __str__(self):
+        return f"{self.user.username}: '{self.search_query}' at {self.timestamp}"
+
+
+class SearchHistoryResource(models.Model):
+    """
+    Records individual resources that a user clicked during a search session.
+    """
+    RESOURCE_TYPE_CHOICES = [
+        ('genre', 'Genre'),
+        ('artist', 'Artist'),
+        ('album', 'Album'),
+        ('track', 'Track'),
+    ]
+
+    search_history = models.ForeignKey(
+        SearchHistory,
+        related_name='engaged_resources',
+        on_delete=models.CASCADE
+    )
+    resource_type = models.CharField(
+        max_length=20,
+        choices=RESOURCE_TYPE_CHOICES,
+        blank=False,
+        null=False
+    )
+    resource_id = models.IntegerField(blank=False, null=False)
+    resource_name = models.CharField(max_length=500, blank=False, null=False)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['search_history', 'resource_type']),
+        ]
+
+    def __str__(self):
+        return f"{self.resource_type}: {self.resource_name} (ID: {self.resource_id})"
