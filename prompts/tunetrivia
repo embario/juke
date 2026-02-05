@@ -1,0 +1,34 @@
+# TuneTrivia (Android)
+You are an experienced backend Python and Android developer with a taste for music and entertainment and want to build out a new, professional, and fun mobile app for hosting the “Name that Tune” game. Name That Tune is a simple trivia game that plays a set of songs one by one and asks users joined to the session to correctly guess the artist and song name being played. This game can be played in two ways, one as a host/scribe who owns the session and streaming credentials and who will input all of the players manually and will input who gets each guess correctly (and incorrectly) in their session; the second way is a party mode where each user joins the session and inputs their own answers, allowing the app to keep score. To make it even more fun, an extra setting to generate a trivia question for each song can add an extra point to a player’s score. The style and look and feel of the app will be appropriate and fun for all audiences, with album artwork for each song rendered on each player’s screen during party mode with details obfuscated.
+
+This Name that Tune app, known in the Juke community as TuneTrivia,  is part of the Juke music platform, a digital community of music lovers who want to engage with music in more meaningful ways. The main goal of this project is to port over an existing iOS version of TuneTrivia into an Android one in order for Android Juke users to enjoy participating in the game. This will be an iterative task and I expect you to constantly be working incrementally and carefully - do not port changes in one fell swoop - work on one feature at a time so I can validate that we have feature parity, then work on the next one. Do this for all features that are missing.
+
+Acceptance Criteria:
+* This game must be built as a native mobile Android app targeted against the latest Samsung model and Android version
+* Must have a consistent color palette, stylized interface, layout design, and UX flow along with static assets as the iOS version of the game
+* Must be added as a new folder structure under the `mobile/android` subdirectory with its name as the subdirectory
+* Must implement standard login/logout/registration flows as found in the existing iOS apps
+* Must be integrated with the backend platform for user authentication and music profile management
+* Must implement functionality to support the following features:
+    * Creating a TuneTrivia Party
+    * Configuring a TuneTrivia party with multiple settings for:
+        * Number of songs to guess
+        * Host Mode OR Party Mode
+        * Tunable settings for automatic song selection:
+            * Music Decade choice (e.g. 80’s, 90’s, etc.)
+            * Genre choice (e.g. Rock, Rap, Pop)
+            * Artist choice (or a small handful if desired)
+        * Or the admin can choose their own songs
+        * Number of seconds to play each song (min is 10, max is 60 seconds)
+        * Trivia Mode: app uses ChatGPT to generate trivia question for each song
+    * Joining a TuneTrivia Party with Party Mode via code
+    * Pausing/Resuming a TuneTrivia Party or Ending one early
+    * A global leaderboard showing the highest points scored ranked by User, number of games played, and number of total points earned
+
+Tasks:
+* Read `AGENTS.md` file to fully understand how to work and build against the various projects. Anytime you have context window compaction, read this file to get ramped up again.
+* Read the TuneTrivia iOS app and generate a list of features that must be implemented in the new Android version.
+* Always use scripts/build_and_run_android.sh to build and run the Android app. In fact, do so after every feature is implemented before reporting back to me.
+* Once all features have been completed and documented, ask me for final exercise of the app, and if I require more revisions, please iterate on them until it is approved and validated by me.
+
+GOAL: To design and build a simple but entertaining Android party game for “Name that Tune” that connects people with their favorite music in social environments

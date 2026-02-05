@@ -1,0 +1,17 @@
+[
+  {
+    "input": ["branding/shotclock/icon_b_neon_night.svg"],
+    "output": [
+      ["mobile/android/shotclock/brand_assets/mipmap-mdpi/ic_launcher.png", "48:48"],
+      ["mobile/android/shotclock/brand_assets/mipmap-mdpi/ic_launcher_round.png", "48:48"],
+      ["mobile/android/shotclock/brand_assets/mipmap-hdpi/ic_launcher.png", "72:72"],
+      ["mobile/android/shotclock/brand_assets/mipmap-hdpi/ic_launcher_round.png", "72:72"],
+      ["mobile/android/shotclock/brand_assets/mipmap-xhdpi/ic_launcher.png", "96:96"],
+      ["mobile/android/shotclock/brand_assets/mipmap-xhdpi/ic_launcher_round.png", "96:96"],
+      ["mobile/android/shotclock/brand_assets/mipmap-xxhdpi/ic_launcher.png", "144:144"],
+      ["mobile/android/shotclock/brand_assets/mipmap-xxhdpi/ic_launcher_round.png", "144:144"],
+      ["mobile/android/shotclock/brand_assets/mipmap-xxxhdpi/ic_launcher.png", "192:192"],
+      ["mobile/android/shotclock/brand_assets/mipmap-xxxhdpi/ic_launcher_round.png", "192:192"]
+    ]
+  }
+]

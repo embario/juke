@@ -1,0 +1,17 @@
+* Music Recommendation service
+* Setlist Generation App
+    * Music Performance Artists
+    * App integrates with Juke and neighboring Juke users
+    * Runs setlist generation
+* Shotclock for Android
+* TuneTrivia for Android
+* ChatGPT for Juke (RAG system)
+* Reusable iOS App Library for common components
+* Reusable Android App Library for common components
+* Juke CLI agent on Mac OS
+    * Long-running REPL that can be installed as a system background service
+    * Can create playlists for you and add to them on-demand
+    * Can generate trivia questions on-demand
+    * Can generate blurbs on currently-playing album, artist, track
+    * Playback controls hooked up to system playback controls (e.g. “pause” means system audio pause, “next” means go to the next track, etc.)
+    * Blazing fast performance for playback, acceptable performance for everything else
