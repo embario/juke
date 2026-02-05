@@ -22,6 +22,7 @@ data class GameUiState(
     val triviaResult: TriviaResult? = null,
     val isAdvancing: Boolean = false,
     val isEnding: Boolean = false,
+    val awardingPlayerId: Int? = null,
 )
 
 class GamePlayViewModel(
@@ -144,9 +145,21 @@ class GamePlayViewModel(
         }
     }
 
-    fun awardPoints(playerId: Int, points: Int) {
+    fun awardPoints(playerId: Int, points: Int, onComplete: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(awardingPlayerId = playerId, error = null)
             repository.awardPoints(playerId, points)
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(awardingPlayerId = null)
+                    onComplete(true)
+                }
+                .onFailure { throwable ->
+                    _uiState.value = _uiState.value.copy(
+                        awardingPlayerId = null,
+                        error = throwable.humanReadableMessage(),
+                    )
+                    onComplete(false)
+                }
         }
     }
 }

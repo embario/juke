@@ -42,6 +42,7 @@ fun AddTracksScreen(
     viewModel: AddTracksViewModel = viewModel(),
 ) {
     val state by viewModel.uiState
+    val isMutatingTracks = state.isAddingTrack || state.isAutoSelecting
 
     TuneTriviaBackground(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -53,7 +54,11 @@ fun AddTracksScreen(
                 .padding(top = 12.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            TextButton(onClick = onBack, contentPadding = PaddingValues(0.dp)) {
+            TextButton(
+                onClick = onBack,
+                contentPadding = PaddingValues(0.dp),
+                enabled = !isMutatingTracks,
+            ) {
                 Text(text = "Back", color = TuneTriviaPalette.Secondary)
             }
 
@@ -85,7 +90,7 @@ fun AddTracksScreen(
                     onClick = { viewModel.autoFill(sessionId, remainingSlots, onBack) },
                     variant = TuneTriviaButtonVariant.LINK,
                     fillMaxWidth = false,
-                    enabled = remainingSlots > 0 && !state.isAutoSelecting,
+                    enabled = remainingSlots > 0 && !state.isAutoSelecting && !state.isAddingTrack,
                 ) {
                     Text(text = if (state.isAutoSelecting) "Auto-filling..." else "Auto-fill")
                 }
@@ -94,7 +99,7 @@ fun AddTracksScreen(
             TuneTriviaButton(
                 onClick = { viewModel.search() },
                 variant = TuneTriviaButtonVariant.SECONDARY,
-                enabled = state.query.isNotBlank() && !state.isSearching,
+                enabled = state.query.isNotBlank() && !state.isSearching && !isMutatingTracks,
             ) {
                 Text(text = if (state.isSearching) "Searching..." else "Search")
             }
@@ -127,7 +132,12 @@ fun AddTracksScreen(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     state.results.forEach { track ->
-                        TrackResultRow(track = track, onAdd = { viewModel.addTrack(sessionId, track) })
+                        TrackResultRow(
+                            track = track,
+                            onAdd = { viewModel.addTrack(sessionId, track) },
+                            isAdding = state.addingTrackId == track.id,
+                            addEnabled = !isMutatingTracks,
+                        )
                     }
                 }
             }
@@ -138,7 +148,12 @@ fun AddTracksScreen(
 }
 
 @Composable
-private fun TrackResultRow(track: SpotifyTrack, onAdd: () -> Unit) {
+private fun TrackResultRow(
+    track: SpotifyTrack,
+    onAdd: () -> Unit,
+    isAdding: Boolean,
+    addEnabled: Boolean,
+) {
     TuneTriviaCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -161,8 +176,9 @@ private fun TrackResultRow(track: SpotifyTrack, onAdd: () -> Unit) {
                 variant = TuneTriviaButtonVariant.LINK,
                 fillMaxWidth = false,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                enabled = addEnabled && !isAdding,
             ) {
-                Text(text = "Add")
+                Text(text = if (isAdding) "Adding..." else "Add")
             }
         }
     }
