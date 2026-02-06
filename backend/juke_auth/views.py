@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib.auth import login, logout
@@ -27,6 +28,7 @@ except ImportError:  # pragma: no cover - fallback for older rest_registration l
 from social_django.utils import load_backend, load_strategy
 from social_core.exceptions import AuthConnectionError
 from social_django import views as social_views
+from social_django.models import UserSocialAuth
 
 from juke_auth.serializers import (
     JukeUserSerializer,
@@ -50,9 +52,49 @@ def _social_auth_error_response(request, error_code: str, detail: str, status_co
     return HttpResponseRedirect(error_url)
 
 
-def spotify_complete(request, *args, **kwargs):
+def _validated_return_to(candidate: str | None) -> str:
+    fallback = settings.FRONTEND_URL.rstrip('/')
+    if not candidate:
+        return fallback
+
+    parsed = urlparse(candidate)
+    if not parsed.scheme or not parsed.netloc:
+        return fallback
+
+    allowed_hosts = {urlparse(settings.FRONTEND_URL).netloc}
+    for origin in getattr(settings, 'CORS_ALLOWED_ORIGINS', []):
+        parsed_origin = urlparse(origin)
+        if parsed_origin.netloc:
+            allowed_hosts.add(parsed_origin.netloc)
+
+    if parsed.netloc not in allowed_hosts:
+        return fallback
+
+    return candidate
+
+
+def spotify_connect(request, *args, **kwargs):
+    token_key = (request.GET.get('token') or '').strip()
+    return_to = _validated_return_to(request.GET.get('return_to'))
+
+    if not request.user.is_authenticated and token_key:
+        token = Token.objects.filter(key=token_key).select_related('user').first()
+        if token:
+            _login_user(request, token.user)
+
+    if not request.user.is_authenticated:
+        return _social_auth_error_response(
+            request,
+            error_code='spotify_auth_failed',
+            detail='Please sign in before connecting Spotify.',
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    request.session['spotify_connect_user_id'] = request.user.id
+    request.session['spotify_connect_return_to'] = return_to
+
     try:
-        return social_views.complete(request, backend=SOCIAL_AUTH_PROVIDER, *args, **kwargs)
+        return social_views.auth(request, backend=SOCIAL_AUTH_PROVIDER, *args, **kwargs)
     except AuthConnectionError as exc:
         logger.warning('Spotify auth connection error', exc_info=exc)
         return _social_auth_error_response(
@@ -69,6 +111,53 @@ def spotify_complete(request, *args, **kwargs):
             detail='Spotify authentication failed. Please try again.',
             status_code=status.HTTP_400_BAD_REQUEST,
         )
+
+
+def spotify_complete(request, *args, **kwargs):
+    try:
+        response = social_views.complete(request, backend=SOCIAL_AUTH_PROVIDER, *args, **kwargs)
+    except AuthConnectionError as exc:
+        logger.warning('Spotify auth connection error', exc_info=exc)
+        return _social_auth_error_response(
+            request,
+            error_code='spotify_unavailable',
+            detail='Spotify authentication is temporarily unavailable. Please try again.',
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    except Exception as exc:
+        logger.exception('Spotify auth failed', exc_info=exc)
+        return _social_auth_error_response(
+            request,
+            error_code='spotify_auth_failed',
+            detail='Spotify authentication failed. Please try again.',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    connect_user_id = request.session.pop('spotify_connect_user_id', None)
+    return_to = _validated_return_to(request.session.pop('spotify_connect_return_to', None))
+
+    if connect_user_id:
+        target_user = JukeUser.objects.filter(pk=connect_user_id).first()
+        if target_user:
+            social = None
+            if request.user.is_authenticated:
+                social = UserSocialAuth.objects.filter(
+                    provider=SOCIAL_AUTH_PROVIDER,
+                    user=request.user,
+                ).order_by('-id').first()
+            if social and social.user_id != target_user.id:
+                logger.info(
+                    'Reassigning spotify social account from user %s to user %s',
+                    social.user_id,
+                    target_user.id,
+                )
+                social.user = target_user
+                social.save(update_fields=['user'])
+            _login_user(request, target_user)
+
+    if isinstance(response, HttpResponseRedirect):
+        response['Location'] = return_to
+    return response
 
 
 def _send_register_verification_email(user, request=None):

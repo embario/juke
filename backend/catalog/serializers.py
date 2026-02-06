@@ -55,9 +55,9 @@ class SpotifyArtistSerializer(SpotifyResourceSerializer):
 
     def create(self, validated_data):
         with transaction.atomic():
-            instance, created = Artist.objects.get_or_create(
-                name=validated_data['name'],
+            instance, created = Artist.objects.update_or_create(
                 spotify_id=validated_data['id'],
+                defaults={'name': validated_data['name']},
             )
             if created:
                 logger.info(f"Artist '{instance.name}' created.")
@@ -65,12 +65,14 @@ class SpotifyArtistSerializer(SpotifyResourceSerializer):
                 logger.debug(f"Artist '{instance.name}' updated.")
 
             # Add Genres
+            genres = []
             for genre_name in validated_data['genres']:
                 genre, _ = Genre.objects.get_or_create(
                     name=genre_name,
                     spotify_id=f"genre-{genre_name}",
                 )
-                instance.genres.add(genre)
+                genres.append(genre)
+            instance.genres.set(genres)
 
             # Add other Spotify Data
             instance.spotify_data = {
@@ -79,10 +81,16 @@ class SpotifyArtistSerializer(SpotifyResourceSerializer):
                 'popularity': validated_data['popularity'],
                 'followers': validated_data['followers']['total'],
                 'images': [d['url'] for d in validated_data['images']],
+                'genres': validated_data['genres'],
             }
 
             instance.save()
         return instance
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['genres'] = list(instance.genres.values_list('name', flat=True))
+        return data
 
 
 class SpotifyAlbumSerializer(SpotifyResourceSerializer):
@@ -169,6 +177,72 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
         return data
 
 
+class GenreDetailSerializer(GenreSerializer):
+    description = serializers.CharField(read_only=True, required=False, allow_blank=True)
+    top_artists = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Genre
+        fields = "__all__"
+
+    def get_top_artists(self, obj):
+        artists = getattr(obj, 'top_artists', [])
+        serializer = ArtistSerializer(artists, many=True, context=self.context)
+        return serializer.data
+
+
+class ArtistDetailSerializer(ArtistSerializer):
+    genres = serializers.SerializerMethodField()
+    bio = serializers.CharField(read_only=True, required=False, allow_blank=True)
+    albums = serializers.SerializerMethodField()
+    top_tracks = serializers.SerializerMethodField()
+    related_artists = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Artist
+        fields = "__all__"
+
+    def get_genres(self, obj):
+        genres = obj.genres.all()
+        serializer = GenreSerializer(genres, many=True, context=self.context)
+        return serializer.data
+
+    def get_albums(self, obj):
+        albums = getattr(obj, '_enriched_albums', [])
+        serializer = AlbumSerializer(albums, many=True, context=self.context)
+        return serializer.data
+
+    def get_top_tracks(self, obj):
+        tracks = getattr(obj, '_enriched_top_tracks', [])
+        serializer = TrackSerializer(tracks, many=True, context=self.context)
+        return serializer.data
+
+    def get_related_artists(self, obj):
+        artists = getattr(obj, '_enriched_related_artists', [])
+        serializer = ArtistSerializer(artists, many=True, context=self.context)
+        return serializer.data
+
+
+class AlbumDetailSerializer(AlbumSerializer):
+    description = serializers.CharField(read_only=True, required=False, allow_blank=True)
+    tracks = serializers.SerializerMethodField()
+    related_albums = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Album
+        fields = "__all__"
+
+    def get_tracks(self, obj):
+        tracks = getattr(obj, '_enriched_tracks', [])
+        serializer = TrackSerializer(tracks, many=True, context=self.context)
+        return serializer.data
+
+    def get_related_albums(self, obj):
+        albums = getattr(obj, '_enriched_related_albums', [])
+        serializer = AlbumSerializer(albums, many=True, context=self.context)
+        return serializer.data
+
+
 class PlaybackProviderSerializer(serializers.Serializer):
     provider = serializers.CharField(required=False, allow_blank=True)
     device_id = serializers.CharField(required=False, allow_blank=True)
@@ -193,6 +267,15 @@ class PlayRequestSerializer(PlaybackProviderSerializer):
 
 class PlaybackStateQuerySerializer(serializers.Serializer):
     provider = serializers.CharField(required=False, allow_blank=True)
+
+
+class SeekRequestSerializer(PlaybackProviderSerializer):
+    position_ms = serializers.IntegerField(required=True, min_value=0)
+
+    def validate(self, attrs):
+        if attrs.get('device_id'):
+            attrs['device_id'] = attrs['device_id'].strip()
+        return attrs
 
 
 class SearchHistoryResourceSerializer(serializers.ModelSerializer):

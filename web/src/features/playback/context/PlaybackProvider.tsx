@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useAuth } from '../../auth/hooks/useAuth';
 import type { Track } from '../../catalog/types';
 import type { PlaybackProviderName, PlaybackState } from '../types';
-import { fetchPlaybackState, nextTrack, pausePlayback, previousTrack, startPlayback } from '../api/playbackApi';
+import { fetchPlaybackState, nextTrack, pausePlayback, previousTrack, seekPlayback, startPlayback } from '../api/playbackApi';
 import { deriveTrackUri } from '../utils';
 
 export type PlaybackContextValue = {
@@ -13,16 +13,66 @@ export type PlaybackContextValue = {
   canControl: boolean;
   activeTrackUri: string | null;
   playTrack: (track: Track, overrides?: { provider?: PlaybackProviderName }) => Promise<void>;
+  playContext: (contextUri: string, overrides?: { provider?: PlaybackProviderName }) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   next: () => Promise<void>;
   previous: () => Promise<void>;
+  seek: (positionMs: number) => Promise<void>;
   refresh: () => Promise<void>;
 };
 
 const PlaybackContext = createContext<PlaybackContextValue | undefined>(undefined);
 
 const DEFAULT_PROVIDER: PlaybackProviderName = 'spotify';
+const PLAYBACK_SYNC_DELAY_MS = 900;
+const PLAYBACK_POLL_WHILE_PLAYING_MS = 6000;
+const PLAYBACK_POLL_IDLE_MS = 12000;
+
+const getFirstArtwork = (images?: unknown) => {
+  if (!Array.isArray(images)) {
+    return null;
+  }
+  const first = images.find((image) => typeof image === 'string' && image.trim().length > 0);
+  return typeof first === 'string' ? first : null;
+};
+
+const normalizeOptimisticTrack = (track: Track) => {
+  const album = typeof track.album === 'object' && track.album !== null ? track.album : null;
+  const albumArtists = Array.isArray(album?.artists) ? album.artists : [];
+  const artists = albumArtists.reduce<Array<{ id?: string; uri?: string; name?: string }>>((acc, artist) => {
+    if (typeof artist === 'object' && artist !== null && 'spotify_id' in artist && 'name' in artist) {
+      const spotifyId = (artist as { spotify_id?: unknown }).spotify_id;
+      const name = (artist as { name?: unknown }).name;
+      acc.push({
+        id: typeof spotifyId === 'string' ? spotifyId : undefined,
+        uri: typeof spotifyId === 'string' ? `spotify:artist:${spotifyId}` : undefined,
+        name: typeof name === 'string' ? name : undefined,
+      });
+    }
+    return acc;
+  }, []);
+  const trackArtwork = getFirstArtwork(track.spotify_data?.images);
+  const albumArtwork = getFirstArtwork(album?.spotify_data?.images);
+  const trackUri = deriveTrackUri(track);
+
+  return {
+    id: track.spotify_id,
+    uri: trackUri,
+    name: track.name,
+    duration_ms: track.duration_ms,
+    artwork_url: trackArtwork ?? albumArtwork,
+    artists,
+    album: album
+      ? {
+          id: album.spotify_id,
+          uri: `spotify:album:${album.spotify_id}`,
+          name: album.name,
+          artwork_url: albumArtwork,
+        }
+      : null,
+  };
+};
 
 export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
   const { token } = useAuth();
@@ -46,7 +96,7 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const runAction = useCallback(
-    async (operation: () => Promise<PlaybackState | null>, options?: { silent?: boolean }) => {
+    async (operation: () => Promise<PlaybackState | null>, options?: { silent?: boolean; preserveLocalState?: boolean }) => {
       if (!token) {
         throw new Error('Playback actions require authentication.');
       }
@@ -56,7 +106,9 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
       try {
         const payload = await operation();
         setError(null);
-        applyState(payload);
+        if (!options?.preserveLocalState) {
+          applyState(payload);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unable to control playback.';
         setError(message);
@@ -91,6 +143,12 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [activeProvider, applyState, runAction, state?.provider, token]);
 
+  const refreshSoon = useCallback(() => {
+    window.setTimeout(() => {
+      void refresh();
+    }, PLAYBACK_SYNC_DELAY_MS);
+  }, [refresh]);
+
   const playTrack = useCallback(
     async (track: Track, overrides?: { provider?: PlaybackProviderName }) => {
       const uri = deriveTrackUri(track);
@@ -102,14 +160,58 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       const provider = overrides?.provider ?? state?.provider ?? activeProvider ?? DEFAULT_PROVIDER;
+      const previousState = state;
       setActiveProvider(provider);
+      applyState({
+        provider,
+        is_playing: true,
+        progress_ms: 0,
+        updated_at: new Date().toISOString(),
+        device: state?.device ?? null,
+        track: normalizeOptimisticTrack(track),
+      });
       try {
-        await runAction(() => startPlayback(token, { provider, track_uri: uri }), { silent: false });
+        await runAction(() => startPlayback(token, { provider, track_uri: uri }), { silent: false, preserveLocalState: true });
+        refreshSoon();
       } catch {
-        // handled globally
+        applyState(previousState ?? null);
       }
     },
-    [activeProvider, ensureAuthenticated, runAction, state?.provider, token],
+    [activeProvider, applyState, ensureAuthenticated, refreshSoon, runAction, state, token],
+  );
+
+  const playContext = useCallback(
+    async (contextUri: string, overrides?: { provider?: PlaybackProviderName }) => {
+      const normalizedContextUri = contextUri.trim();
+      if (!normalizedContextUri) {
+        setError('Missing playback context.');
+        return;
+      }
+      if (!ensureAuthenticated() || !token) {
+        return;
+      }
+      const provider = overrides?.provider ?? state?.provider ?? activeProvider ?? DEFAULT_PROVIDER;
+      const previousState = state;
+      setActiveProvider(provider);
+      applyState({
+        provider,
+        is_playing: true,
+        progress_ms: 0,
+        updated_at: new Date().toISOString(),
+        device: state?.device ?? null,
+        track: null,
+      });
+      try {
+        await runAction(() => startPlayback(token, { provider, context_uri: normalizedContextUri }), {
+          silent: false,
+          preserveLocalState: true,
+        });
+        refreshSoon();
+      } catch {
+        applyState(previousState ?? null);
+      }
+    },
+    [activeProvider, applyState, ensureAuthenticated, refreshSoon, runAction, state, token],
   );
 
   const pause = useCallback(async () => {
@@ -120,10 +222,11 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
     const deviceId = state?.device?.id ?? undefined;
     try {
       await runAction(() => pausePlayback(token, { provider, device_id: deviceId }), { silent: false });
+      refreshSoon();
     } catch {
       // handled globally
     }
-  }, [activeProvider, ensureAuthenticated, runAction, state?.device?.id, state?.provider, token]);
+  }, [activeProvider, ensureAuthenticated, refreshSoon, runAction, state?.device?.id, state?.provider, token]);
 
   const resume = useCallback(async () => {
     if (!ensureAuthenticated() || !token) {
@@ -140,10 +243,11 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
           }),
         { silent: false },
       );
+      refreshSoon();
     } catch {
       // handled globally
     }
-  }, [activeProvider, ensureAuthenticated, runAction, state?.device?.id, state?.provider, token]);
+  }, [activeProvider, ensureAuthenticated, refreshSoon, runAction, state?.device?.id, state?.provider, token]);
 
   const next = useCallback(async () => {
     if (!ensureAuthenticated() || !token) {
@@ -153,10 +257,11 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
     const deviceId = state?.device?.id ?? undefined;
     try {
       await runAction(() => nextTrack(token, { provider, device_id: deviceId }), { silent: false });
+      refreshSoon();
     } catch {
       // handled globally
     }
-  }, [activeProvider, ensureAuthenticated, runAction, state?.device?.id, state?.provider, token]);
+  }, [activeProvider, ensureAuthenticated, refreshSoon, runAction, state?.device?.id, state?.provider, token]);
 
   const previous = useCallback(async () => {
     if (!ensureAuthenticated() || !token) {
@@ -166,10 +271,29 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
     const deviceId = state?.device?.id ?? undefined;
     try {
       await runAction(() => previousTrack(token, { provider, device_id: deviceId }), { silent: false });
+      refreshSoon();
     } catch {
       // handled globally
     }
-  }, [activeProvider, ensureAuthenticated, runAction, state?.device?.id, state?.provider, token]);
+  }, [activeProvider, ensureAuthenticated, refreshSoon, runAction, state?.device?.id, state?.provider, token]);
+
+  const seek = useCallback(async (positionMs: number) => {
+    if (!ensureAuthenticated() || !token) {
+      return;
+    }
+    const provider = state?.provider ?? activeProvider;
+    const deviceId = state?.device?.id ?? undefined;
+    const normalizedPosition = Math.max(0, Math.round(positionMs));
+    try {
+      await runAction(
+        () => seekPlayback(token, { provider, device_id: deviceId, position_ms: normalizedPosition }),
+        { silent: false },
+      );
+      refreshSoon();
+    } catch {
+      // handled globally
+    }
+  }, [activeProvider, ensureAuthenticated, refreshSoon, runAction, state?.device?.id, state?.provider, token]);
 
   useEffect(() => {
     if (!token) {
@@ -199,14 +323,33 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
   }, [state?.is_playing]);
 
   useEffect(() => {
-    if (!state?.is_playing || !token) {
+    if (!token) {
       return undefined;
     }
+    const intervalMs = state?.is_playing ? PLAYBACK_POLL_WHILE_PLAYING_MS : PLAYBACK_POLL_IDLE_MS;
     const interval = window.setInterval(() => {
       void refresh();
-    }, 10000);
+    }, intervalMs);
     return () => window.clearInterval(interval);
   }, [refresh, state?.is_playing, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return undefined;
+    }
+
+    const refreshFromSystemPlayback = () => {
+      void refresh();
+    };
+
+    window.addEventListener('focus', refreshFromSystemPlayback);
+    document.addEventListener('visibilitychange', refreshFromSystemPlayback);
+
+    return () => {
+      window.removeEventListener('focus', refreshFromSystemPlayback);
+      document.removeEventListener('visibilitychange', refreshFromSystemPlayback);
+    };
+  }, [refresh, token]);
 
   const value = useMemo<PlaybackContextValue>(
     () => ({
@@ -217,13 +360,15 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
       canControl,
       activeTrackUri,
       playTrack,
+      playContext,
       pause,
       resume,
       next,
       previous,
+      seek,
       refresh,
     }),
-    [activeTrackUri, canControl, error, isBusy, isPlaying, next, pause, playTrack, previous, refresh, resume, state],
+    [activeTrackUri, canControl, error, isBusy, isPlaying, next, pause, playContext, playTrack, previous, refresh, resume, seek, state],
   );
 
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>;

@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from catalog import serializers, controller
 from catalog.services.playback import PlaybackService
 from catalog.services.featured_genres import get_featured_genres
+from catalog.services.detail_enrichment import ResourceDetailService
 from catalog.models import Genre, Artist, Album, Track, SearchHistory
 from catalog.tasks import sync_spotify_genres_task
 
@@ -13,8 +14,17 @@ log = logging.getLogger(__name__)
 
 
 class MusicResourceViewSet(viewsets.ReadOnlyModelViewSet):
+    @staticmethod
+    def _use_external_source(request):
+        raw_value = request.GET.get('external')
+        if raw_value is None:
+            return False
+        if isinstance(raw_value, bool):
+            return raw_value
+        return str(raw_value).lower() in ('true', '1', 'yes')
+
     def list(self, request):
-        if 'external' in request.GET and bool(request.GET['external']) is True:
+        if self._use_external_source(request):
             log.info("RECV Request for External Source: %s", request)
             res = controller.route(request)
             return Response(res.data)
@@ -23,7 +33,7 @@ class MusicResourceViewSet(viewsets.ReadOnlyModelViewSet):
         return super().list(request)
 
     def get_object(self):
-        if 'external' in self.request.GET and bool(self.request.GET['external']) is True:
+        if self._use_external_source(self.request):
             res = controller.route(self.request)
             return res.instance
         return super().get_object()
@@ -33,6 +43,14 @@ class GenreViewSet(MusicResourceViewSet):
     queryset = Genre.objects.all()
     serializer_class = serializers.GenreSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def retrieve(self, request, *args, **kwargs):
+        genre = self.get_object()
+        enriched = ResourceDetailService.enrich_genre(genre)
+        genre.description = enriched['description']
+        genre.top_artists = enriched['top_artists']
+        serializer = serializers.GenreDetailSerializer(genre, context={'request': request})
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def featured(self, request):
@@ -50,11 +68,30 @@ class ArtistViewSet(MusicResourceViewSet):
     serializer_class = serializers.ArtistSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def retrieve(self, request, *args, **kwargs):
+        artist = self.get_object()
+        enriched = ResourceDetailService.enrich_artist(artist)
+        artist.bio = enriched['bio']
+        artist._enriched_albums = enriched['albums']
+        artist._enriched_top_tracks = enriched['top_tracks']
+        artist._enriched_related_artists = enriched['related_artists']
+        serializer = serializers.ArtistDetailSerializer(artist, context={'request': request})
+        return Response(serializer.data)
+
 
 class AlbumViewSet(MusicResourceViewSet):
     queryset = Album.objects.all()
     serializer_class = serializers.AlbumSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def retrieve(self, request, *args, **kwargs):
+        album = self.get_object()
+        enriched = ResourceDetailService.enrich_album(album)
+        album.description = enriched['description']
+        album._enriched_tracks = enriched['tracks']
+        album._enriched_related_albums = enriched['related_albums']
+        serializer = serializers.AlbumDetailSerializer(album, context={'request': request})
+        return Response(serializer.data)
 
 
 class TrackViewSet(MusicResourceViewSet):
@@ -110,6 +147,13 @@ class PlaybackViewSet(viewsets.ViewSet):
         data = self._validated(serializers.PlaybackProviderSerializer, request.data)
         service = self._service(data.get('provider'))
         state = service.previous(device_id=data.get('device_id'))
+        return self._respond(state)
+
+    @action(detail=False, methods=['post'])
+    def seek(self, request):
+        data = self._validated(serializers.SeekRequestSerializer, request.data)
+        service = self._service(data.get('provider'))
+        state = service.seek(position_ms=data['position_ms'], device_id=data.get('device_id'))
         return self._respond(state)
 
     @action(detail=False, methods=['get'])

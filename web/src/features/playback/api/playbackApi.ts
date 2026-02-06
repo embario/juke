@@ -43,6 +43,14 @@ export const previousTrack = async (token: string, body: ControlRequest = {}) =>
   return unwrapState(response);
 };
 
+export const seekPlayback = async (
+  token: string,
+  body: ControlRequest & { position_ms: number },
+) => {
+  const response = await apiClient.post<PlaybackStateResponse>('/api/v1/playback/seek/', body, { token });
+  return unwrapState(response);
+};
+
 export const fetchPlaybackState = async (token: string, provider?: string) => {
   const query = provider ? { provider } : undefined;
   const response = await apiClient.get<PlaybackStateResponse>('/api/v1/playback/state/', { token, query });

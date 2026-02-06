@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from django.utils import timezone
 from rest_framework.exceptions import APIException
@@ -58,6 +58,10 @@ class PlaybackProvider(abc.ABC):
 
     @abc.abstractmethod
     def previous(self, *, device_id: Optional[str]) -> None:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def seek(self, *, position_ms: int, device_id: Optional[str]) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -131,6 +135,10 @@ class PlaybackService:
         self.provider.previous(device_id=device_id)
         return self.provider.state()
 
+    def seek(self, *, position_ms: int, device_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        self.provider.seek(position_ms=position_ms, device_id=device_id)
+        return self.provider.state()
+
     def state(self) -> Optional[Dict[str, Any]]:
         return self.provider.state()
 
@@ -193,7 +201,7 @@ class SpotifyPlaybackProvider(PlaybackProvider):
         token = self._ensure_access_token()
         return spotipy.Spotify(auth=token)
 
-    def _execute(self, operation):
+    def _execute(self, operation, error_recovery: Optional[Callable[[SpotifyException], bool]] = None):
         attempts = 0
         while True:
             client = self._client()
@@ -210,8 +218,13 @@ class SpotifyPlaybackProvider(PlaybackProvider):
                 if playback_not_found:
                     logger.info('Spotify reports no active playback: %s', exc)
                     return None
+                if error_recovery and error_recovery(exc):
+                    return None
                 logger.error('Spotify playback error: %s', exc)
                 raise PlaybackProviderFailure(exc.msg or 'Spotify playback request failed.') from exc
+
+    def _is_restriction_violation(self, exc: SpotifyException) -> bool:
+        return exc.http_status == 403 and 'restriction violated' in (exc.msg or '').lower()
 
     def play(self, *, track_uri: Optional[str], context_uri: Optional[str], position_ms: Optional[int], device_id: Optional[str]) -> None:
         kwargs: Dict[str, Any] = {}
@@ -235,7 +248,27 @@ class SpotifyPlaybackProvider(PlaybackProvider):
 
     def previous(self, *, device_id: Optional[str]) -> None:
         kwargs = {'device_id': device_id} if device_id else {}
-        self._execute(lambda client: client.previous_track(**kwargs))
+
+        def recover(exc: SpotifyException) -> bool:
+            if not self._is_restriction_violation(exc):
+                return False
+            logger.info(
+                'Spotify previous command restricted for user %s; seeking current track to start instead.',
+                getattr(self.user, 'pk', self.user),
+            )
+            seek_kwargs: Dict[str, Any] = {'position_ms': 0}
+            if device_id:
+                seek_kwargs['device_id'] = device_id
+            self._execute(lambda client: client.seek_track(**seek_kwargs))
+            return True
+
+        self._execute(lambda client: client.previous_track(**kwargs), error_recovery=recover)
+
+    def seek(self, *, position_ms: int, device_id: Optional[str]) -> None:
+        kwargs: Dict[str, Any] = {'position_ms': position_ms}
+        if device_id:
+            kwargs['device_id'] = device_id
+        self._execute(lambda client: client.seek_track(**kwargs))
 
     def state(self) -> Optional[Dict[str, Any]]:
         playback = self._execute(lambda client: client.current_playback())

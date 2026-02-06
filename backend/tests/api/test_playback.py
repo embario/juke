@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from social_django.models import UserSocialAuth
+from spotipy.exceptions import SpotifyException
 
 from juke_auth.models import JukeUser
 
@@ -113,3 +114,25 @@ class PlaybackAPITests(APITestCase):
         self.assertEqual(prev_response.status_code, status.HTTP_200_OK)
         client.next_track.assert_called_with(device_id='device-1')
         client.previous_track.assert_called_with(device_id='device-1')
+
+    @patch('catalog.services.playback.spotipy.Spotify')
+    def test_previous_restriction_restarts_current_track(self, mock_spotify):
+        client = mock_spotify.return_value
+        client.previous_track.side_effect = SpotifyException(403, -1, 'Player command failed: Restriction violated')
+        client.current_playback.return_value = self._playback_payload()
+
+        response = self.client.post(f'{self.playback_url}previous/', data={'device_id': 'device-1'})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        client.previous_track.assert_called_with(device_id='device-1')
+        client.seek_track.assert_called_with(position_ms=0, device_id='device-1')
+
+    @patch('catalog.services.playback.spotipy.Spotify')
+    def test_can_seek_playback_position(self, mock_spotify):
+        client = mock_spotify.return_value
+        client.current_playback.return_value = self._playback_payload()
+
+        response = self.client.post(f'{self.playback_url}seek/', data={'device_id': 'device-1', 'position_ms': 42000})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        client.seek_track.assert_called_with(position_ms=42000, device_id='device-1')

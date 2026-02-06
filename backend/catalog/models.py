@@ -81,28 +81,16 @@ class Album(MusicResource):
             data['release_date'],
             data.get('release_date_precision'),
         )
-        try:
-            instance = Album.objects.get(
-                name=data['name'],
-                spotify_id=data['id'],
-            )
-
-            instance.name = data['name']
-            instance.spotify_id = data['id']
-            instance.total_tracks = data['total_tracks']
-            instance.release_date = release_date
-            instance.save()
-            created = False
-
-        except Album.DoesNotExist:
-            instance = Album.objects.create(
-                name=data['name'],
-                spotify_id=data['id'],
-                album_type=data['album_type'].upper(),
-                total_tracks=data['total_tracks'],
-                release_date=release_date,
-            )
-            created = True
+        defaults = {
+            'name': data['name'],
+            'album_type': data.get('album_type', CHOICES_ALBUM_TYPE[0][0]).upper(),
+            'total_tracks': data['total_tracks'],
+            'release_date': release_date,
+        }
+        instance, created = Album.objects.update_or_create(
+            spotify_id=data['id'],
+            defaults=defaults,
+        )
         return instance, created
 
 
@@ -119,31 +107,18 @@ class Track(MusicResource):
 
     @staticmethod
     def get_or_create_with_validated_data(album, data):
-        try:
-            instance = Track.objects.get(
-                name=data['name'],
-                spotify_id=data['id'],
-            )
-
-            instance.name = data['name']
-            instance.spotify_id = data['id']
-            instance.track_number = data['track_number']
-            instance.disc_number = data['disc_number']
-            instance.duration_ms = data['duration_ms']
-            instance.explicit = data['explicit']
-            created = False
-
-        except Track.DoesNotExist:
-            instance = Track.objects.create(
-                name=data['name'],
-                album=album,
-                spotify_id=data['id'],
-                track_number=data['track_number'],
-                disc_number=data['disc_number'],
-                duration_ms=data['duration_ms'],
-                explicit=data['explicit']
-            )
-            created = True
+        defaults = {
+            'name': data['name'],
+            'album': album,
+            'track_number': data['track_number'],
+            'disc_number': data.get('disc_number', 1),
+            'duration_ms': data['duration_ms'],
+            'explicit': data.get('explicit', False),
+        }
+        instance, created = Track.objects.update_or_create(
+            spotify_id=data['id'],
+            defaults=defaults,
+        )
         return instance, created
 
 

@@ -12,6 +12,7 @@ urlpatterns = [
     path('accounts/register/', views.JukeRegisterView.as_view(), name='juke_register'),
     path('accounts/resend-registration/', views.ResendRegistrationVerificationView.as_view(), name='resend_registration'),
     path('accounts/verify-registration/', views.JukeVerifyRegistrationView.as_view(), name='verify_registration'),
+    path('connect/spotify/', views.spotify_connect, name='spotify_connect'),
     path('accounts/', include('rest_registration.api.urls')),
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     path('api-auth-token/', views.TokenLoginView.as_view(), name='api_token_login'),

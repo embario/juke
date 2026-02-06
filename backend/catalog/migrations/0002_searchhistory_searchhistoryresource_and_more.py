@@ -19,7 +19,14 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('search_query', models.CharField(max_length=500)),
                 ('timestamp', models.DateTimeField(auto_now_add=True)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='search_history', to=settings.AUTH_USER_MODEL)),
+                (
+                    'user',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='search_history',
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
                 'verbose_name_plural': 'Search histories',
@@ -30,10 +37,28 @@ class Migration(migrations.Migration):
             name='SearchHistoryResource',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('resource_type', models.CharField(choices=[('genre', 'Genre'), ('artist', 'Artist'), ('album', 'Album'), ('track', 'Track')], max_length=20)),
+                (
+                    'resource_type',
+                    models.CharField(
+                        choices=[
+                            ('genre', 'Genre'),
+                            ('artist', 'Artist'),
+                            ('album', 'Album'),
+                            ('track', 'Track'),
+                        ],
+                        max_length=20,
+                    ),
+                ),
                 ('resource_id', models.IntegerField()),
                 ('resource_name', models.CharField(max_length=500)),
-                ('search_history', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='engaged_resources', to='catalog.searchhistory')),
+                (
+                    'search_history',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='engaged_resources',
+                        to='catalog.searchhistory',
+                    ),
+                ),
             ],
         ),
         migrations.AddIndex(

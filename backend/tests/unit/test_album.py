@@ -55,3 +55,26 @@ class AlbumTests(TestCase):
         album, created = Album.get_or_create_with_validated_data(data=data)
         self.assertFalse(created)
         self.assertEqual(album.release_date, date(2006, 5, 1))
+
+    def test_get_or_create_uses_spotify_id_as_source_of_truth(self):
+        data = {
+            'name': 'Original Name',
+            'id': 'spotify-shared-id',
+            'album_type': 'album',
+            'total_tracks': 10,
+            'release_date': '2001-01-01',
+            'release_date_precision': 'day',
+        }
+
+        album, created = Album.get_or_create_with_validated_data(data=data)
+        self.assertTrue(created)
+
+        data['name'] = 'Renamed Album'
+        data['total_tracks'] = 11
+        updated, created = Album.get_or_create_with_validated_data(data=data)
+
+        self.assertFalse(created)
+        self.assertEqual(Album.objects.count(), 1)
+        self.assertEqual(updated.id, album.id)
+        self.assertEqual(updated.name, 'Renamed Album')
+        self.assertEqual(updated.total_tracks, 11)
