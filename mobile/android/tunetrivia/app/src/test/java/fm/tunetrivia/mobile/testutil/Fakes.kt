@@ -20,6 +20,7 @@ import fm.tunetrivia.mobile.data.network.dto.TuneTriviaPlayerDto
 import fm.tunetrivia.mobile.data.network.dto.TuneTriviaRoundDto
 import fm.tunetrivia.mobile.data.network.dto.TuneTriviaSessionDto
 import fm.tunetrivia.mobile.data.repository.AuthRepositoryContract
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -165,6 +166,10 @@ class FakeTuneTriviaApiService : TuneTriviaApiService {
     var joinError: Throwable? = null
     var createError: Throwable? = null
     var submitGuessError: Throwable? = null
+    var addTrackError: Throwable? = null
+    var autoSelectError: Throwable? = null
+    var awardPointsError: Throwable? = null
+    var addTrackDelayMs: Long = 0
 
     override suspend fun login(body: LoginRequest): LoginResponse = LoginResponse("token")
 
@@ -206,10 +211,16 @@ class FakeTuneTriviaApiService : TuneTriviaApiService {
 
     override suspend fun revealRound(token: String, sessionId: Int): TuneTriviaRoundDto = TestFixtures.roundDto(status = "revealed")
 
-    override suspend fun addTrack(token: String, sessionId: Int, body: AddTrackRequest): TuneTriviaRoundDto = TestFixtures.roundDto()
+    override suspend fun addTrack(token: String, sessionId: Int, body: AddTrackRequest): TuneTriviaRoundDto {
+        if (addTrackDelayMs > 0) delay(addTrackDelayMs)
+        addTrackError?.let { throw it }
+        return TestFixtures.roundDto()
+    }
 
-    override suspend fun autoSelectTracks(token: String, sessionId: Int, count: Int): List<TuneTriviaRoundDto> =
-        List(count.coerceAtLeast(0)) { TestFixtures.roundDto(id = it + 1) }
+    override suspend fun autoSelectTracks(token: String, sessionId: Int, count: Int): List<TuneTriviaRoundDto> {
+        autoSelectError?.let { throw it }
+        return List(count.coerceAtLeast(0)) { TestFixtures.roundDto(id = it + 1) }
+    }
 
     override suspend fun searchTracks(token: String, query: String): List<SpotifyTrackDto> = searchTracksResult
 
@@ -227,8 +238,10 @@ class FakeTuneTriviaApiService : TuneTriviaApiService {
     override suspend fun addManualPlayer(token: String, sessionId: Int, body: Map<String, String>): TuneTriviaPlayerDto =
         TestFixtures.playerDto(id = 22)
 
-    override suspend fun awardPoints(token: String, playerId: Int, body: Map<String, Int>): TuneTriviaPlayerDto =
-        TestFixtures.playerDto(id = playerId)
+    override suspend fun awardPoints(token: String, playerId: Int, body: Map<String, Int>): TuneTriviaPlayerDto {
+        awardPointsError?.let { throw it }
+        return TestFixtures.playerDto(id = playerId)
+    }
 
     override suspend fun leaderboard(limit: Int): List<LeaderboardEntryDto> {
         leaderboardError?.let { throw it }
