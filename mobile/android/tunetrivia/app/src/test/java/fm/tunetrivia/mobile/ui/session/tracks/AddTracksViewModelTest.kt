@@ -77,6 +77,26 @@ class AddTracksViewModelTest {
     }
 
     @Test
+    fun `autoFill is ignored while a track add is in progress`() = runTest {
+        val auth = FakeAuthRepository().apply { setSession(SessionSnapshot("host", "token")) }
+        val api = FakeTuneTriviaApiService().apply { addTrackDelayMs = 1_000 }
+        val vm = AddTracksViewModel(repository = TuneTriviaRepository(api, auth))
+        var autoFillCallbackCalled = false
+
+        vm.updateQuery("song")
+        vm.search()
+        advanceUntilIdle()
+
+        vm.addTrack(sessionId = 1, track = vm.uiState.value.results.first())
+        vm.autoFill(sessionId = 1, count = 3) { autoFillCallbackCalled = true }
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.success?.startsWith("Added") == true)
+        assertTrue(vm.uiState.value.isAddingTrack.not())
+        assertTrue(autoFillCallbackCalled.not())
+    }
+
+    @Test
     fun `search sets error when auth missing`() = runTest {
         val vm = AddTracksViewModel(
             repository = TuneTriviaRepository(FakeTuneTriviaApiService(), FakeAuthRepository()),

@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -27,9 +29,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import fm.tunetrivia.mobile.core.design.TuneTriviaPalette
 import fm.tunetrivia.mobile.core.design.components.TuneTriviaBackground
 import fm.tunetrivia.mobile.core.design.components.TuneTriviaButton
@@ -59,6 +65,7 @@ fun GamePlayScreen(
     var selectedTrivia by remember { mutableStateOf<String?>(null) }
     var hasSubmittedGuess by remember { mutableStateOf(false) }
     var hasSubmittedTrivia by remember { mutableStateOf(false) }
+    var awardedPointsByPlayer by remember { mutableStateOf<Map<Int, Int>>(emptyMap()) }
 
     LaunchedEffect(sessionId) {
         viewModel.load(sessionId)
@@ -80,6 +87,7 @@ fun GamePlayScreen(
         selectedTrivia = null
         hasSubmittedGuess = false
         hasSubmittedTrivia = false
+        awardedPointsByPlayer = emptyMap()
     }
 
     TuneTriviaBackground(modifier = Modifier.fillMaxSize()) {
@@ -140,25 +148,35 @@ fun GamePlayScreen(
             }
 
             TuneTriviaCard(accentColor = if (currentRound.status == RoundStatus.REVEALED) TuneTriviaPalette.Secondary else TuneTriviaPalette.Accent) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = if (currentRound.status == RoundStatus.REVEALED) {
-                            currentRound.trackName
-                        } else {
-                            "Mystery Track"
-                        },
-                        style = MaterialTheme.typography.titleLarge,
-                        color = TuneTriviaPalette.Text,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AlbumArt(
+                        url = currentRound.albumArtUrl,
+                        size = 78.dp,
                     )
-                    Text(
-                        text = if (currentRound.status == RoundStatus.REVEALED) {
-                            currentRound.artistName
-                        } else {
-                            "Make your guess!"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TuneTriviaPalette.Muted,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = if (currentRound.status == RoundStatus.REVEALED) {
+                                currentRound.trackName
+                            } else {
+                                "Mystery Track"
+                            },
+                            style = MaterialTheme.typography.titleLarge,
+                            color = TuneTriviaPalette.Text,
+                        )
+                        Text(
+                            text = if (currentRound.status == RoundStatus.REVEALED) {
+                                currentRound.artistName
+                            } else {
+                                "Make your guess!"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TuneTriviaPalette.Muted,
+                        )
+                    }
                 }
             }
 
@@ -233,6 +251,18 @@ fun GamePlayScreen(
                     hasSubmitted = hasSubmittedTrivia,
                 )
             }
+            if (currentRound.status == RoundStatus.REVEALED && detail.enableTrivia && !currentRound.hasTrivia) {
+                TuneTriviaCard(accentColor = TuneTriviaPalette.Highlight) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TuneTriviaSpinner()
+                        Text(
+                            text = "Generating trivia question...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TuneTriviaPalette.Text,
+                        )
+                    }
+                }
+            }
 
             if (isHost && detail.mode == SessionMode.HOST && currentRound.status == RoundStatus.REVEALED) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -242,8 +272,16 @@ fun GamePlayScreen(
                         color = TuneTriviaPalette.Text,
                     )
                     detail.players.filter { !it.isHost }.forEach { player ->
-                        AwardRow(player) { points ->
-                            viewModel.awardPoints(player.id, points)
+                        AwardRow(
+                            player = player,
+                            selectedPoints = awardedPointsByPlayer[player.id],
+                            isSubmitting = state.awardingPlayerId == player.id,
+                        ) { points ->
+                            viewModel.awardPoints(player.id, points) { success ->
+                                if (success) {
+                                    awardedPointsByPlayer = awardedPointsByPlayer + (player.id to points)
+                                }
+                            }
                         }
                     }
                 }
@@ -310,6 +348,34 @@ fun GamePlayScreen(
             )
         }
     }
+}
+
+@Composable
+private fun AlbumArt(url: String?, size: Dp) {
+    if (url.isNullOrBlank()) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .size(size),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Art",
+                style = MaterialTheme.typography.bodySmall,
+                color = TuneTriviaPalette.Muted,
+            )
+        }
+        return
+    }
+
+    AsyncImage(
+        model = url,
+        contentDescription = "Album artwork",
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(12.dp)),
+        contentScale = ContentScale.Crop,
+    )
 }
 
 @Composable
@@ -420,7 +486,12 @@ private fun TriviaSection(
 }
 
 @Composable
-private fun AwardRow(player: TuneTriviaPlayer, onAward: (Int) -> Unit) {
+private fun AwardRow(
+    player: TuneTriviaPlayer,
+    selectedPoints: Int?,
+    isSubmitting: Boolean,
+    onAward: (Int) -> Unit,
+) {
     TuneTriviaCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -439,21 +510,39 @@ private fun AwardRow(player: TuneTriviaPlayer, onAward: (Int) -> Unit) {
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AwardChip(label = "+50") { onAward(50) }
-                AwardChip(label = "+100") { onAward(100) }
-                AwardChip(label = "+150") { onAward(150) }
+                AwardChip(
+                    label = "+50",
+                    selected = selectedPoints == 50,
+                    enabled = selectedPoints == null && !isSubmitting,
+                ) { onAward(50) }
+                AwardChip(
+                    label = "+100",
+                    selected = selectedPoints == 100,
+                    enabled = selectedPoints == null && !isSubmitting,
+                ) { onAward(100) }
+                AwardChip(
+                    label = "+150",
+                    selected = selectedPoints == 150,
+                    enabled = selectedPoints == null && !isSubmitting,
+                ) { onAward(150) }
             }
         }
     }
 }
 
 @Composable
-private fun AwardChip(label: String, onClick: () -> Unit) {
+private fun AwardChip(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
     TuneTriviaButton(
         onClick = onClick,
-        variant = TuneTriviaButtonVariant.GHOST,
+        variant = if (selected) TuneTriviaButtonVariant.SECONDARY else TuneTriviaButtonVariant.GHOST,
         fillMaxWidth = false,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        enabled = enabled || selected,
     ) {
         Text(text = label)
     }

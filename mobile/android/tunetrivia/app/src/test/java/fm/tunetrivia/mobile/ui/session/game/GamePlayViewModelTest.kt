@@ -109,4 +109,37 @@ class GamePlayViewModelTest {
         assertFalse(vm.uiState.value.isEnding)
         assertNull(vm.uiState.value.error)
     }
+
+    @Test
+    fun `awardPoints tracks awarding player and invokes success callback`() = runTest {
+        val auth = FakeAuthRepository().apply { setSession(SessionSnapshot("host", "token")) }
+        val vm = GamePlayViewModel(
+            repository = TuneTriviaRepository(FakeTuneTriviaApiService(), auth),
+        )
+        var success: Boolean? = null
+
+        vm.awardPoints(playerId = 7, points = 100) { success = it }
+        advanceUntilIdle()
+
+        assertEquals(true, success)
+        assertNull(vm.uiState.value.awardingPlayerId)
+        assertNull(vm.uiState.value.error)
+    }
+
+    @Test
+    fun `awardPoints surfaces error and invokes failure callback`() = runTest {
+        val auth = FakeAuthRepository().apply { setSession(SessionSnapshot("host", "token")) }
+        val api = FakeTuneTriviaApiService().apply { awardPointsError = IllegalStateException("award failed") }
+        val vm = GamePlayViewModel(
+            repository = TuneTriviaRepository(api, auth),
+        )
+        var success: Boolean? = null
+
+        vm.awardPoints(playerId = 7, points = 100) { success = it }
+        advanceUntilIdle()
+
+        assertEquals(false, success)
+        assertNull(vm.uiState.value.awardingPlayerId)
+        assertEquals("award failed", vm.uiState.value.error)
+    }
 }
