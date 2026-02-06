@@ -81,28 +81,16 @@ class Album(MusicResource):
             data['release_date'],
             data.get('release_date_precision'),
         )
-        try:
-            instance = Album.objects.get(
-                name=data['name'],
-                spotify_id=data['id'],
-            )
-
-            instance.name = data['name']
-            instance.spotify_id = data['id']
-            instance.total_tracks = data['total_tracks']
-            instance.release_date = release_date
-            instance.save()
-            created = False
-
-        except Album.DoesNotExist:
-            instance = Album.objects.create(
-                name=data['name'],
-                spotify_id=data['id'],
-                album_type=data['album_type'].upper(),
-                total_tracks=data['total_tracks'],
-                release_date=release_date,
-            )
-            created = True
+        defaults = {
+            'name': data['name'],
+            'album_type': data.get('album_type', CHOICES_ALBUM_TYPE[0][0]).upper(),
+            'total_tracks': data['total_tracks'],
+            'release_date': release_date,
+        }
+        instance, created = Album.objects.update_or_create(
+            spotify_id=data['id'],
+            defaults=defaults,
+        )
         return instance, created
 
 
@@ -119,31 +107,18 @@ class Track(MusicResource):
 
     @staticmethod
     def get_or_create_with_validated_data(album, data):
-        try:
-            instance = Track.objects.get(
-                name=data['name'],
-                spotify_id=data['id'],
-            )
-
-            instance.name = data['name']
-            instance.spotify_id = data['id']
-            instance.track_number = data['track_number']
-            instance.disc_number = data['disc_number']
-            instance.duration_ms = data['duration_ms']
-            instance.explicit = data['explicit']
-            created = False
-
-        except Track.DoesNotExist:
-            instance = Track.objects.create(
-                name=data['name'],
-                album=album,
-                spotify_id=data['id'],
-                track_number=data['track_number'],
-                disc_number=data['disc_number'],
-                duration_ms=data['duration_ms'],
-                explicit=data['explicit']
-            )
-            created = True
+        defaults = {
+            'name': data['name'],
+            'album': album,
+            'track_number': data['track_number'],
+            'disc_number': data.get('disc_number', 1),
+            'duration_ms': data['duration_ms'],
+            'explicit': data.get('explicit', False),
+        }
+        instance, created = Track.objects.update_or_create(
+            spotify_id=data['id'],
+            defaults=defaults,
+        )
         return instance, created
 
 
@@ -162,3 +137,57 @@ class ArtistImageResource(models.Model):
 class AlbumImageResource(models.Model):
     image = models.ImageField(upload_to='static/media/albums/')
     album = models.ForeignKey(Album, related_name='images', on_delete=models.PROTECT)
+
+
+class SearchHistory(models.Model):
+    """
+    Tracks user search queries and the resources they engaged with.
+    Used for analytics and future personalization features.
+    """
+    user = models.ForeignKey('juke_auth.JukeUser', on_delete=models.CASCADE, related_name='search_history')
+    search_query = models.CharField(max_length=500, blank=False, null=False)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['user', '-timestamp']),
+        ]
+        verbose_name_plural = 'Search histories'
+
+    def __str__(self):
+        return f"{self.user.username}: '{self.search_query}' at {self.timestamp}"
+
+
+class SearchHistoryResource(models.Model):
+    """
+    Records individual resources that a user clicked during a search session.
+    """
+    RESOURCE_TYPE_CHOICES = [
+        ('genre', 'Genre'),
+        ('artist', 'Artist'),
+        ('album', 'Album'),
+        ('track', 'Track'),
+    ]
+
+    search_history = models.ForeignKey(
+        SearchHistory,
+        related_name='engaged_resources',
+        on_delete=models.CASCADE
+    )
+    resource_type = models.CharField(
+        max_length=20,
+        choices=RESOURCE_TYPE_CHOICES,
+        blank=False,
+        null=False
+    )
+    resource_id = models.IntegerField(blank=False, null=False)
+    resource_name = models.CharField(max_length=500, blank=False, null=False)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['search_history', 'resource_type']),
+        ]
+
+    def __str__(self):
+        return f"{self.resource_type}: {self.resource_name} (ID: {self.resource_id})"

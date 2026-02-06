@@ -8,6 +8,7 @@ router.register(r'artists', views.ArtistViewSet)
 router.register(r'albums', views.AlbumViewSet)
 router.register(r'tracks', views.TrackViewSet)
 router.register(r'playback', views.PlaybackViewSet, basename='playback')
+router.register(r'search-history', views.SearchHistoryViewSet, basename='search-history')
 
 # Wire up our API using automatic URL routing.
 # Additionally, we include login URLs for the browsable API.

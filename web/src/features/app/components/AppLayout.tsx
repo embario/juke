@@ -60,26 +60,29 @@ const AppLayout = () => {
       )}
       <div className="app-shell__content">
         <div className="app-shell__toolbar">
-          {isAuthenticated && (
-            <button
-              type="button"
-              className="mobile-nav-toggle"
-              onClick={handleToggleSidebar}
-              aria-label={isSidebarOpen ? 'Close navigation' : 'Open navigation'}
-              aria-controls="app-sidebar"
-              aria-expanded={isSidebarOpen}
-            >
-              <span className="mobile-nav-toggle__bar" />
-              <span className="mobile-nav-toggle__bar" />
-              <span className="mobile-nav-toggle__bar" />
-            </button>
-          )}
+          <div className="app-shell__toolbar-slot app-shell__toolbar-slot--left">
+            {isAuthenticated ? (
+              <button
+                type="button"
+                className="mobile-nav-toggle"
+                onClick={handleToggleSidebar}
+                aria-label={isSidebarOpen ? 'Close navigation' : 'Open navigation'}
+                aria-controls="app-sidebar"
+                aria-expanded={isSidebarOpen}
+              >
+                <span className="mobile-nav-toggle__bar" />
+                <span className="mobile-nav-toggle__bar" />
+                <span className="mobile-nav-toggle__bar" />
+              </button>
+            ) : null}
+          </div>
           <span className="app-shell__title">Juke</span>
+          <div className="app-shell__toolbar-slot" aria-hidden="true" />
         </div>
         <main>
           <Outlet />
-          </main>
-        </div>
+        </main>
+      </div>
       {isAuthenticated && <PlaybackBar />}
     </div>
   );

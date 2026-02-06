@@ -46,6 +46,7 @@ class SpotifyArtistSerializerTests(TestCase):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
+        payload['name'] = 'Existing Artist (Renamed)'
         payload['popularity'] = 90
         payload['followers'] = {'total': 900}
         serializer = SpotifyArtistSerializer(data=payload, context={'request': None})
@@ -53,6 +54,7 @@ class SpotifyArtistSerializerTests(TestCase):
         artist = serializer.save()
 
         self.assertEqual(Artist.objects.count(), 1)
+        self.assertEqual(artist.name, 'Existing Artist (Renamed)')
         self.assertEqual(artist.spotify_data['popularity'], 90)
         self.assertEqual(artist.spotify_data['followers'], 900)
 

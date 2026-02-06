@@ -42,4 +42,43 @@ export type CatalogResults = {
   tracks: Track[];
 };
 
-export type CatalogFilter = 'albums' | 'artists' | 'tracks';
+export type GenreDetail = Genre & {
+  description?: string;
+  top_artists: Artist[];
+};
+
+export type ArtistDetail = Omit<Artist, 'genres'> & {
+  bio?: string;
+  albums: Album[];
+  top_tracks: Track[];
+  related_artists: Artist[];
+  genres: Genre[];
+};
+
+export type AlbumDetail = Album & {
+  description?: string;
+  tracks: Track[];
+  related_albums: Album[];
+};
+
+export type CatalogFilter = 'genres' | 'albums' | 'artists' | 'tracks';
+export type CatalogResourceType = 'genre' | 'artist' | 'album' | 'track';
+export type NavigationResourceType = 'search' | 'genre' | 'artist' | 'album';
+
+export type NavigationStackItem = {
+  resourceType: NavigationResourceType;
+  label: string;
+  resourceId?: number;
+  searchQuery?: string;
+};
+
+export type SearchHistoryResourcePayload = {
+  resource_type: CatalogResourceType;
+  resource_id: number;
+  resource_name: string;
+};
+
+export type SearchHistoryPayload = {
+  search_query: string;
+  engaged_resources: SearchHistoryResourcePayload[];
+};

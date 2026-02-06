@@ -3,7 +3,7 @@ import logging
 from django.db import transaction
 from rest_framework import serializers
 
-from catalog.models import MusicResource, Genre, Artist, Album, Track
+from catalog.models import MusicResource, Genre, Artist, Album, Track, SearchHistory, SearchHistoryResource
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +55,9 @@ class SpotifyArtistSerializer(SpotifyResourceSerializer):
 
     def create(self, validated_data):
         with transaction.atomic():
-            instance, created = Artist.objects.get_or_create(
-                name=validated_data['name'],
+            instance, created = Artist.objects.update_or_create(
                 spotify_id=validated_data['id'],
+                defaults={'name': validated_data['name']},
             )
             if created:
                 logger.info(f"Artist '{instance.name}' created.")
@@ -65,12 +65,14 @@ class SpotifyArtistSerializer(SpotifyResourceSerializer):
                 logger.debug(f"Artist '{instance.name}' updated.")
 
             # Add Genres
+            genres = []
             for genre_name in validated_data['genres']:
                 genre, _ = Genre.objects.get_or_create(
                     name=genre_name,
                     spotify_id=f"genre-{genre_name}",
                 )
-                instance.genres.add(genre)
+                genres.append(genre)
+            instance.genres.set(genres)
 
             # Add other Spotify Data
             instance.spotify_data = {
@@ -79,10 +81,16 @@ class SpotifyArtistSerializer(SpotifyResourceSerializer):
                 'popularity': validated_data['popularity'],
                 'followers': validated_data['followers']['total'],
                 'images': [d['url'] for d in validated_data['images']],
+                'genres': validated_data['genres'],
             }
 
             instance.save()
         return instance
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['genres'] = list(instance.genres.values_list('name', flat=True))
+        return data
 
 
 class SpotifyAlbumSerializer(SpotifyResourceSerializer):
@@ -169,6 +177,72 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
         return data
 
 
+class GenreDetailSerializer(GenreSerializer):
+    description = serializers.CharField(read_only=True, required=False, allow_blank=True)
+    top_artists = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Genre
+        fields = "__all__"
+
+    def get_top_artists(self, obj):
+        artists = getattr(obj, 'top_artists', [])
+        serializer = ArtistSerializer(artists, many=True, context=self.context)
+        return serializer.data
+
+
+class ArtistDetailSerializer(ArtistSerializer):
+    genres = serializers.SerializerMethodField()
+    bio = serializers.CharField(read_only=True, required=False, allow_blank=True)
+    albums = serializers.SerializerMethodField()
+    top_tracks = serializers.SerializerMethodField()
+    related_artists = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Artist
+        fields = "__all__"
+
+    def get_genres(self, obj):
+        genres = obj.genres.all()
+        serializer = GenreSerializer(genres, many=True, context=self.context)
+        return serializer.data
+
+    def get_albums(self, obj):
+        albums = getattr(obj, '_enriched_albums', [])
+        serializer = AlbumSerializer(albums, many=True, context=self.context)
+        return serializer.data
+
+    def get_top_tracks(self, obj):
+        tracks = getattr(obj, '_enriched_top_tracks', [])
+        serializer = TrackSerializer(tracks, many=True, context=self.context)
+        return serializer.data
+
+    def get_related_artists(self, obj):
+        artists = getattr(obj, '_enriched_related_artists', [])
+        serializer = ArtistSerializer(artists, many=True, context=self.context)
+        return serializer.data
+
+
+class AlbumDetailSerializer(AlbumSerializer):
+    description = serializers.CharField(read_only=True, required=False, allow_blank=True)
+    tracks = serializers.SerializerMethodField()
+    related_albums = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Album
+        fields = "__all__"
+
+    def get_tracks(self, obj):
+        tracks = getattr(obj, '_enriched_tracks', [])
+        serializer = TrackSerializer(tracks, many=True, context=self.context)
+        return serializer.data
+
+    def get_related_albums(self, obj):
+        albums = getattr(obj, '_enriched_related_albums', [])
+        serializer = AlbumSerializer(albums, many=True, context=self.context)
+        return serializer.data
+
+
 class PlaybackProviderSerializer(serializers.Serializer):
     provider = serializers.CharField(required=False, allow_blank=True)
     device_id = serializers.CharField(required=False, allow_blank=True)
@@ -193,3 +267,67 @@ class PlayRequestSerializer(PlaybackProviderSerializer):
 
 class PlaybackStateQuerySerializer(serializers.Serializer):
     provider = serializers.CharField(required=False, allow_blank=True)
+
+
+class SeekRequestSerializer(PlaybackProviderSerializer):
+    position_ms = serializers.IntegerField(required=True, min_value=0)
+
+    def validate(self, attrs):
+        if attrs.get('device_id'):
+            attrs['device_id'] = attrs['device_id'].strip()
+        return attrs
+
+
+class SearchHistoryResourceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for individual resources engaged during a search session.
+    """
+    class Meta:
+        model = SearchHistoryResource
+        fields = ['resource_type', 'resource_id', 'resource_name']
+
+    def validate_resource_type(self, value):
+        """Ensure resource_type is one of the allowed choices."""
+        valid_types = [choice[0] for choice in SearchHistoryResource.RESOURCE_TYPE_CHOICES]
+        if value not in valid_types:
+            raise serializers.ValidationError(
+                f"Invalid resource_type. Must be one of: {', '.join(valid_types)}"
+            )
+        return value
+
+
+class SearchHistorySerializer(serializers.ModelSerializer):
+    """
+    Serializer for creating search history entries with engaged resources.
+    """
+    engaged_resources = SearchHistoryResourceSerializer(many=True)
+
+    class Meta:
+        model = SearchHistory
+        fields = ['search_query', 'engaged_resources', 'timestamp']
+        read_only_fields = ['timestamp']
+
+    def validate_search_query(self, value):
+        """Ensure search query is not empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Search query cannot be empty.")
+        return value.strip()
+
+    def create(self, validated_data):
+        """Create SearchHistory and associated SearchHistoryResource entries."""
+        engaged_resources_data = validated_data.pop('engaged_resources')
+
+        # Create the search history entry
+        search_history = SearchHistory.objects.create(
+            user=self.context['request'].user,
+            search_query=validated_data['search_query']
+        )
+
+        # Create associated resources
+        for resource_data in engaged_resources_data:
+            SearchHistoryResource.objects.create(
+                search_history=search_history,
+                **resource_data
+            )
+
+        return search_history
