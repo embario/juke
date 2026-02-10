@@ -5,8 +5,13 @@ This document orients AI agents to the entire repository. Each major subproject 
 - [backend/AGENTS.md](backend/AGENTS.md)
 - [mobile/android/AGENTS.md](mobile/android/AGENTS.md)
 - [mobile/ios/AGENTS.md](mobile/ios/AGENTS.md)
-- [mobile/ios/shotclock/ARCHITECTURE.md](mobile/ios/shotclock/ARCHITECTURE.md) — ShotClock (Power Hour) iOS app
 - [web/AGENTS.md](web/AGENTS.md)
+
+## Active Tasks
+
+- Start at `tasks/_index.md` to pick work before starting new tasks.
+- Follow `tasks/README.md` for task lifecycle, status labels, and handoff conventions.
+- Add or update a task file in `tasks/` when handing off substantial in-progress work to another agent.
 
 ## High-Level Architecture
 

@@ -1,0 +1,27 @@
+[ALL/GENERAL]
+* Upgrade all third party dependencies (5)
+
+[BACKEND]
+* 
+
+[CLIENTS]
+* Reach feature-parity with all Juke app clients (5)
+
+[WEB]
+* Fix playback to play the next track in the album (2)
+
+[ANDROID]
+* Reusable App component library (5)
+  
+[IOS]
+* Reusable App component library (5)
+
+
+[AI/ML]
+* 
+
+[CI/CD]
+* 
+
+[PROD]
+* 

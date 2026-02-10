@@ -1,26 +1,26 @@
 
-# Reusable iOS App Library for Common Components
-You are an experienced and professional iOS and Swift developer with a taste for music and entertainment and want to help build apps for end-users who are part of the Juke Music Platform, a digital community of music lovers who want to engage with music in more meaningful ways. You have a good eye for refactoring work and are being instructed to examine all of the iOS apps that are part of the Juke ecosystem, including the base Juke iOS app, Shotclock, and TuneTrivia, and to complete a refactoring project to encapsulate common and reusable components from those apps. This will be an iterative task and I expect you to constantly be working incrementally and carefully - do not port changes in one fell swoop - work on one feature at a time, report your progress often and allow me to examine your work, then work on the next one. Do this for all features that are missing.
+# Reusable Android App Library for Common Components
+You are an experienced and professional Android and Kotlin developer with a taste for music and entertainment and want to help build apps for end-users who are part of the Juke Music Platform, a digital community of music lovers who want to engage with music in more meaningful ways. You have a good eye for refactoring work and are being instructed to examine all of the Android apps that are part of the Juke ecosystem, including the base Juke Base Android app, Shotclock, and TuneTrivia, and to complete a refactoring project to encapsulate common and reusable components from those apps. This will be an iterative task and I expect you to constantly be working incrementally and carefully - do not port changes in one fell swoop - work on one feature at a time, report your progress often and allow me to examine your work, then work on the next one. Do this for all features that are missing.
 
 Acceptance Criteria:
 The newly-designed library must:
 * Encapsulate all authentication code (login/out, token state refresh)
 * For Registration, support deep-links to redirect user to register using the native Juke app
 * Encapsulate any common UI components, such as notification messaging, card views, and the like
-* Encapsulate common Swift components, such as networking, data serialization models, and music playback
+* Encapsulate common Android components, such as networking, data serialization models, and music playback
 * Encapsulate any common state being kept in-session
 
 Tasks:
 * Read `AGENTS.md` file to fully understand how to work and build against the various projects. Anytime you have context window compaction, read this file to get ramped up again.
-* Audit the current iOS apps, specifically Juke, Shotclock, and TuneTrivia, and develop a deep understanding of what duplicate logic is written across them.
+* Audit the current Android apps, specifically Juke, Shotclock, and TuneTrivia, and develop a deep understanding of what duplicate logic is written across them.
 * Generate an architecture document that outlines all reusable components that can be extracted out from all apps into a common core library. We may iterate over this document multiple times before approval.
 * Once approved, begin feature development. Keep a log of your refactoring work in the architecture document and include how many lines of code removed from each individual app.
 * Once your feature work is done, report back to me, and I will manually exercise each app individually, ensuring that they still work as intended
 
-GOAL: To instruct the agent to design/develop work on a refactoring task for encapsulating common and reusable Swift/SwiftUI components across all Juke apps
+GOAL: To instruct the agent to design/develop work on a refactoring task for encapsulating common and reusable Android/Kotlin components across all Juke apps
 
 
-# Reusable Swift App Library for Common Components (2)
+# Reusable Swift App Library for Common Components
 You are an experienced and professional iOS and Swift developer with a taste for music and entertainment and want to help build apps for end-users who are part of the Juke Music Platform, a digital community of music lovers who want to engage with music in more meaningful ways. You have a good eye for refactoring work and are being instructed to examine all of the iOS apps that are part of the Juke ecosystem, including the base Juke iOS app, Shotclock, and TuneTrivia, and to complete a refactoring project to encapsulate common and reusable components from those apps. This will be an iterative task and I expect you to constantly be working incrementally and carefully - do not port changes in one fell swoop - work on one feature at a time, report your progress often and allow me to examine your work, then work on the next one. Do this for all features that are missing.
 
 Acceptance Criteria:

@@ -1,7 +1,8 @@
-# Catalog Music Resource UX Enhancements (Continued)
+# Mobile Juke Catalog UX Enhancements (Continued - SUCCESS)
 You are an experienced full stack web developer with a taste for music and entertainment and want to help build apps for end-users who are part of the Juke Music Platform, a digital community of music lovers who want to engage with music in more meaningful ways. Currently, the Juke web app serves a music catalog for browsing Genre, Artist, Album, or Track resources that they can search for. However, the UX is not fully fleshed out - Spotify credentials for playback aren’t fully integrated, and music resources are treated the same way, leading to a flattening experience overall. Previously, an agent was tasked with this prompt to fulfill the acceptance criteria stated below but ran out of time. Your job is to pick up from where it left off, reading its documented architecture and UX design, and resuming progress on its feature development to build out a new UX story flow for browsing music resources on Juke.
 
 **Acceptance Criteria:**
+
 The Juke Web Catalog view supports:
 * A newly designed and intuitive interface for browsing and playing music via the search bar
 * Depending on the resource type, there is a specialized breadcrumbed UI/UX that users can navigate through:
@@ -16,7 +17,33 @@ The Juke Web Catalog view supports:
     * Play any Album
     * Play the top 5 hits of any Artist
 
-Tasks:
+**Tasks:**
+* Read `AGENTS.md` file to fully understand how to work and build against the various projects. Anytime you have context window compaction, read this file to get ramped up again.
+* Read adjacent reading materials, including, “NEXT_AGENT_START_HERE.md”, that should onboard you as fast as possible against the task at-hand. Resume development when you have reported to me the current state of development.
+* Once all features have been completed and documented, ask me for final exercise of the app, and if I require more revisions, please iterate on them until it is approved and validated by me.
+
+GOAL: To resume agent-driven development on a feature that was previously designed and partially implemented for the purposes of exercising agent-to-agent transitions in completing a new feature for Juke
+
+# Catalog Music Resource UX Enhancements (Continued - SUCCESS)
+You are an experienced full stack web developer with a taste for music and entertainment and want to help build apps for end-users who are part of the Juke Music Platform, a digital community of music lovers who want to engage with music in more meaningful ways. Currently, the Juke web app serves a music catalog for browsing Genre, Artist, Album, or Track resources that they can search for. However, the UX is not fully fleshed out - Spotify credentials for playback aren’t fully integrated, and music resources are treated the same way, leading to a flattening experience overall. Previously, an agent was tasked with this prompt to fulfill the acceptance criteria stated below but ran out of time. Your job is to pick up from where it left off, reading its documented architecture and UX design, and resuming progress on its feature development to build out a new UX story flow for browsing music resources on Juke.
+
+**Acceptance Criteria:**
+
+The Juke Web Catalog view supports:
+* A newly designed and intuitive interface for browsing and playing music via the search bar
+* Depending on the resource type, there is a specialized breadcrumbed UI/UX that users can navigate through:
+    * The Genre detailed view has a blurb on what makes it so special, along with the top 5 artists that are linked to it ranked by popularity.
+    * The Artist detailed view has a blurb on the artist, a navigable set of albums that make up their discography, and related artists and genres that they are linked to.
+    * The Album detailed view has a blurb on the album, a navigable set of tracks that make up the album, and related albums that sound like this one
+    * There is no track detailed view; the album is at the base of the navigation stack.
+    * Generally speaking, users can click on each Resource to go to their detailed card, with backlinks added to go backwards or forwards as their search discovery progresses. Clicking the X at the top right will reset them back to the home page, where they can search for other resources.
+    * Their search history is persisted against a new backend API endpoint, which will link their search terms with resources that they clicked on. The frontend will keep track of all resources that were engaged on when the user performed a search, then when either the user chooses something unrelated to the search, or performs a new search, that payload is completed and gets sent to the search history API.
+* If Spotify credentials are supplied, users should be able to:
+    * Play any Track
+    * Play any Album
+    * Play the top 5 hits of any Artist
+
+**Tasks:**
 * Read `AGENTS.md` file to fully understand how to work and build against the various projects. Anytime you have context window compaction, read this file to get ramped up again.
 * Read adjacent reading materials, including, “NEXT_AGENT_START_HERE.md”, that should onboard you as fast as possible against the task at-hand. Resume development when you have reported to me the current state of development.
 * Once all features have been completed and documented, ask me for final exercise of the app, and if I require more revisions, please iterate on them until it is approved and validated by me.
@@ -24,7 +51,7 @@ Tasks:
 GOAL: To resume agent-driven development on a feature that was previously designed and partially implemented for the purposes of exercising agent-to-agent transitions in completing a new feature for Juke
 
 
-# Catalog Music Resource UX Enhancements (Initial)
+# Catalog Music Resource UX Enhancements (Initial - SUCCESS)
 You are an experienced full stack web developer with a taste for music and entertainment and want to help build apps for end-users who are part of the Juke Music Platform, a digital community of music lovers who want to engage with music in more meaningful ways. Currently, the Juke web app serves a music catalog for browsing Genre, Artist, Album, or Track resources that they can search for. However, the UX is not fully fleshed out - Spotify credentials for playback aren’t fully integrated, and music resources are treated the same way, leading to a flattening experience overall. Your job in this task is to re-design how the catalog looks and feels to promote fun music discovery for users who have their streaming credentials integrated. The search bar is the prime place for discovery of any resource, but there is a unique UX that goes along with that resource.
 
 Acceptance Criteria:
