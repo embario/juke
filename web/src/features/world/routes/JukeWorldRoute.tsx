@@ -258,11 +258,12 @@ export default function JukeWorldRoute() {
     if (!target || welcomeSelectionDone.current) {
       return;
     }
-    if (!target.username) {
+    const targetUsername = target.username;
+    if (!targetUsername) {
       return;
     }
 
-    const matchedPoint = apiPoints.find((point) => point.username === target.username);
+    const matchedPoint = apiPoints.find((point) => point.username === targetUsername);
 
     if (matchedPoint) {
       welcomeSelectionDone.current = true;
@@ -274,7 +275,7 @@ export default function JukeWorldRoute() {
             1200,
           );
         }
-        loadUser(target.username);
+        loadUser(targetUsername);
       }, 0);
       return () => clearTimeout(timer);
     }
@@ -282,12 +283,12 @@ export default function JukeWorldRoute() {
     if (target.lat != null && target.lng != null) {
       const fallbackPoint = {
         id: -1,
-        username: target.username,
+        username: targetUsername,
         lat: target.lat,
         lng: target.lng,
         clout: 0.2,
         top_genre: 'other',
-        display_name: target.username,
+        display_name: targetUsername,
       };
       welcomeSelectionDone.current = true;
       const timer = setTimeout(() => {
@@ -298,7 +299,7 @@ export default function JukeWorldRoute() {
             1200,
           );
         }
-        loadUser(target.username);
+        loadUser(targetUsername);
       }, 0);
       return () => clearTimeout(timer);
     }
@@ -377,7 +378,7 @@ export default function JukeWorldRoute() {
     [focusPoint, points, token],
   );
 
-  const handleHexClick = useCallback((hex: object) => {
+  const handleHexClick = useCallback((hex: unknown) => {
     const pointsInHex = (hex as { points?: GlobePoint[] }).points ?? [];
     setHexUsers(pointsInHex.slice(0, 40));
     setHexOpen(true);

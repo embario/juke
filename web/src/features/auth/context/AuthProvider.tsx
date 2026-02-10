@@ -47,7 +47,8 @@ export const AuthProvider = ({ children }: Props) => {
   }, [state]);
 
   useEffect(() => {
-    if (!state.token) {
+    const token = state.token;
+    if (!token) {
       return undefined;
     }
 
@@ -55,7 +56,7 @@ export const AuthProvider = ({ children }: Props) => {
 
     const validate = async () => {
       try {
-        await validateTokenRequest(state.token);
+        await validateTokenRequest(token);
       } catch (error) {
         if (!active) {
           return;

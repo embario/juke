@@ -97,7 +97,7 @@ class PlaybackService:
         if not hasattr(self.user, 'social_auth'):
             raise PlaybackProviderNotLinked('Streaming accounts are not connected for this user.')
         account = self.user.social_auth.filter(provider=social_name).first()
-        logger.info(
+        logger.debug(
             'Resolved social account for user %s provider %s: %s',
             getattr(self.user, 'pk', self.user),
             social_name,
@@ -210,7 +210,7 @@ class SpotifyPlaybackProvider(PlaybackProvider):
             except SpotifyException as exc:
                 token_invalid = exc.http_status == 401 and attempts == 0
                 if token_invalid:
-                    logger.info('Spotify token expired for user %s; attempting refresh.', getattr(self.user, 'pk', self.user))
+                    logger.debug('Spotify token expired for user %s; attempting refresh.', getattr(self.user, 'pk', self.user))
                     self._refresh_token(self._require_social_account())
                     attempts += 1
                     continue
