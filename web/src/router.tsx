@@ -59,12 +59,6 @@ const router = createBrowserRouter(
       element: <NotFoundRoute />,
     },
   ],
-  {
-    future: {
-      v7_startTransition: true,
-      v7_relativeSplatPath: true,
-    },
-  },
 );
 
 export default router;

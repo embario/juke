@@ -25,8 +25,14 @@ type Props = {
   onPointClick?: (point: GlobePoint) => void;
   onCameraChange?: (pov: { lat: number; lng: number; altitude: number }) => void;
   onGlobeReady?: () => void;
-  onHexClick?: (hex: object) => void;
-  onHexHover?: (hex: object | null) => void;
+  onHexClick?: (hex: unknown) => void;
+  onHexHover?: (hex: unknown | null) => void;
+};
+
+type HexLike = {
+  lat?: number;
+  lng?: number;
+  points?: GlobePoint[];
 };
 
 export default function JukeGlobe({
@@ -150,7 +156,7 @@ export default function JukeGlobe({
     };
     controls.touches = {
       ONE: THREE.TOUCH.ROTATE,
-      TWO: THREE.TOUCH.DOLLY,
+      TWO: THREE.TOUCH.PAN,
     };
     controls.enablePan = false;
     globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
@@ -342,22 +348,21 @@ export default function JukeGlobe({
       hexBinMerge={false}
       hexTransitionDuration={350}
       hexLabel={hexLabel}
-      onHexClick={(hex) => {
+      onHexClick={(hex: unknown) => {
         if (onHexClick) onHexClick(hex);
       }}
-      onHexHover={(hex) => {
+      onHexHover={(hex: unknown) => {
         if (!hex) {
           setHoverCenter(null);
         } else {
-          const hexData = hex as { lat?: number; lng?: number; points?: object[] };
+          const hexData = hex as HexLike;
           if (typeof hexData.lat === 'number' && typeof hexData.lng === 'number') {
             setHoverCenter({ lat: hexData.lat, lng: hexData.lng });
           } else if (hexData.points && hexData.points.length > 0) {
             const sum = hexData.points.reduce(
               (acc, point) => {
-                const p = point as GlobePoint;
-                acc.lat += p.lat;
-                acc.lng += p.lng;
+                acc.lat += point.lat;
+                acc.lng += point.lng;
                 return acc;
               },
               { lat: 0, lng: 0 },
@@ -377,7 +382,7 @@ export default function JukeGlobe({
       objectAltitude={() => 0.02}
       objectFacesSurfaces={() => true}
       objectThreeObject={hoverRingObject}
-      objectThreeObjectUpdate={(obj, data) => {
+      objectThreeObjectUpdate={(obj: THREE.Object3D, data: unknown) => {
         obj.visible = Boolean(data);
       }}
       onGlobeReady={onGlobeReady}

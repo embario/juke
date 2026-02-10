@@ -2,16 +2,23 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import ConnectStep from '../components/onboarding/steps/ConnectStep';
+import type { OnboardingState } from '../components/onboarding/types';
 
 const navigateMock = vi.fn();
 const dispatchMock = vi.fn();
 const clearDraftMock = vi.fn();
-let onboardingReturn = {
+let onboardingReturn: {
+  state: OnboardingState;
+  dispatch: typeof dispatchMock;
+  clearDraft: typeof clearDraftMock;
+  currentStepIndex: number;
+  totalSteps: number;
+} = {
   state: {
     currentStep: 'connect',
     data: {
       favoriteGenres: ['rock', 'pop'],
-      rideOrDieArtist: { id: '1', name: 'Artist' },
+      rideOrDieArtist: { id: '1', name: 'Artist', spotifyId: 'artist-1', imageUrl: '', genres: [] },
       hatedGenres: [],
       rainyDayMood: null,
       workoutVibe: null,

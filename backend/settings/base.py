@@ -185,6 +185,9 @@ _spotify_scope = os.environ.get(
 SOCIAL_AUTH_SPOTIFY_SCOPE = [entry.strip() for entry in _spotify_scope.replace(",", " ").split() if entry.strip()]
 SPOTIFY_REDIRECT_PATH = '/api/v1/social-auth/complete/spotify/'
 SOCIAL_AUTH_SPOTIFY_REDIRECT_URI = urljoin(f"{BACKEND_URL}/", SPOTIFY_REDIRECT_PATH.lstrip('/'))
+# social-auth builds redirect_uri from the incoming request path by default.
+# Force HTTPS in non-development environments so OAuth providers receive the exact public callback URL.
+SOCIAL_AUTH_REDIRECT_IS_HTTPS = _env_flag('SOCIAL_AUTH_REDIRECT_IS_HTTPS', RUNTIME_ENV != "development")
 if SOCIAL_AUTH_SPOTIFY_KEY:
     os.environ["SPOTIPY_CLIENT_ID"] = SOCIAL_AUTH_SPOTIFY_KEY
 if SOCIAL_AUTH_SPOTIFY_SECRET:
