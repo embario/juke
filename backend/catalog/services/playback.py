@@ -45,7 +45,16 @@ class PlaybackProvider(abc.ABC):
         self.social_account = social_account
 
     @abc.abstractmethod
-    def play(self, *, track_uri: Optional[str], context_uri: Optional[str], position_ms: Optional[int], device_id: Optional[str]) -> None:
+    def play(
+        self,
+        *,
+        track_uri: Optional[str],
+        context_uri: Optional[str],
+        offset_uri: Optional[str],
+        offset_position: Optional[int],
+        position_ms: Optional[int],
+        device_id: Optional[str],
+    ) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -112,12 +121,16 @@ class PlaybackService:
         *,
         track_uri: Optional[str],
         context_uri: Optional[str],
+        offset_uri: Optional[str],
+        offset_position: Optional[int],
         position_ms: Optional[int],
         device_id: Optional[str],
     ) -> Optional[Dict[str, Any]]:
         self.provider.play(
             track_uri=track_uri,
             context_uri=context_uri,
+            offset_uri=offset_uri,
+            offset_position=offset_position,
             position_ms=position_ms,
             device_id=device_id,
         )
@@ -226,7 +239,16 @@ class SpotifyPlaybackProvider(PlaybackProvider):
     def _is_restriction_violation(self, exc: SpotifyException) -> bool:
         return exc.http_status == 403 and 'restriction violated' in (exc.msg or '').lower()
 
-    def play(self, *, track_uri: Optional[str], context_uri: Optional[str], position_ms: Optional[int], device_id: Optional[str]) -> None:
+    def play(
+        self,
+        *,
+        track_uri: Optional[str],
+        context_uri: Optional[str],
+        offset_uri: Optional[str],
+        offset_position: Optional[int],
+        position_ms: Optional[int],
+        device_id: Optional[str],
+    ) -> None:
         kwargs: Dict[str, Any] = {}
         if device_id:
             kwargs['device_id'] = device_id
@@ -234,6 +256,10 @@ class SpotifyPlaybackProvider(PlaybackProvider):
             kwargs['uris'] = [track_uri]
         elif context_uri:
             kwargs['context_uri'] = context_uri
+            if offset_uri:
+                kwargs['offset'] = {'uri': offset_uri}
+            elif offset_position is not None:
+                kwargs['offset'] = {'position': offset_position}
         if position_ms is not None:
             kwargs['position_ms'] = position_ms
         self._execute(lambda client: client.start_playback(**kwargs))

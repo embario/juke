@@ -1,0 +1,72 @@
+# MLCore Phase 0 (Identity Foundation & Policy Compliance)
+You are an experienced backend Machine Learning Python developer who understands how to build performant recommendation systems that scale to thousands of users. You will be extending the ML capabilities that are hosted on the Juke Music Platform, a digital community of music lovers who want to engage with and connect through music in more meaningful ways. The vision for this ML project is realizing the generalized and efficient means by which ranked results for Juke music resources (Genre/Artist/Album/Track) are delivered that can be leveraged by downstream apps to enrich the user experience. For example, when wanting to discover new music, one can imagine prompting the user with a few favorite artists and then, given that input seed and the user’s music profile, requesting from a machine learning model the next 10 artists that they haven’t heard about that sound musically similar to those artists (artist-to-artist similarity).
+
+The purpose of this task is to begin the foundation work necessary to enable cases like the one above. There is an architecture document under `docs/arch` that will describe the ML project in technical detail, so please read that and familiarize yourself with the codebases found in this repo (backend, web, and ios/android projects) in order to establish proper footing for your work. Finally, there are defined tasks in the `tasks` folder for this ML project that you will use as a reference for reporting on status and progress throughout your performance. This is an iterative task, so I expect you to ingest the proper context and work diligently to satisfy the acceptance criteria in stages - do not attempt to complete the task in one fell swoop.
+
+## Acceptance Critiera
+For this task, you will be implementing Phase 0 (Music Resource Identity foundation) for the Juke ML backend. This includes:
+* Juke ID (UUIDv7, unique, non-null) that needs to be included in all Catalog models
+* Music-Brainz ID (MBID), a nullable and indexed field, added to actionable catalog models (Artist/Album/Track)
+* Per-resource adapter tables to capture external IDs
+* Identity Resolver Precedence (juke_id -> mbid -> external adapter IDs)
+* A New `mlcore_corpus_manifest` table
+* Policy enforcement logic via env config (`JUKE_ALLOWED_LICENSES`, fail-closed behavior)
+* Admin/Inspection support for manifest policy outcomes
+
+## Tasks
+* Read `AGENTS.md` file to fully understand how to work and build against the various projects. Anytime you have context window compaction, read this file to get ramped up again.
+* Read the architecture document in `docs/arch` to understand the ML project holistically. Read the defined tasks in `tasks` to understand the technical details of the phases within the project. Report back on your implementation plan for our session.
+* Once the implementation plan is approved, you may start your work. We will see how far this goes - again, please do not rush the development process.
+
+GOAL: To conduct an iterative, structured development process for a new music recommendation system used in the Juke ecosystem.
+
+----
+
+# MLCore Phase 1 (Metadata Co-occurrence & Evaluation Promotion Gates)
+## Acceptance Criteria
+For this task, you will be implementing Phase 1 (Metadata Co-occurrence and Evaluation Promotion Gates) for the Juke ML Backend. This includes:
+* Baseline non-embedding recommenders in the FastAPI Engine
+* New POST endpoint for metadata scoring
+* New POST endpoint for cooccurrence scoring
+* Metadata Scoring Implementation
+* MLCore Item Co-occurrence store and trainer pipeline
+* Using canonical Juke IDs for seeds and exclusions
+* Validation for deterministic exclusions and baseline latency with default limit of 10 resources returned
+* Computing and storing Recall@10, nDCG@10, coverage, and cold-start slice
+* Persisting metrics in `mlcore_metric_evaluation`
+* Enforcing the following promotion gates:
+  * nDCG@10 >= +5% relative,
+  * Recall@10 >= +3% relative,
+  * cold-start regression <= 2%,
+  * coverage >= 30%
+* Manual Approval ownership flow (for the project owner - me)
+* Evaluation command/service, persistence, gate logic, and tests
+* Demonstration that failed gates block promotion
+
+# MLCore Phase 2 (OpenL3 Content)
+## Acceptance Criteria
+For this task, you will implement Phase 2 (OpenL3 Content) for the Juke Backend. This includes:
+* Model Registry (`mlcore_embedding_model`) and vector storage (`mlcore_track_embedding`)
+* Resumable/Idempotent OpenL3 Extraction worker (window, pool, upsert)
+* New POST endpoint `/engine/recommend/content` that uses active model and IVFFlat ANN Index
+* Manifest License Policy Enforcement during extraction
+* Default result limit is 10 and target P95 <= 150ms
+
+# MLCore Phase 3 (Hybrid Ranking)
+For this task, you will implement Phase 3 (Hybrid Ranking) for the Juke Backend. This includes:
+* New POST endpoint `/engine/recommend` that blends the following together:
+  * Content
+  * Metadata
+  * Co-occurrence
+* Active DB weight config only (`mlcore_ranking_weight_config`), no per-request overrides (for now)
+* MMR Diversification
+* Explainability fields in every API response:
+  * Content Score, Metadata Score, Co-occurrence Score, Final Score, Model Version, Weight Config ID
+
+# MLCore Phase 4 (Hardening and Cutover)
+For this task, you will implement Phase 4 (Model Hardening and Cutover) for the Juke Backend. This includes:
+* Scheduled re-embedding for new/stale tracks
+* Model health metrics for collection
+* Model Rollback to previous known-good model row (DB activation switch)
+* Wire manual promotion workflow (owner approval)
+* End-to-end regression test evidence on new architecture

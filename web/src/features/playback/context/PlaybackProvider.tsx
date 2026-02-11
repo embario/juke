@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useAuth } from '../../auth/hooks/useAuth';
 import type { Track } from '../../catalog/types';
 import type { PlaybackProviderName, PlaybackState } from '../types';
+import type { PlayRequest } from '../api/playbackApi';
 import { fetchPlaybackState, nextTrack, pausePlayback, previousTrack, seekPlayback, startPlayback } from '../api/playbackApi';
 import { deriveTrackUri } from '../utils';
 
@@ -12,7 +13,10 @@ export type PlaybackContextValue = {
   isPlaying: boolean;
   canControl: boolean;
   activeTrackUri: string | null;
-  playTrack: (track: Track, overrides?: { provider?: PlaybackProviderName }) => Promise<void>;
+  playTrack: (
+    track: Track,
+    overrides?: { provider?: PlaybackProviderName; contextUri?: string | null },
+  ) => Promise<void>;
   playContext: (contextUri: string, overrides?: { provider?: PlaybackProviderName }) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -28,6 +32,24 @@ const DEFAULT_PROVIDER: PlaybackProviderName = 'spotify';
 const PLAYBACK_SYNC_DELAY_MS = 900;
 const PLAYBACK_POLL_WHILE_PLAYING_MS = 6000;
 const PLAYBACK_POLL_IDLE_MS = 12000;
+
+export const buildTrackPlaybackRequest = (
+  provider: PlaybackProviderName,
+  trackUri: string,
+  contextUri?: string | null,
+): PlayRequest => {
+  if (contextUri) {
+    return {
+      provider,
+      context_uri: contextUri,
+      offset_uri: trackUri,
+    };
+  }
+  return {
+    provider,
+    track_uri: trackUri,
+  };
+};
 
 const getFirstArtwork = (images?: unknown) => {
   if (!Array.isArray(images)) {
@@ -150,7 +172,7 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
   }, [refresh]);
 
   const playTrack = useCallback(
-    async (track: Track, overrides?: { provider?: PlaybackProviderName }) => {
+    async (track: Track, overrides?: { provider?: PlaybackProviderName; contextUri?: string | null }) => {
       const uri = deriveTrackUri(track);
       if (!uri) {
         setError('This track is missing a playable Spotify reference.');
@@ -160,6 +182,7 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       const provider = overrides?.provider ?? state?.provider ?? activeProvider ?? DEFAULT_PROVIDER;
+      const normalizedContextUri = overrides?.contextUri?.trim() || null;
       const previousState = state;
       setActiveProvider(provider);
       applyState({
@@ -171,7 +194,11 @@ export const PlaybackProvider = ({ children }: { children: ReactNode }) => {
         track: normalizeOptimisticTrack(track),
       });
       try {
-        await runAction(() => startPlayback(token, { provider, track_uri: uri }), { silent: false, preserveLocalState: true });
+        await runAction(
+          () =>
+            startPlayback(token, buildTrackPlaybackRequest(provider, uri, normalizedContextUri)),
+          { silent: false, preserveLocalState: true },
+        );
         refreshSoon();
       } catch {
         applyState(previousState ?? null);

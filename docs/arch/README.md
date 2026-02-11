@@ -9,18 +9,18 @@ This directory contains all planning, architecture, and progress documentation f
 **Current Status**: Phase 1 (Backend Setup) - 71% Complete (5 of 7 tasks done)
 
 ### Required Reading (In Order)
-1. **`HANDOFF_INSTRUCTIONS.md`** ⭐ **READ THIS FIRST** - Complete handoff from previous agent
-2. **`PROGRESS_REPORT.md`** - Detailed status of all completed work
+1. **`archives/HANDOFF_INSTRUCTIONS.md`** ⭐ **READ THIS FIRST** - Complete handoff from previous agent
+2. **`archives/PROGRESS_REPORT.md`** - Detailed status of all completed work
 3. **`CATALOG_IMPLEMENTATION_TASKS.md`** - 224 task breakdown with checklists
 4. **`CATALOG_REDESIGN_ARCHITECTURE.md`** - Complete technical architecture
-5. **`IMPLEMENTATION_STATUS.md`** - Quick reference guide
+5. **`archives/IMPLEMENTATION_STATUS.md`** - Quick reference guide
 
 ### Quick Start
 ```bash
 # Start Docker services
 docker compose up -d backend db redis
 
-# Continue with Task #6 (see HANDOFF_INSTRUCTIONS.md)
+# Continue with Task #6 (see archives/HANDOFF_INSTRUCTIONS.md)
 ```
 
 ---
@@ -28,15 +28,16 @@ docker compose up -d backend db redis
 ## 📁 Document Index
 
 ### Planning Documents (Read First)
-- **`HANDOFF_INSTRUCTIONS.md`** - Agent handoff with immediate next steps
+- **`archives/HANDOFF_INSTRUCTIONS.md`** - Agent handoff with immediate next steps
 - **`CATALOG_REDESIGN_ARCHITECTURE.md`** - Complete technical architecture (19 KB)
+- **`INDEPENDENT_ML_CORE_ARCHITECTURE.md`** - Spotify-independent ML core migration plan (MBID-first, corpus governance, hybrid ranking)
 - **`CATALOG_UX_DESIGNS.md`** - Three UI/UX design options with mockups (38 KB)
 - **`REDESIGN_SUMMARY.md`** - Executive summary with KPIs
 
 ### Implementation Tracking
 - **`CATALOG_IMPLEMENTATION_TASKS.md`** - 224 detailed tasks across 5 phases
-- **`PROGRESS_REPORT.md`** - Comprehensive progress status with code locations
-- **`IMPLEMENTATION_STATUS.md`** - Quick reference for current status
+- **`archives/PROGRESS_REPORT.md`** - Comprehensive progress status with code locations
+- **`archives/IMPLEMENTATION_STATUS.md`** - Quick reference for current status
 - **`README.md`** - This file
 
 ---
@@ -148,16 +149,16 @@ See `CATALOG_REDESIGN_ARCHITECTURE.md` for complete details.
 ## 💬 Common Questions
 
 ### Q: Where do I start?
-**A**: Read `HANDOFF_INSTRUCTIONS.md` first, then continue with Task #6.
+**A**: Read `archives/HANDOFF_INSTRUCTIONS.md` first, then continue with Task #6.
 
 ### Q: What services do I need running?
 **A**: Just backend, db, and redis: `docker compose up -d backend db redis`
 
 ### Q: Where is the code I need to modify?
-**A**: See `PROGRESS_REPORT.md` for exact file locations and line numbers.
+**A**: See `archives/PROGRESS_REPORT.md` for exact file locations and line numbers.
 
 ### Q: How do I test my changes?
-**A**: See Task #7 instructions in `HANDOFF_INSTRUCTIONS.md` for test examples.
+**A**: See Task #7 instructions in `archives/HANDOFF_INSTRUCTIONS.md` for test examples.
 
 ### Q: What if I have questions about architecture?
 **A**: Check `CATALOG_REDESIGN_ARCHITECTURE.md` for all decisions and rationale.
@@ -168,8 +169,8 @@ See `CATALOG_REDESIGN_ARCHITECTURE.md` for complete details.
 
 If you encounter issues or have questions:
 1. Check this README
-2. Read `HANDOFF_INSTRUCTIONS.md`
-3. Review `PROGRESS_REPORT.md` for detailed status
+2. Read `archives/HANDOFF_INSTRUCTIONS.md`
+3. Review `archives/PROGRESS_REPORT.md` for detailed status
 4. Check code comments in modified files
 5. Refer to architecture docs for design decisions
 

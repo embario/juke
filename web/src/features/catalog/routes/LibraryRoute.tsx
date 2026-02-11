@@ -644,7 +644,7 @@ const LibraryRoute = () => {
     lastAppliedQueryRef.current = '';
   };
 
-  const handleTrackPlay = async (track: Track) => {
+  const handleTrackPlay = async (track: Track, contextUri?: string | null) => {
     const trackId = resolveResourceId(track);
     if (trackId !== null) {
       await maybeTrackSearchEngagement('track', trackId, track.name);
@@ -654,7 +654,7 @@ const LibraryRoute = () => {
       return;
     }
 
-    void playTrack(track);
+    void playTrack(track, contextUri ? { contextUri } : undefined);
   };
 
   const activeDetail = useMemo(() => {
@@ -1147,6 +1147,7 @@ const LibraryRoute = () => {
                     const heroArtwork = resolveAlbumHeroArtwork(albumDetail);
                     const totalDurationMs = (albumDetail.tracks ?? []).reduce((sum, track) => sum + (track.duration_ms || 0), 0);
                     const albumArtists = artistNames(albumDetail);
+                    const albumContextUri = spotifyContextUri('album', albumDetail.spotify_id);
 
                     return (
                       <div className="detail-view">
@@ -1178,11 +1179,10 @@ const LibraryRoute = () => {
                             className="btn btn-primary"
                             disabled={!canStartPlayback}
                             onClick={() => {
-                              const contextUri = spotifyContextUri('album', albumDetail.spotify_id);
-                              if (!contextUri) {
+                              if (!albumContextUri) {
                                 return;
                               }
-                              void playContext(contextUri);
+                              void playContext(albumContextUri);
                             }}
                           >
                             Play Album
@@ -1210,7 +1210,7 @@ const LibraryRoute = () => {
                               <li
                                 key={`album-track-${track.spotify_id}-${track.id}`}
                                 className={`catalog-track-item${interactiveClass}${activeClass}`}
-                                onDoubleClick={() => void handleTrackPlay(track)}
+                                onDoubleClick={() => void handleTrackPlay(track, albumContextUri)}
                                 title={canStartPlayback ? 'Double-click to play' : 'Connect Spotify to play'}
                               >
                                 <div className="catalog-track-main">

@@ -251,17 +251,27 @@ class PlaybackProviderSerializer(serializers.Serializer):
 class PlayRequestSerializer(PlaybackProviderSerializer):
     track_uri = serializers.CharField(required=False, allow_blank=True)
     context_uri = serializers.CharField(required=False, allow_blank=True)
+    offset_uri = serializers.CharField(required=False, allow_blank=True)
+    offset_position = serializers.IntegerField(required=False, min_value=0)
     position_ms = serializers.IntegerField(required=False, min_value=0)
 
     def validate(self, attrs):
         track_uri = attrs.get('track_uri')
         context_uri = attrs.get('context_uri')
+        offset_uri = attrs.get('offset_uri')
+        offset_position = attrs.get('offset_position')
         if track_uri:
             attrs['track_uri'] = track_uri.strip()
         if context_uri:
             attrs['context_uri'] = context_uri.strip()
+        if offset_uri:
+            attrs['offset_uri'] = offset_uri.strip()
         if attrs.get('device_id'):
             attrs['device_id'] = attrs['device_id'].strip()
+        if (offset_uri or offset_position is not None) and not attrs.get('context_uri'):
+            raise serializers.ValidationError('offset_uri and offset_position require context_uri.')
+        if offset_uri and offset_position is not None:
+            raise serializers.ValidationError('Only one of offset_uri or offset_position can be provided.')
         return attrs
 
 
