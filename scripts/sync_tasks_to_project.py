@@ -35,6 +35,7 @@ class ProjectField:
     field_id: str
     name: str
     option_by_key: dict[str, str]
+    option_name_by_key: dict[str, str]
 
 
 class GitHubClient:
@@ -336,17 +337,21 @@ def load_project_fields(client: GitHubClient, project_id: str) -> dict[str, Proj
                 continue
             options = node.get("options", [])
             option_by_key: dict[str, str] = {}
+            option_name_by_key: dict[str, str] = {}
             for option in options:
                 option_name = option.get("name")
                 option_id = option.get("id")
                 if not isinstance(option_name, str) or not isinstance(option_id, str):
                     continue
-                option_by_key[canonicalize(option_name)] = option_id
+                option_key = canonicalize(option_name)
+                option_by_key[option_key] = option_id
+                option_name_by_key[option_key] = option_name
 
             fields[canonicalize(name)] = ProjectField(
                 field_id=field_id,
                 name=name,
                 option_by_key=option_by_key,
+                option_name_by_key=option_name_by_key,
             )
 
         page_info = fields_connection.get("pageInfo", {})
@@ -568,13 +573,76 @@ def task_files() -> list[Path]:
     return sorted(files)
 
 
-def pick_option_id(field: ProjectField, raw_value: Any) -> str | None:
+def option_aliases(field_name: str, value_key: str) -> list[str]:
+    if field_name == canonicalize("Status"):
+        status_aliases: dict[str, list[str]] = {
+            canonicalize("ready"): [
+                canonicalize("todo"),
+                canonicalize("to do"),
+                canonicalize("backlog"),
+                canonicalize("not started"),
+            ],
+            canonicalize("in_progress"): [
+                canonicalize("in progress"),
+                canonicalize("doing"),
+                canonicalize("active"),
+                canonicalize("wip"),
+            ],
+            canonicalize("review"): [
+                canonicalize("in review"),
+                canonicalize("qa"),
+                canonicalize("testing"),
+                canonicalize("in progress"),
+            ],
+            canonicalize("blocked"): [
+                canonicalize("on hold"),
+                canonicalize("hold"),
+            ],
+            canonicalize("done"): [
+                canonicalize("complete"),
+                canonicalize("completed"),
+                canonicalize("closed"),
+            ],
+        }
+        return status_aliases.get(value_key, [])
+
+    if field_name == canonicalize("Priority"):
+        priority_aliases: dict[str, list[str]] = {
+            canonicalize("p0"): [canonicalize("critical"), canonicalize("urgent")],
+            canonicalize("p1"): [canonicalize("high")],
+            canonicalize("p2"): [canonicalize("medium"), canonicalize("normal")],
+            canonicalize("p3"): [canonicalize("low"), canonicalize("backlog")],
+        }
+        return priority_aliases.get(value_key, [])
+
+    return []
+
+
+def available_options(field: ProjectField) -> str:
+    names = sorted(field.option_name_by_key.values())
+    if not names:
+        return "(none)"
+    return ", ".join(names)
+
+
+def pick_option_id(field: ProjectField, raw_value: Any) -> tuple[str | None, str | None]:
     if raw_value is None:
-        return None
+        return None, None
     value = str(raw_value).strip()
     if not value:
-        return None
-    return field.option_by_key.get(canonicalize(value))
+        return None, None
+
+    value_key = canonicalize(value)
+    option_id = field.option_by_key.get(value_key)
+    if option_id:
+        return option_id, field.option_name_by_key.get(value_key)
+
+    for alias_key in option_aliases(canonicalize(field.name), value_key):
+        option_id = field.option_by_key.get(alias_key)
+        if option_id:
+            return option_id, field.option_name_by_key.get(alias_key)
+
+    return None, None
 
 
 def main() -> int:
@@ -706,13 +774,19 @@ def main() -> int:
                 if not field:
                     warn(f"[{rel_path}] Project field '{field_name}' not found; skipping.")
                     continue
-                option_id = pick_option_id(field, metadata.get(metadata_key))
+                raw_value = metadata.get(metadata_key)
+                option_id, resolved_option_name = pick_option_id(field, raw_value)
                 if not option_id:
                     warn(
-                        f"[{rel_path}] Option '{metadata.get(metadata_key)}' "
-                        f"not found in '{field_name}'; skipping."
+                        f"[{rel_path}] Option '{raw_value}' not found in '{field_name}'; "
+                        f"available: {available_options(field)}. Skipping."
                     )
                     continue
+                if canonicalize(str(raw_value)) != canonicalize(resolved_option_name or ""):
+                    print(
+                        f"[{rel_path}] Mapped {field_name} '{raw_value}' "
+                        f"-> '{resolved_option_name}'."
+                    )
                 try:
                     update_single_select_field(
                         client=client,
