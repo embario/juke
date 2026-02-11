@@ -1,0 +1,33 @@
+name: Sync Tasks To Project
+
+on:
+  push:
+    paths:
+      - "tasks/**"
+  workflow_dispatch:
+
+jobs:
+  sync-tasks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml requests
+
+      - name: Sync task files to issues and project
+        env:
+          JUKE_GH_PAT: ${{ secrets.JUKE_GH_PAT }}
+        run: python scripts/sync_tasks_to_project.py

@@ -14,7 +14,7 @@ This directory is the repo-native task board for humans and agents.
 - `tasks/_index.md`: canonical queue for active/discoverable work.
 - `tasks/_template.md`: template for new task files.
 - `tasks/<task-slug>.md|txt`: one file per task.
-- `tasks/archive/`: completed/retired tasks.
+- `tasks/archives/`: completed/retired tasks.
 - `tasks/TODO`: legacy scratch list; migrate items into structured task files over time.
 
 ## Status Values

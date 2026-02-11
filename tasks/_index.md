@@ -4,7 +4,8 @@ Use this file as the first stop for work selection.
 
 | ID | Title | Status | Priority | Owner | Label | Area | Complexity | File | Updated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| dep-upgrade-phase-1 | Dependency upgrades phase 1 | ready | p1 | unassigned | ALL/GENERAL | platform | 5 | `tasks/dependency-upgrade-audit.txt` | 2026-02-10 |
+| spotify-credentials-unification | Unify Spotify credentials across backend, web, and all apps | ready | p1 | unassigned | ALL/GENERAL | platform | 5 | `tasks/spotify-credentials-unification.md` | 2026-02-11 |
+| dep-upgrade-phase-1 | Dependency upgrades phase 1 | ready | p1 | unassigned | ALL/GENERAL | platform | 5 | `tasks/dependency-upgrade-audit.md` | 2026-02-11 |
 | clients-feature-parity | Reach feature parity with all Juke app clients | ready | p1 | unassigned | CLIENTS | clients | 5 | `tasks/clients-feature-parity.md` | 2026-02-10 |
 | web-playback-next-track | Fix playback to play the next track in the album | ready | p1 | unassigned | WEB | web | 2 | `tasks/web-playback-next-track.md` | 2026-02-10 |
 | android-reusable-app-component-library | Reusable App component library | ready | p2 | unassigned | ANDROID | android | 5 | `tasks/android-reusable-app-component-library.md` | 2026-02-10 |
