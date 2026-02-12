@@ -12,18 +12,20 @@ labels:
   - backend
   - compliance
 complexity: 4
-updated_at: 2026-02-11
+updated_at: 2026-02-12
 ---
 
 ## Goal
 
-Implement strict corpus governance so production ML uses only license-compliant tracks from an auditable manifest.
+Implement strict corpus governance so production ML uses only license-compliant tracks from an auditable manifest, with MusicBrainz as the initial primary production training source.
 
 ## Scope
 
 - Add `mlcore_corpus_manifest` table.
+- Set initial production corpus source policy to MusicBrainz-only (`source=musicbrainz`) until additional sources pass review.
 - Add policy enforcement service for `JUKE_ALLOWED_LICENSES` and fail-closed behavior.
 - Block ingestion/training for unknown or non-permitted license rows.
+- Classify corpus sources as `production_approved`, `research_only`, or `blocked` for explicit policy decisions.
 - Add admin/inspection access for corpus manifest rows and policy decisions.
 - Add model promotion guard: models trained with research-only rows cannot become active in production.
 
@@ -35,7 +37,8 @@ Implement strict corpus governance so production ML uses only license-compliant 
 ## Acceptance Criteria
 
 - Every embedding/training pipeline query is manifest-backed.
-- Production mode skips non-compliant or unknown-license rows.
+- Production mode skips non-compliant, unknown-license, and non-MusicBrainz rows by default.
+- Promotion guard rejects models whose training corpus includes non-`production_approved` source rows.
 - Policy decisions are test-covered and logged.
 - Promotion guard rejects research-contaminated model rows.
 
@@ -51,6 +54,7 @@ Implement strict corpus governance so production ML uses only license-compliant 
 - `docker compose exec backend python manage.py test`
 - Risks:
 - Ambiguous license metadata across datasets can reduce usable corpus.
+- MusicBrainz-only phase may reduce coverage until additional sources are approved.
 - Policy misconfiguration could silently starve model training.
 
 ## Handoff

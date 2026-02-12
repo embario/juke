@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -74,7 +74,7 @@ fun JukeWorldScreen(
                 actions = {
                     IconButton(onClick = onLogout) {
                         Icon(
-                            imageVector = Icons.Outlined.Logout,
+                            imageVector = Icons.AutoMirrored.Outlined.Logout,
                             contentDescription = "Logout",
                             tint = JukePalette.Accent,
                         )
@@ -136,7 +136,6 @@ private fun JukeWorldWebView(
             WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                settings.databaseEnabled = true
                 setBackgroundColor(android.graphics.Color.BLACK)
                 webChromeClient = WebChromeClient()
                 addJavascriptInterface(bridge, "JukeWorldBridge")

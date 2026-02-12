@@ -118,7 +118,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
       - name: Run Android unit tests
         run: bash scripts/test_mobile.sh --android-only -p juke
 
@@ -133,6 +133,6 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
       - name: Run Android unit tests
         run: bash scripts/test_mobile.sh --android-only -p shotclock
