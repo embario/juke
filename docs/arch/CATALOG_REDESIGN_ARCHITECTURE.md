@@ -19,7 +19,7 @@ This document outlines the architecture for redesigning the Juke Music Platform 
 - Task #6: Enhance catalog viewsets for detail endpoints (2-3 hours)
 - Task #7: Add backend tests (3-4 hours)
 
-**📖 FOR NEXT AGENT**: Read `docs/arch/HANDOFF_INSTRUCTIONS.md` first for complete handoff details.
+**📖 FOR NEXT AGENT**: Read `docs/arch/archives/HANDOFF_INSTRUCTIONS.md` first for complete handoff details.
 
 ### Approved Design Decisions
 - **UI Design**: Card-Based Navigation (Option 1) with Spotify-inspired layout

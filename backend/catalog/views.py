@@ -123,6 +123,8 @@ class PlaybackViewSet(viewsets.ViewSet):
         state = service.play(
             track_uri=data.get('track_uri'),
             context_uri=data.get('context_uri'),
+            offset_uri=data.get('offset_uri'),
+            offset_position=data.get('offset_position'),
             position_ms=data.get('position_ms'),
             device_id=data.get('device_id'),
         )

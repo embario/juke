@@ -1,13 +1,13 @@
 ---
 id: web-playback-next-track
 title: Fix playback to play the next track in the album
-status: ready
+status: review
 priority: p1
 owner: unassigned
 area: web
 label: WEB
 complexity: 2
-updated_at: 2026-02-10
+updated_at: 2026-02-11
 ---
 
 ## Goal
@@ -41,5 +41,10 @@ Fix web playback so track progression advances to the next album track correctly
 ## Handoff
 
 - Completed:
+- Added context-aware track playback for album progression by sending `context_uri` + `offset_uri` on web track play.
+- Extended backend playback start endpoint/service to accept and forward Spotify playback offsets.
+- Added backend API tests for context-offset playback validation and offset error cases.
+- Added frontend unit coverage for playback request construction with and without context.
 - Next:
+- Run backend and web playback tests in CI/local containers and do quick manual web verification of album track progression.
 - Blockers:

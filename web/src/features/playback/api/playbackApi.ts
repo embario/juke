@@ -5,6 +5,8 @@ export type PlayRequest = {
   provider?: string;
   track_uri?: string;
   context_uri?: string;
+  offset_uri?: string;
+  offset_position?: number;
   position_ms?: number;
   device_id?: string;
 };
