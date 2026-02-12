@@ -47,10 +47,10 @@ Implement production hybrid ranking that blends content, metadata, and cooccurre
 ## Execution Notes
 
 - Key files:
-- `/Users/embario/Documents/juke/backend/recommender_engine/app/main.py`
-- `/Users/embario/Documents/juke/backend/recommender/serializers.py`
-- `/Users/embario/Documents/juke/backend/recommender/views.py`
-- `/Users/embario/Documents/juke/backend/mlcore/models.py`
+- `backend/recommender_engine/app/main.py`
+- `backend/recommender/serializers.py`
+- `backend/recommender/views.py`
+- `backend/mlcore/models.py`
 - Commands:
 - `docker compose exec backend python manage.py evaluate_recommenders`
 - `docker compose exec backend python manage.py test`
