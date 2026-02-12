@@ -6,15 +6,13 @@
 //
 
 import Foundation
+import JukeCore
 
 final class TuneTriviaService {
-    private let client: APIClient
-    private let encoder: JSONEncoder
+    private let client: JukeAPIClient
 
-    init(client: APIClient = .shared) {
+    init(client: JukeAPIClient = .shared) {
         self.client = client
-        self.encoder = JSONEncoder()
-        self.encoder.keyEncodingStrategy = .convertToSnakeCase
     }
 
     // MARK: - Sessions
@@ -40,38 +38,32 @@ final class TuneTriviaService {
             autoSelectGenre: autoSelectGenre,
             autoSelectArtist: autoSelectArtist
         )
-        let bodyData = try encoder.encode(request)
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/",
-            method: .post,
-            token: token,
-            body: bodyData
+            body: request,
+            token: token
         )
     }
 
     func joinSession(code: String, displayName: String? = nil, token: String?) async throws -> SessionDetailResponse {
         let request = JoinSessionRequest(code: code, displayName: displayName)
-        let bodyData = try encoder.encode(request)
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/join/",
-            method: .post,
-            token: token,
-            body: bodyData
+            body: request,
+            token: token
         )
     }
 
     func getSession(id: Int, token: String?) async throws -> SessionDetailResponse {
-        return try await client.send(
+        return try await client.get(
             "/api/v1/tunetrivia/sessions/\(id)/",
-            method: .get,
             token: token
         )
     }
 
     func getMySessions(token: String) async throws -> [TuneTriviaSession] {
-        return try await client.send(
+        return try await client.get(
             "/api/v1/tunetrivia/sessions/mine/",
-            method: .get,
             token: token
         )
     }
@@ -79,49 +71,49 @@ final class TuneTriviaService {
     // MARK: - Game Control
 
     func startGame(sessionId: Int, token: String) async throws -> SessionDetailResponse {
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/\(sessionId)/start/",
-            method: .post,
+            body: nil as String?,
             token: token
         )
     }
 
     func pauseGame(sessionId: Int, token: String) async throws -> TuneTriviaSession {
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/\(sessionId)/pause/",
-            method: .post,
+            body: nil as String?,
             token: token
         )
     }
 
     func resumeGame(sessionId: Int, token: String) async throws -> TuneTriviaSession {
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/\(sessionId)/resume/",
-            method: .post,
+            body: nil as String?,
             token: token
         )
     }
 
     func endGame(sessionId: Int, token: String) async throws -> TuneTriviaSession {
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/\(sessionId)/end/",
-            method: .post,
+            body: nil as String?,
             token: token
         )
     }
 
     func nextRound(sessionId: Int, token: String) async throws -> TuneTriviaRound {
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/\(sessionId)/next-round/",
-            method: .post,
+            body: nil as String?,
             token: token
         )
     }
 
     func revealRound(sessionId: Int, token: String) async throws -> TuneTriviaRound {
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/\(sessionId)/reveal/",
-            method: .post,
+            body: nil as String?,
             token: token
         )
     }
@@ -130,12 +122,10 @@ final class TuneTriviaService {
 
     func addTrack(sessionId: Int, trackId: String, token: String) async throws -> TuneTriviaRound {
         let request = AddTrackRequest(trackId: trackId)
-        let bodyData = try encoder.encode(request)
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/\(sessionId)/tracks/",
-            method: .post,
-            token: token,
-            body: bodyData
+            body: request,
+            token: token
         )
     }
 
@@ -149,9 +139,8 @@ final class TuneTriviaService {
     }
 
     func searchTracks(query: String, token: String) async throws -> [SpotifyTrack] {
-        return try await client.send(
+        return try await client.get(
             "/api/v1/tunetrivia/sessions/search-tracks/",
-            method: .get,
             token: token,
             queryItems: [URLQueryItem(name: "q", value: query)]
         )
@@ -166,31 +155,26 @@ final class TuneTriviaService {
         token: String?
     ) async throws -> TuneTriviaGuess {
         let request = SubmitGuessRequest(songGuess: songGuess, artistGuess: artistGuess)
-        let bodyData = try encoder.encode(request)
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/rounds/\(roundId)/guess/",
-            method: .post,
-            token: token,
-            body: bodyData
+            body: request,
+            token: token
         )
     }
 
     func getRoundGuesses(roundId: Int, token: String?) async throws -> [TuneTriviaGuess] {
-        return try await client.send(
+        return try await client.get(
             "/api/v1/tunetrivia/rounds/\(roundId)/guesses/",
-            method: .get,
             token: token
         )
     }
 
     func submitTriviaAnswer(roundId: Int, triviaGuess: String, token: String?) async throws -> TriviaSubmitResponse {
         let request = SubmitTriviaRequest(triviaGuess: triviaGuess)
-        let bodyData = try encoder.encode(request)
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/rounds/\(roundId)/trivia/",
-            method: .post,
-            token: token,
-            body: bodyData
+            body: request,
+            token: token
         )
     }
 
@@ -199,16 +183,11 @@ final class TuneTriviaService {
     func addManualPlayer(sessionId: Int, displayName: String, token: String) async throws -> TuneTriviaPlayer {
         struct AddPlayerRequest: Encodable {
             let displayName: String
-            enum CodingKeys: String, CodingKey {
-                case displayName = "display_name"
-            }
         }
-        let bodyData = try encoder.encode(AddPlayerRequest(displayName: displayName))
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/sessions/\(sessionId)/players/",
-            method: .post,
-            token: token,
-            body: bodyData
+            body: AddPlayerRequest(displayName: displayName),
+            token: token
         )
     }
 
@@ -216,21 +195,18 @@ final class TuneTriviaService {
         struct AwardPointsRequest: Encodable {
             let points: Int
         }
-        let bodyData = try encoder.encode(AwardPointsRequest(points: points))
-        return try await client.send(
+        return try await client.post(
             "/api/v1/tunetrivia/players/\(playerId)/award/",
-            method: .post,
-            token: token,
-            body: bodyData
+            body: AwardPointsRequest(points: points),
+            token: token
         )
     }
 
     // MARK: - Leaderboard
 
     func getLeaderboard(limit: Int = 50) async throws -> [LeaderboardEntry] {
-        return try await client.send(
+        return try await client.get(
             "/api/v1/tunetrivia/leaderboard/?limit=\(limit)",
-            method: .get,
             token: nil
         )
     }

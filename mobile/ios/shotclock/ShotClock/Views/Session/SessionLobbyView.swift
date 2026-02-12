@@ -1,7 +1,8 @@
 import SwiftUI
+import JukeCore
 
 struct SessionLobbyView: View {
-    @EnvironmentObject var session: SessionStore
+    @EnvironmentObject var session: JukeSessionStore
     @EnvironmentObject var spotify: SpotifyManager
     @StateObject private var viewModel: SessionLobbyViewModel
     @State private var copiedInvite = false
@@ -304,6 +305,6 @@ struct TrackRow: View {
             playerCount: 1,
             trackCount: 0
         ))
-        .environmentObject(SessionStore())
+        .environmentObject(JukeSessionStore(keyPrefix: "shotclock"))
     }
 }

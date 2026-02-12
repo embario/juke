@@ -1,18 +1,15 @@
 import Foundation
+import JukeCore
 
 struct PaginatedResponse<T: Decodable>: Decodable {
     let results: [T]
 }
 
 final class ProfileService {
-    private let client: APIClient
+    private let client: JukeAPIClient
 
-    init(client: APIClient = .shared) {
+    init(client: JukeAPIClient = .shared) {
         self.client = client
-    }
-
-    func fetchMyProfile(token: String) async throws -> MusicProfile {
-        try await client.send("/api/v1/music-profiles/me/", token: token)
     }
 
     func searchProfiles(token: String, query: String) async throws -> [MusicProfileSummary] {

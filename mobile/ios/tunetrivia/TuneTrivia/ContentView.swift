@@ -6,16 +6,17 @@
 //
 
 import SwiftUI
+import JukeCore
 
 struct ContentView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
 
     var body: some View {
         Group {
             if session.isAuthenticated {
                 HomeView()
             } else {
-                AuthView()
+                AuthView(session: session)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: session.isAuthenticated)
@@ -25,6 +26,6 @@ struct ContentView: View {
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
-            .environmentObject(SessionStore())
+            .environmentObject(JukeSessionStore(keyPrefix: "tunetrivia"))
     }
 }

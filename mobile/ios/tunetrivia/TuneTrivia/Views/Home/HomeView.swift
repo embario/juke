@@ -6,9 +6,10 @@
 //
 
 import SwiftUI
+import JukeCore
 
 struct HomeView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
 
     @State private var mySessions: [TuneTriviaSession] = []
     @State private var isLoadingSessions = false
@@ -29,7 +30,7 @@ struct HomeView: View {
                                     .font(.system(size: 28, weight: .bold, design: .rounded))
                                     .foregroundColor(TuneTriviaPalette.text)
 
-                                Text("Welcome, \(session.currentUsername)!")
+                                Text("Welcome, \(session.currentDisplayName)!")
                                     .font(.subheadline)
                                     .foregroundColor(TuneTriviaPalette.muted)
                             }
@@ -204,7 +205,7 @@ struct SessionCard: View {
                             .font(.caption)
                             .foregroundColor(TuneTriviaPalette.muted)
 
-                        Text("•")
+                        Text("\u{2022}")
                             .foregroundColor(TuneTriviaPalette.muted)
 
                         Text("\(session.maxSongs) songs")
@@ -233,6 +234,6 @@ struct SessionCard: View {
 struct HomeView_Previews: PreviewProvider {
     static var previews: some View {
         HomeView()
-            .environmentObject(SessionStore())
+            .environmentObject(JukeSessionStore(keyPrefix: "tunetrivia"))
     }
 }

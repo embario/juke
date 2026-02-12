@@ -1,7 +1,8 @@
 import SwiftUI
+import JukeCore
 
 struct CreateSessionView: View {
-    @EnvironmentObject var session: SessionStore
+    @EnvironmentObject var session: JukeSessionStore
     @StateObject private var viewModel = CreateSessionViewModel()
     @Environment(\.dismiss) private var dismiss
 
@@ -201,6 +202,6 @@ struct FlowLayout: Layout {
 #Preview {
     NavigationStack {
         CreateSessionView()
-            .environmentObject(SessionStore())
+            .environmentObject(JukeSessionStore(keyPrefix: "shotclock"))
     }
 }

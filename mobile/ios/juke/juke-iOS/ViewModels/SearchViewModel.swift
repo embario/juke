@@ -1,4 +1,5 @@
 import Foundation
+import JukeCore
 
 @MainActor
 final class SearchViewModel: ObservableObject {
@@ -12,12 +13,12 @@ final class SearchViewModel: ObservableObject {
 
     private var searchTask: Task<Void, Never>?
 
-    private let session: SessionStore
+    private let session: JukeSessionStore
     private let profileService: ProfileService
     private let catalogService: CatalogService
 
     init(
-        session: SessionStore,
+        session: JukeSessionStore,
         profileService: ProfileService = ProfileService(),
         catalogService: CatalogService = CatalogService()
     ) {
