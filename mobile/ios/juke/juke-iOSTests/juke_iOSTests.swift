@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import JukeCore
 @testable import juke_iOS
 
 class juke_iOSTests: XCTestCase {
@@ -34,8 +35,8 @@ class juke_iOSTests: XCTestCase {
     }
 
     func testAppConfigurationEnvOverridesPlist() {
-        let config = AppConfiguration(
-            env: ["DISABLE_REGISTRATION": "true"],
+        let config = JukeAppConfiguration(
+            environment: ["DISABLE_REGISTRATION": "true"],
             plistValue: "false"
         )
 
@@ -43,8 +44,8 @@ class juke_iOSTests: XCTestCase {
     }
 
     func testAppConfigurationPlistBooleanFallback() {
-        let config = AppConfiguration(
-            env: [:],
+        let config = JukeAppConfiguration(
+            environment: [:],
             plistValue: true
         )
 
@@ -52,7 +53,7 @@ class juke_iOSTests: XCTestCase {
     }
 
     func testAPIConfigurationEnvOverridesPlist() {
-        let config = APIConfiguration(
+        let config = JukeAPIConfiguration(
             environment: ["BACKEND_URL": "http://env.example.com"],
             backendPlist: "http://plist.example.com",
             frontendPlist: nil
@@ -62,7 +63,7 @@ class juke_iOSTests: XCTestCase {
     }
 
     func testAPIConfigurationPlistFallback() {
-        let config = APIConfiguration(
+        let config = JukeAPIConfiguration(
             environment: [:],
             backendPlist: "http://plist.example.com",
             frontendPlist: nil
@@ -243,12 +244,12 @@ final class PlaybackServiceTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
         let session = URLSession(configuration: configuration)
-        let apiConfig = APIConfiguration(
+        let apiConfig = JukeAPIConfiguration(
             environment: [:],
             backendPlist: "http://backend.example.com",
             frontendPlist: nil
         )
-        let client = APIClient(configuration: apiConfig, session: session)
+        let client = JukeAPIClient(configuration: apiConfig, session: session)
         return PlaybackService(client: client)
     }
 
