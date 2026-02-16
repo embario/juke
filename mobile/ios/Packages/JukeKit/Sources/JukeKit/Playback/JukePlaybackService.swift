@@ -22,8 +22,9 @@ public struct JukePlaybackTrack: Decodable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, uri, name, artists
-        case durationMs = "duration_ms"
-        case artworkURL = "artwork_url"
+        case durationMs
+        // convertFromSnakeCase maps artwork_url -> artworkUrl (not artworkURL)
+        case artworkURL = "artworkUrl"
     }
 
     public init(
@@ -66,8 +67,8 @@ public struct JukePlaybackState: Decodable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case provider, track, device
-        case isPlaying = "is_playing"
-        case progressMs = "progress_ms"
+        case isPlaying
+        case progressMs
     }
 
     public init(
@@ -199,8 +200,8 @@ private struct StateWrapper: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case provider, track, device
-        case isPlaying = "is_playing"
-        case progressMs = "progress_ms"
+        case isPlaying
+        case progressMs
     }
 
     var asState: JukePlaybackState? {
