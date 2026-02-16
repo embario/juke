@@ -1,5 +1,5 @@
 import SwiftUI
-import JukeCore
+import JukeKit
 
 struct PlaybackView: View {
     @EnvironmentObject var session: JukeSessionStore

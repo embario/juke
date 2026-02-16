@@ -1,5 +1,5 @@
 import Foundation
-import JukeCore
+import JukeKit
 
 struct CatalogService {
     private let api: JukeAPIClient

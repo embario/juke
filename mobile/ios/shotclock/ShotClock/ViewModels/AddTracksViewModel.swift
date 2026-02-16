@@ -1,5 +1,5 @@
 import SwiftUI
-import JukeCore
+import JukeKit
 
 @MainActor
 final class AddTracksViewModel: ObservableObject {

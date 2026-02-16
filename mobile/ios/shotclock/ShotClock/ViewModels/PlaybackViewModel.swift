@@ -1,6 +1,6 @@
 import SwiftUI
 import Combine
-import JukeCore
+import JukeKit
 
 @MainActor
 final class PlaybackViewModel: ObservableObject {
@@ -14,17 +14,21 @@ final class PlaybackViewModel: ObservableObject {
 
     private var timer: AnyCancellable?
     private let sessionService: SessionService
-    private let spotify: SpotifyManager
+    private let playbackService: JukePlaybackService
 
-    init(session: PowerHourSession, tracks: [SessionTrackItem], sessionService: SessionService = SessionService(), spotify: SpotifyManager = .shared) {
+    init(
+        session: PowerHourSession,
+        tracks: [SessionTrackItem],
+        sessionService: SessionService = SessionService(),
+        playbackService: JukePlaybackService = JukePlaybackService()
+    ) {
         self.session = session
         self.tracks = tracks.sorted { $0.order < $1.order }
         self.currentTrackIndex = max(session.currentTrackIndex, 0)
         self.timeRemaining = session.secondsPerTrack
         self.sessionService = sessionService
-        self.spotify = spotify
+        self.playbackService = playbackService
 
-        // Resume into correct state for active/paused sessions
         if session.status == .paused {
             self.isPaused = true
         } else if session.status == .ended {
@@ -62,8 +66,10 @@ final class PlaybackViewModel: ObservableObject {
             .sink { [weak self] _ in
                 self?.tick()
             }
-        // Play the current track on Spotify
-        playCurrentTrack()
+
+        Task {
+            await playCurrentTrack()
+        }
     }
 
     func stopTimer() {
@@ -82,47 +88,57 @@ final class PlaybackViewModel: ObservableObject {
 
     private func handleTrackEnd() {
         stopTimer()
-        // Pause Spotify during transition
-        spotify.pause()
-        // Play transition sound
-        SoundPlayer.shared.play(session.transitionClip)
 
-        // Advance after a short delay to let the sound play
         Task {
+            await pauseCurrentTrack()
+            SoundPlayer.shared.play(session.transitionClip)
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await advanceTrack()
         }
     }
 
-    // MARK: - Spotify Playback
+    // MARK: - Backend Playback
 
-    private func playCurrentTrack() {
-        guard let track = currentTrack, spotify.isConnected else { return }
+    private func playCurrentTrack() async {
+        guard let token = storedToken, let uri = currentTrackURI else { return }
 
-        if spotify.isPreviewMode {
-            // Use AVPlayer fallback with preview URL
-            if let previewUrl = track.previewUrl, !previewUrl.isEmpty {
-                spotify.playPreview(url: previewUrl)
-            }
-            return
+        do {
+            _ = try await playbackService.play(
+                token: token,
+                provider: "spotify",
+                trackURI: uri,
+                positionMs: currentTrack?.startOffsetMs
+            )
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
         }
+    }
 
-        let uri = "spotify:track:\(track.spotifyId)"
-        spotify.play(spotifyURI: uri)
-        if track.startOffsetMs > 0 {
-            spotify.seek(toPosition: track.startOffsetMs)
+    private func pauseCurrentTrack() async {
+        guard let token = storedToken else { return }
+        do {
+            _ = try await playbackService.pause(token: token, provider: "spotify")
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
         }
+    }
+
+    private var currentTrackURI: String? {
+        guard let spotifyID = currentTrack?.spotifyId, !spotifyID.isEmpty else {
+            return nil
+        }
+        return "spotify:track:\(spotifyID)"
     }
 
     // MARK: - Session Controls
 
     private func advanceTrack() async {
-        guard let token = await getToken() else { return }
+        guard let token = storedToken else { return }
         do {
             let state = try await sessionService.nextTrack(id: session.id, token: token)
             applyState(state)
-        } catch let error as JukeAPIError {
-            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -131,13 +147,10 @@ final class PlaybackViewModel: ObservableObject {
     func skipTrack(token: String?) async {
         guard let token else { return }
         stopTimer()
-        spotify.pause()
+        await pauseCurrentTrack()
         do {
             let state = try await sessionService.nextTrack(id: session.id, token: token)
             applyState(state)
-        } catch let error as JukeAPIError {
-            errorMessage = error.localizedDescription
-            startTimer()
         } catch {
             errorMessage = error.localizedDescription
             startTimer()
@@ -155,8 +168,6 @@ final class PlaybackViewModel: ObservableObject {
                 let state = try await sessionService.pauseSession(id: session.id, token: token)
                 applyState(state)
             }
-        } catch let error as JukeAPIError {
-            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -165,12 +176,10 @@ final class PlaybackViewModel: ObservableObject {
     func endSession(token: String?) async {
         guard let token else { return }
         stopTimer()
-        spotify.pause()
+        await pauseCurrentTrack()
         do {
             let state = try await sessionService.endSession(id: session.id, token: token)
             applyState(state)
-        } catch let error as JukeAPIError {
-            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -190,24 +199,23 @@ final class PlaybackViewModel: ObservableObject {
         case .paused:
             isPaused = true
             stopTimer()
-            spotify.pause()
+            Task {
+                await pauseCurrentTrack()
+            }
         case .ended:
             isEnded = true
             stopTimer()
-            spotify.pause()
+            Task {
+                await pauseCurrentTrack()
+            }
         case .lobby:
             break
         }
     }
 
-    // Helper to get token from a non-isolated context
     private var storedToken: String?
 
     func setToken(_ token: String?) {
         storedToken = token
-    }
-
-    private func getToken() async -> String? {
-        storedToken
     }
 }

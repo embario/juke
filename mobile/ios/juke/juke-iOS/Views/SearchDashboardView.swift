@@ -1,5 +1,5 @@
 import SwiftUI
-import JukeCore
+import JukeKit
 
 struct SearchDashboardView: View {
     @EnvironmentObject private var session: JukeSessionStore
@@ -150,11 +150,11 @@ struct SearchDashboardView: View {
                 resultSection(title: "People", icon: "person.2.fill") {
                     ForEach(viewModel.profileResults) { profile in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(profile.displayName.isEmpty ? profile.username : profile.displayName)
+                            Text(profile.preferredName)
                                 .font(.headline)
                                 .foregroundColor(JukePalette.text)
-                            if !profile.tagline.isEmpty {
-                                Text(profile.tagline)
+                            if let tagline = profile.tagline, !tagline.isEmpty {
+                                Text(tagline)
                                     .font(.subheadline)
                                     .foregroundColor(JukePalette.muted)
                             }

@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import JukeCore
+import JukeKit
 
 struct LeaderboardView: View {
     @State private var entries: [LeaderboardEntry] = []

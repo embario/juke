@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import JukeCore
+import JukeKit
 
 struct CreateSessionView: View {
     @EnvironmentObject private var session: JukeSessionStore

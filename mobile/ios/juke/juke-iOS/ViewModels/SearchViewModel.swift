@@ -1,11 +1,11 @@
 import Foundation
-import JukeCore
+import JukeKit
 
 @MainActor
 final class SearchViewModel: ObservableObject {
     @Published var query: String = ""
     @Published private(set) var isLoading: Bool = false
-    @Published private(set) var profileResults: [MusicProfileSummary] = []
+    @Published private(set) var profileResults: [JukeMusicProfileSummary] = []
     @Published private(set) var artists: [Artist] = []
     @Published private(set) var albums: [Album] = []
     @Published private(set) var tracks: [Track] = []
@@ -14,12 +14,12 @@ final class SearchViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
 
     private let session: JukeSessionStore
-    private let profileService: ProfileService
+    private let profileService: JukeProfileService
     private let catalogService: CatalogService
 
     init(
         session: JukeSessionStore,
-        profileService: ProfileService = ProfileService(),
+        profileService: JukeProfileService = JukeProfileService(),
         catalogService: CatalogService = CatalogService()
     ) {
         self.session = session

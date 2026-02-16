@@ -7,11 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-<<<<<<< Updated upstream
-=======
-		JUKECORE0001 /* JukeCore in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeCore */; };
-		JUKECORE0005 /* JukeCore in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeCore */; };
->>>>>>> Stashed changes
+		JUKECORE0001 /* JukeKit in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeKit */; };
 		03DBEADB27F2326F0032F689 /* juke_iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DBEADA27F2326F0032F689 /* juke_iOSApp.swift */; };
 		03DBEADD27F2326F0032F689 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DBEADC27F2326F0032F689 /* ContentView.swift */; };
 		03DBEADF27F232700032F689 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 03DBEADE27F232700032F689 /* Assets.xcassets */; };
@@ -19,14 +15,9 @@
 		03DBEAEC27F232700032F689 /* juke_iOSTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DBEAEB27F232700032F689 /* juke_iOSTests.swift */; };
 		03DBEAF627F232700032F689 /* juke_iOSUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DBEAF527F232700032F689 /* juke_iOSUITests.swift */; };
 		03DBEAF827F232700032F689 /* juke_iOSUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DBEAF727F232700032F689 /* juke_iOSUITestsLaunchTests.swift */; };
-		03DBEB0527F233E00032F689 /* MusicProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DBEB0427F233E00032F689 /* MusicProfile.swift */; };
 		03DBEB0727F2351A0032F689 /* MusicResource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DBEB0627F2351A0032F689 /* MusicResource.swift */; };
-		04A0F0022A8A7F2D00000001 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A0F0012A8A7F2D00000001 /* APIClient.swift */; };
 		04A0F0122A8A7F2D00000001 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A0F0112A8A7F2D00000001 /* AuthService.swift */; };
-		04A0F0222A8A7F2D00000001 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A0F0212A8A7F2D00000001 /* ProfileService.swift */; };
 		04A0F0322A8A7F2D00000001 /* CatalogService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A0F0312A8A7F2D00000001 /* CatalogService.swift */; };
-		04A0F0422A8A7F2D00000001 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A0F0412A8A7F2D00000001 /* SessionStore.swift */; };
-		04A0F0522A8A7F2D00000001 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A0F0512A8A7F2D00000001 /* AuthViewModel.swift */; };
 		04A0F0622A8A7F2D00000001 /* SearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A0F0612A8A7F2D00000001 /* SearchViewModel.swift */; };
 		04A0F0722A8A7F2D00000001 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A0F0712A8A7F2D00000001 /* AuthView.swift */; };
 		04A0F0822A8A7F2D00000001 /* SearchDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A0F0812A8A7F2D00000001 /* SearchDashboardView.swift */; };
@@ -34,7 +25,6 @@
 		AA000001FF000002 /* VerifyEmailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000001FF000001 /* VerifyEmailView.swift */; };
 		AA000002FF000002 /* JukeWorldView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002FF000001 /* JukeWorldView.swift */; };
 		AA000003FF000002 /* PlaybackBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000003FF000001 /* PlaybackBarView.swift */; };
-		AA000004FF000002 /* PlaybackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000004FF000001 /* PlaybackService.swift */; };
 		AA000005FF000002 /* OnboardingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000005FF000001 /* OnboardingModels.swift */; };
 		AA000006FF000002 /* OnboardingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000006FF000001 /* OnboardingService.swift */; };
 		AA000007FF000002 /* OnboardingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000007FF000001 /* OnboardingStore.swift */; };
@@ -70,14 +60,9 @@
 		03DBEAF127F232700032F689 /* juke-iOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "juke-iOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		03DBEAF527F232700032F689 /* juke_iOSUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = juke_iOSUITests.swift; sourceTree = "<group>"; };
 		03DBEAF727F232700032F689 /* juke_iOSUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = juke_iOSUITestsLaunchTests.swift; sourceTree = "<group>"; };
-		03DBEB0427F233E00032F689 /* MusicProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicProfile.swift; sourceTree = "<group>"; };
 		03DBEB0627F2351A0032F689 /* MusicResource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicResource.swift; sourceTree = "<group>"; };
-		04A0F0012A8A7F2D00000001 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		04A0F0112A8A7F2D00000001 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
-		04A0F0212A8A7F2D00000001 /* ProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileService.swift; sourceTree = "<group>"; };
 		04A0F0312A8A7F2D00000001 /* CatalogService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogService.swift; sourceTree = "<group>"; };
-		04A0F0412A8A7F2D00000001 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
-		04A0F0512A8A7F2D00000001 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		04A0F0612A8A7F2D00000001 /* SearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchViewModel.swift; sourceTree = "<group>"; };
 		04A0F0712A8A7F2D00000001 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		04A0F0812A8A7F2D00000001 /* SearchDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchDashboardView.swift; sourceTree = "<group>"; };
@@ -85,7 +70,6 @@
 		AA000001FF000001 /* VerifyEmailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifyEmailView.swift; sourceTree = "<group>"; };
 		AA000002FF000001 /* JukeWorldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeWorldView.swift; sourceTree = "<group>"; };
 		AA000003FF000001 /* PlaybackBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackBarView.swift; sourceTree = "<group>"; };
-		AA000004FF000001 /* PlaybackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackService.swift; sourceTree = "<group>"; };
 		AA000005FF000001 /* OnboardingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingModels.swift; sourceTree = "<group>"; };
 		AA000006FF000001 /* OnboardingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingService.swift; sourceTree = "<group>"; };
 		AA000007FF000001 /* OnboardingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingStore.swift; sourceTree = "<group>"; };
@@ -97,6 +81,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				JUKECORE0001 /* JukeKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -104,7 +89,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				JUKECORE0005 /* JukeCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,7 +109,15 @@
 				03DBEAEA27F232700032F689 /* juke-iOSTests */,
 				03DBEAF427F232700032F689 /* juke-iOSUITests */,
 				03DBEAD827F2326F0032F689 /* Products */,
+				JUKECORE0003 /* Packages */,
 			);
+			sourceTree = "<group>";
+		};
+		JUKECORE0003 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Packages;
 			sourceTree = "<group>";
 		};
 		03DBEAD827F2326F0032F689 /* Products */ = {
@@ -147,9 +139,7 @@
 				03DBEADC27F2326F0032F689 /* ContentView.swift */,
 				03DBEADE27F232700032F689 /* Assets.xcassets */,
 				03DBEAE027F232700032F689 /* Preview Content */,
-				03DBEB0427F233E00032F689 /* MusicProfile.swift */,
 				03DBEB0627F2351A0032F689 /* MusicResource.swift */,
-				04A0F0A12A8A7F2D00000001 /* Networking */,
 				04A0F0A22A8A7F2D00000001 /* Services */,
 				04A0F0A32A8A7F2D00000001 /* ViewModels */,
 				04A0F0A42A8A7F2D00000001 /* Views */,
@@ -183,20 +173,10 @@
 			path = "juke-iOSUITests";
 			sourceTree = "<group>";
 		};
-		04A0F0A12A8A7F2D00000001 /* Networking */ = {
-			isa = PBXGroup;
-			children = (
-				04A0F0012A8A7F2D00000001 /* APIClient.swift */,
-			);
-			path = Networking;
-			sourceTree = "<group>";
-		};
 		04A0F0A22A8A7F2D00000001 /* Services */ = {
 			isa = PBXGroup;
 			children = (
 				04A0F0112A8A7F2D00000001 /* AuthService.swift */,
-			AA000004FF000001 /* PlaybackService.swift */,
-				04A0F0212A8A7F2D00000001 /* ProfileService.swift */,
 				04A0F0312A8A7F2D00000001 /* CatalogService.swift */,
 			);
 			path = Services;
@@ -205,8 +185,6 @@
 		04A0F0A32A8A7F2D00000001 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
-				04A0F0412A8A7F2D00000001 /* SessionStore.swift */,
-				04A0F0512A8A7F2D00000001 /* AuthViewModel.swift */,
 				04A0F0612A8A7F2D00000001 /* SearchViewModel.swift */,
 			);
 			path = ViewModels;
@@ -331,6 +309,9 @@
 				Base,
 			);
 			mainGroup = 03DBEACE27F2326F0032F689;
+			packageReferences = (
+				JUKECORE0004 /* XCLocalSwiftPackageReference "../Packages/JukeKit" */,
+			);
 			productRefGroup = 03DBEAD827F2326F0032F689 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -377,20 +358,14 @@
 				04A0F0822A8A7F2D00000001 /* SearchDashboardView.swift in Sources */,
 				04A0F0722A8A7F2D00000001 /* AuthView.swift in Sources */,
 				04A0F0622A8A7F2D00000001 /* SearchViewModel.swift in Sources */,
-				04A0F0522A8A7F2D00000001 /* AuthViewModel.swift in Sources */,
-				04A0F0422A8A7F2D00000001 /* SessionStore.swift in Sources */,
 				04A0F0322A8A7F2D00000001 /* CatalogService.swift in Sources */,
-				04A0F0222A8A7F2D00000001 /* ProfileService.swift in Sources */,
 				04A0F0122A8A7F2D00000001 /* AuthService.swift in Sources */,
-				04A0F0022A8A7F2D00000001 /* APIClient.swift in Sources */,
-				03DBEB0527F233E00032F689 /* MusicProfile.swift in Sources */,
 				03DBEADD27F2326F0032F689 /* ContentView.swift in Sources */,
 				03DBEADB27F2326F0032F689 /* juke_iOSApp.swift in Sources */,
 				03DBEB0727F2351A0032F689 /* MusicResource.swift in Sources */,
 			AA000001FF000002 /* VerifyEmailView.swift in Sources */,
 			AA000002FF000002 /* JukeWorldView.swift in Sources */,
 			AA000003FF000002 /* PlaybackBarView.swift in Sources */,
-			AA000004FF000002 /* PlaybackService.swift in Sources */,
 			AA000005FF000002 /* OnboardingModels.swift in Sources */,
 			AA000006FF000002 /* OnboardingService.swift in Sources */,
 			AA000007FF000002 /* OnboardingStore.swift in Sources */,
@@ -730,6 +705,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		JUKECORE0004 /* XCLocalSwiftPackageReference "../Packages/JukeKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/JukeKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		JUKECORE0002 /* JukeKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = JukeKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 03DBEACF27F2326F0032F689 /* Project object */;
 }

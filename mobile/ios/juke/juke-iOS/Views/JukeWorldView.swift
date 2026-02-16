@@ -1,6 +1,6 @@
 import SwiftUI
 import WebKit
-import JukeCore
+import JukeKit
 
 struct WorldFocus: Equatable {
     let lat: Double

@@ -1,5 +1,5 @@
 import SwiftUI
-import JukeCore
+import JukeKit
 
 struct AuthView: View {
     @StateObject private var viewModel: JukeAuthViewModel

@@ -1,5 +1,5 @@
 import Foundation
-import JukeCore
+import JukeKit
 
 final class OnboardingService {
     private let client: JukeAPIClient

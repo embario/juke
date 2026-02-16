@@ -7,21 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-<<<<<<< Updated upstream
-=======
-		JUKECORE0001 /* JukeCore in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeCore */; };
-		JUKECORE0005 /* JukeCore in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeCore */; };
->>>>>>> Stashed changes
+		JUKECORE0001 /* JukeKit in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeKit */; };
 		TT000001AAAA000000000001 /* TuneTriviaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000001 /* TuneTriviaApp.swift */; };
 		TT000001AAAA000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000002 /* ContentView.swift */; };
 		TT000001AAAA000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000003 /* Assets.xcassets */; };
 		TT000001AAAA000000000004 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000004 /* Preview Assets.xcassets */; };
 		TT000001AAAA000000000005 /* TuneTriviaDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000005 /* TuneTriviaDesignSystem.swift */; };
-		TT000001AAAA000000000006 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000006 /* APIClient.swift */; };
 		TT000001AAAA000000000007 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000007 /* User.swift */; };
-		TT000001AAAA000000000008 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000008 /* AuthService.swift */; };
-		TT000001AAAA000000000009 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000009 /* ProfileService.swift */; };
-		TT000001AAAA000000000010 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000010 /* SessionStore.swift */; };
 		TT000001AAAA000000000012 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000012 /* AuthView.swift */; };
 		TT000001AAAA000000000013 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000013 /* HomeView.swift */; };
 		TT000001AAAA000000000020 /* TuneTriviaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TT000002AAAA000000000020 /* TuneTriviaTests.swift */; };
@@ -61,11 +53,7 @@
 		TT000002AAAA000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		TT000002AAAA000000000004 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		TT000002AAAA000000000005 /* TuneTriviaDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuneTriviaDesignSystem.swift; sourceTree = "<group>"; };
-		TT000002AAAA000000000006 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		TT000002AAAA000000000007 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
-		TT000002AAAA000000000008 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
-		TT000002AAAA000000000009 /* ProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileService.swift; sourceTree = "<group>"; };
-		TT000002AAAA000000000010 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		TT000002AAAA000000000012 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		TT000002AAAA000000000013 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		TT000002AAAA000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -89,6 +77,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				JUKECORE0001 /* JukeKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -96,7 +85,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				JUKECORE0005 /* JukeCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -167,7 +155,6 @@
 		TT000008AAAA000000000005 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
-				TT000002AAAA000000000006 /* APIClient.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -184,8 +171,6 @@
 		TT000008AAAA000000000007 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				TT000002AAAA000000000008 /* AuthService.swift */,
-				TT000002AAAA000000000009 /* ProfileService.swift */,
 				TT000002AAAA000000000031 /* TuneTriviaService.swift */,
 			);
 			path = Services;
@@ -194,7 +179,6 @@
 		TT000008AAAA000000000008 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
-				TT000002AAAA000000000010 /* SessionStore.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -287,6 +271,9 @@
 			dependencies = (
 			);
 			name = TuneTrivia;
+			packageProductDependencies = (
+				JUKECORE0002 /* JukeKit */,
+			);
 			productName = TuneTrivia;
 			productReference = TT000006AAAA000000000001 /* TuneTrivia.app */;
 			productType = "com.apple.product-type.application";
@@ -359,6 +346,9 @@
 				Base,
 			);
 			mainGroup = TT000008AAAA000000000001;
+			packageReferences = (
+				JUKECORE0003 /* XCLocalSwiftPackageReference "../Packages/JukeKit" */,
+			);
 			productRefGroup = TT000008AAAA000000000012 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -404,11 +394,7 @@
 				TT000001AAAA000000000001 /* TuneTriviaApp.swift in Sources */,
 				TT000001AAAA000000000002 /* ContentView.swift in Sources */,
 				TT000001AAAA000000000005 /* TuneTriviaDesignSystem.swift in Sources */,
-				TT000001AAAA000000000006 /* APIClient.swift in Sources */,
 				TT000001AAAA000000000007 /* User.swift in Sources */,
-				TT000001AAAA000000000008 /* AuthService.swift in Sources */,
-				TT000001AAAA000000000009 /* ProfileService.swift in Sources */,
-				TT000001AAAA000000000010 /* SessionStore.swift in Sources */,
 				TT000001AAAA000000000012 /* AuthView.swift in Sources */,
 				TT000001AAAA000000000013 /* HomeView.swift in Sources */,
 				TT000001AAAA000000000030 /* TuneTriviaModels.swift in Sources */,
@@ -752,6 +738,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		JUKECORE0003 /* XCLocalSwiftPackageReference "../Packages/JukeKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/JukeKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		JUKECORE0002 /* JukeKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = JukeKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = TT000004AAAA000000000001 /* Project object */;
 }

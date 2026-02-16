@@ -7,7 +7,7 @@ owner: unassigned
 area: platform
 label: ALL/GENERAL
 complexity: 5
-updated_at: 2026-02-11
+updated_at: 2026-02-16
 ---
 
 ## Goal
@@ -42,6 +42,9 @@ Implement a single Spotify account-linking and token model so users connect once
 
 ## Execution Notes
 
+- Idea rank: `#3`
+- Portfolio classification: `essential`
+- Linked dependencies: `shotclock-android-data-layer-recovery`, `onboarding-contract-profile-unification`.
 - Key files:
 - `/Users/embario/Documents/juke/backend/juke_auth/views.py`
 - `/Users/embario/Documents/juke/backend/juke_auth/urls.py`
@@ -70,6 +73,7 @@ Implement a single Spotify account-linking and token model so users connect once
 - Next:
 - Implement backend token-broker endpoints and shared Spotify token service.
 - Migrate clients incrementally: web connect links, Juke mobile connect entry points, ShotClock iOS SDK auth integration.
+- Apply contract checks so onboarding and Spotify connect states stay consistent across web, iOS, and Android.
 - Add/adjust tests per service.
 - Blockers:
 - Confirm required Spotify scopes and callback constraints for ShotClock SDK usage.

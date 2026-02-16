@@ -7,7 +7,7 @@
 
 import SwiftUI
 import AVFoundation
-import JukeCore
+import JukeKit
 
 struct GamePlayView: View {
     @EnvironmentObject private var session: JukeSessionStore

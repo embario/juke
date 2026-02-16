@@ -1,5 +1,5 @@
 import SwiftUI
-import JukeCore
+import JukeKit
 
 struct OnboardingWizardView: View {
     @EnvironmentObject private var session: JukeSessionStore

@@ -1,5 +1,5 @@
 import SwiftUI
-import JukeCore
+import JukeKit
 
 @main
 struct ShotClockApp: App {
@@ -14,27 +14,16 @@ struct ShotClockApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(session)
-                .environmentObject(SpotifyManager.shared)
                 .onOpenURL { url in
                     Task {
                         await handleDeepLink(url)
                     }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                    SpotifyManager.shared.connect()
                 }
         }
     }
 
     @MainActor
     private func handleDeepLink(_ url: URL) async {
-        // Handle Spotify callback directly
-        if url.host == "spotify-callback" {
-            SpotifyManager.shared.handleRedirectURL(url)
-            return
-        }
-
-        // Use JukeDeepLinkParser for other deep links
         guard let deepLink = deepLinkParser.parse(url) else { return }
 
         switch deepLink {

@@ -1,5 +1,5 @@
 import XCTest
-import JukeCore
+import JukeKit
 @testable import ShotClock
 
 final class ShotClockTests: XCTestCase {

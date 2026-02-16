@@ -1,9 +1,8 @@
 import SwiftUI
-import JukeCore
+import JukeKit
 
 struct SessionLobbyView: View {
     @EnvironmentObject var session: JukeSessionStore
-    @EnvironmentObject var spotify: SpotifyManager
     @StateObject private var viewModel: SessionLobbyViewModel
     @State private var copiedInvite = false
 
@@ -139,50 +138,9 @@ struct SessionLobbyView: View {
 
                     SCStatusBanner(message: viewModel.errorMessage, variant: .error)
 
-                    // Spotify Connection
-                    if viewModel.session.status == .lobby {
-                        SCCard {
-                            HStack(spacing: 12) {
-                                Image(systemName: spotify.isConnected ? "checkmark.circle.fill" : "music.note.tv")
-                                    .foregroundColor(spotify.isConnected ? SCPalette.success : SCPalette.muted)
-                                    .font(.title3)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(spotify.isConnected ? (spotify.isPreviewMode ? "Preview Mode" : "Spotify Connected") : "Spotify")
-                                        .font(.subheadline.bold())
-                                        .foregroundColor(SCPalette.text)
-                                    Text(spotify.isConnected ? (spotify.isPreviewMode ? "Playing 30s preview clips" : "Ready to play") : "Connect to play music")
-                                        .font(.caption)
-                                        .foregroundColor(SCPalette.muted)
-                                }
-                                Spacer()
-                                if !spotify.isConnected {
-                                    Button {
-                                        spotify.authorize()
-                                    } label: {
-                                        if spotify.isConnecting {
-                                            ProgressView()
-                                                .scaleEffect(0.8)
-                                                .tint(SCPalette.success)
-                                        } else {
-                                            Text("Connect")
-                                                .font(.caption.bold())
-                                        }
-                                    }
-                                    .buttonStyle(SCButtonStyle(variant: .secondary))
-                                    .frame(width: 100)
-                                    .disabled(spotify.isConnecting)
-                                }
-                            }
-                        }
-
-                        if let spotifyError = spotify.errorMessage {
-                            SCStatusBanner(message: spotifyError, variant: .error)
-                        }
-                    }
-
                     // Start button (admin only, lobby state)
                     if viewModel.session.status == .lobby {
-                        let canStart = !viewModel.tracks.isEmpty && spotify.isConnected
+                        let canStart = !viewModel.tracks.isEmpty
 
                         Button {
                             Task {
@@ -200,9 +158,6 @@ struct SessionLobbyView: View {
                             VStack(spacing: 4) {
                                 if viewModel.tracks.isEmpty {
                                     Label("Add at least one track", systemImage: "music.note")
-                                }
-                                if !spotify.isConnected {
-                                    Label("Connect Spotify to play music", systemImage: "music.note.tv")
                                 }
                             }
                             .font(.caption)

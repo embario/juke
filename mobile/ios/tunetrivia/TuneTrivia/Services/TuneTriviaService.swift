@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import JukeCore
+import JukeKit
 
 final class TuneTriviaService {
     private let client: JukeAPIClient

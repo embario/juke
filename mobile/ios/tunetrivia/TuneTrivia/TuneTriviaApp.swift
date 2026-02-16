@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import JukeCore
+import JukeKit
 
 @main
 struct TuneTriviaApp: App {
