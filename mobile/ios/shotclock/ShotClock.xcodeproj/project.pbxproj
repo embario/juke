@@ -7,16 +7,24 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+<<<<<<< Updated upstream
+=======
 		JUKECORE0001 /* JukeCore in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeCore */; };
+		JUKECORE0005 /* JukeCore in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeCore */; };
+>>>>>>> Stashed changes
 		SC20000001A0000000000001 /* ShotClockApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000001 /* ShotClockApp.swift */; };
 		SC20000001A0000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000002 /* ContentView.swift */; };
 		SC20000001A0000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000003 /* Assets.xcassets */; };
 		SC20000001A0000000000004 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000004 /* Preview Assets.xcassets */; };
 		SC20000001A0000000000005 /* ShotClockDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000005 /* ShotClockDesignSystem.swift */; };
+		SC20000001A0000000000006 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000006 /* APIClient.swift */; };
 		SC20000001A0000000000007 /* ShotClockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000007 /* ShotClockTests.swift */; };
 		SC20000001A0000000000008 /* ShotClockUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000008 /* ShotClockUITests.swift */; };
 		SC20000001A0000000000009 /* ShotClockUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000009 /* ShotClockUITestsLaunchTests.swift */; };
 		SCB0000001A0000000000001 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000001 /* User.swift */; };
+		SCB0000001A0000000000002 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000002 /* AuthService.swift */; };
+		SCB0000001A0000000000003 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000003 /* SessionStore.swift */; };
+		SCB0000001A0000000000004 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000004 /* AuthViewModel.swift */; };
 		SCB0000001A0000000000005 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000005 /* AuthView.swift */; };
 		SCB0000001A0000000000006 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000006 /* HomeView.swift */; };
 		SCB0000001A0000000000007 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCA0000001A0000000000007 /* Session.swift */; };
@@ -70,10 +78,14 @@
 		SC10000001A0000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		SC10000001A0000000000004 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		SC10000001A0000000000005 /* ShotClockDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotClockDesignSystem.swift; sourceTree = "<group>"; };
+		SC10000001A0000000000006 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		SC10000001A0000000000007 /* ShotClockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotClockTests.swift; sourceTree = "<group>"; };
 		SC10000001A0000000000008 /* ShotClockUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotClockUITests.swift; sourceTree = "<group>"; };
 		SC10000001A0000000000009 /* ShotClockUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotClockUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		SCA0000001A0000000000001 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000002 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000003 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		SCA0000001A0000000000004 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		SCA0000001A0000000000005 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		SCA0000001A0000000000006 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		SCA0000001A0000000000007 /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
@@ -106,7 +118,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				JUKECORE0001 /* JukeCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -114,6 +125,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				JUKECORE0005 /* JukeCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -193,6 +205,7 @@
 		SC30000001A0000000000005 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
+				SC10000001A0000000000006 /* APIClient.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -221,6 +234,7 @@
 		SCC0000001A0000000000002 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				SCA0000001A0000000000002 /* AuthService.swift */,
 				SCA0000001A0000000000009 /* SessionService.swift */,
 				SCA0000001A0000000000017 /* CatalogService.swift */,
 				SCA0000001A0000000000025 /* SoundPlayer.swift */,
@@ -232,6 +246,8 @@
 		SCC0000001A0000000000003 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				SCA0000001A0000000000003 /* SessionStore.swift */,
+				SCA0000001A0000000000004 /* AuthViewModel.swift */,
 				SCA0000001A0000000000010 /* HomeViewModel.swift */,
 				SCA0000001A0000000000011 /* CreateSessionViewModel.swift */,
 				SCA0000001A0000000000014 /* SessionLobbyViewModel.swift */,
@@ -308,7 +324,6 @@
 			name = ShotClock;
 			packageProductDependencies = (
 				SCPKD0001A0000000000001 /* SpotifyiOS */,
-				JUKECORE0002 /* JukeCore */,
 			);
 			productName = ShotClock;
 			productReference = SC00000001A0000000000004 /* ShotClock.app */;
@@ -384,7 +399,6 @@
 			mainGroup = SC00000001A0000000000002;
 			packageReferences = (
 				SCPKG0001A0000000000001 /* XCRemoteSwiftPackageReference "ios-sdk" */,
-				JUKECORE0004 /* XCLocalSwiftPackageReference "../Packages/JukeCore" */,
 			);
 			productRefGroup = SC00000001A0000000000003 /* Products */;
 			projectDirPath = "";
@@ -436,7 +450,11 @@
 				SC20000001A0000000000002 /* ContentView.swift in Sources */,
 				SC20000001A0000000000001 /* ShotClockApp.swift in Sources */,
 				SC20000001A0000000000005 /* ShotClockDesignSystem.swift in Sources */,
+				SC20000001A0000000000006 /* APIClient.swift in Sources */,
 				SCB0000001A0000000000001 /* User.swift in Sources */,
+				SCB0000001A0000000000002 /* AuthService.swift in Sources */,
+				SCB0000001A0000000000003 /* SessionStore.swift in Sources */,
+				SCB0000001A0000000000004 /* AuthViewModel.swift in Sources */,
 				SCB0000001A0000000000005 /* AuthView.swift in Sources */,
 				SCB0000001A0000000000006 /* HomeView.swift in Sources */,
 				SCB0000001A0000000000007 /* Session.swift in Sources */,
@@ -807,13 +825,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		JUKECORE0004 /* XCLocalSwiftPackageReference "../Packages/JukeCore" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../Packages/JukeCore;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		SCPKG0001A0000000000001 /* XCRemoteSwiftPackageReference "ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -830,10 +841,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = SCPKG0001A0000000000001 /* XCRemoteSwiftPackageReference "ios-sdk" */;
 			productName = SpotifyiOS;
-		};
-		JUKECORE0002 /* JukeCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = JukeCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

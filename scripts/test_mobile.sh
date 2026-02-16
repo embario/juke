@@ -102,10 +102,11 @@ run_ios_tests() {
     local log_path="${LOGS_DIR}/ios-tests-${project_name}-$(date +%Y%m%d-%H%M%S).log"
 
     echo "Running iOS tests for ${project_name}..."
+    # Use destination without OS version to let Xcode pick latest available
     if BACKEND_URL="${BACKEND_URL:-}" DISABLE_REGISTRATION="${DISABLE_REGISTRATION:-}" \
         xcodebuild -project "${project_root}/${project_name}.xcodeproj" \
         -scheme "${scheme_name}" \
-        -destination "platform=iOS Simulator,name=${SIM_TARGET},OS=${SIM_OS}" \
+        -destination "platform=iOS Simulator,name=${SIM_TARGET}" \
         -derivedDataPath "${DERIVED_DATA_PATH}" \
         -skip-testing:"${scheme_name}UITests" \
         test 2>&1 | tee "${log_path}"; then
