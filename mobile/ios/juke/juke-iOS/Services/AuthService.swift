@@ -1,4 +1,5 @@
 import Foundation
+import JukeKit
 
 struct AuthTokenResponse: Decodable {
     let token: String
@@ -35,10 +36,10 @@ struct RegisterRequest: Encodable {
 }
 
 final class AuthService {
-    private let client: APIClient
+    private let client: JukeAPIClient
     private let encoder: JSONEncoder
 
-    init(client: APIClient = .shared) {
+    init(client: JukeAPIClient = .shared) {
         self.client = client
         self.encoder = JSONEncoder()
         self.encoder.keyEncodingStrategy = .convertToSnakeCase

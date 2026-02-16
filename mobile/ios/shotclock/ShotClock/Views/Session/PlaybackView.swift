@@ -1,7 +1,8 @@
 import SwiftUI
+import JukeKit
 
 struct PlaybackView: View {
-    @EnvironmentObject var session: SessionStore
+    @EnvironmentObject var session: JukeSessionStore
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: PlaybackViewModel
 
@@ -202,6 +203,6 @@ struct PlaybackView: View {
                 )
             ]
         )
-        .environmentObject(SessionStore())
+        .environmentObject(JukeSessionStore(keyPrefix: "shotclock"))
     }
 }

@@ -12,7 +12,7 @@ labels:
   - backend
   - migrations
 complexity: 4
-updated_at: 2026-02-11
+updated_at: 2026-02-16
 ---
 
 ## Goal
@@ -45,6 +45,9 @@ Augment existing catalog models to become the canonical identity layer for the i
 
 ## Execution Notes
 
+- Idea rank: `#9`
+- Portfolio classification: `experimental`
+- Program linkage: this task is one phase in the broader MLCore roadmap (`mlcore-phase0` to `mlcore-phase4` + dataset viability).
 - Key files:
 - `/Users/embario/Documents/juke/backend/catalog/models.py`
 - `/Users/embario/Documents/juke/backend/catalog/migrations/*`

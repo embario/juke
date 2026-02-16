@@ -7,9 +7,10 @@
 
 import SwiftUI
 import AVFoundation
+import JukeKit
 
 struct GamePlayView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
     @Environment(\.dismiss) private var dismiss
 
     let sessionId: Int
@@ -454,7 +455,7 @@ struct GamePlayView: View {
         do {
             sessionDetail = try await tuneTriviaService.getSession(id: sessionId, token: session.token)
             updateCurrentRound()
-        } catch let error as APIError {
+        } catch let error as JukeAPIError {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = error.localizedDescription
@@ -573,7 +574,7 @@ struct GamePlayView: View {
         do {
             _ = try await tuneTriviaService.endGame(sessionId: sessionId, token: token)
             await loadSession()
-        } catch let error as APIError {
+        } catch let error as JukeAPIError {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = error.localizedDescription
@@ -1008,7 +1009,7 @@ struct GamePlayView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationStack {
             GamePlayView(sessionId: 1)
-                .environmentObject(SessionStore())
+                .environmentObject(JukeSessionStore(keyPrefix: "tunetrivia"))
         }
     }
 }

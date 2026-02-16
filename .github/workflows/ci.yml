@@ -25,10 +25,13 @@ jobs:
           filters: |
             ios_juke:
               - 'mobile/ios/juke/**'
+              - 'mobile/ios/Packages/JukeKit/**'
             ios_tunetrivia:
               - 'mobile/ios/tunetrivia/**'
+              - 'mobile/ios/Packages/JukeKit/**'
             ios_shotclock:
               - 'mobile/ios/shotclock/**'
+              - 'mobile/ios/Packages/JukeKit/**'
             android_juke:
               - 'mobile/android/juke/**'
             android_shotclock:

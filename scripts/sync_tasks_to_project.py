@@ -7,86 +7,33 @@ import hashlib
 import os
 import re
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-import requests
 import yaml
 
-API_BASE_URL = "https://api.github.com"
-GRAPHQL_URL = f"{API_BASE_URL}/graphql"
+from github_project_utils import (
+    DEFAULT_PROJECT_TITLE,
+    GitHubClient,
+    GitHubError,
+    ProjectField,
+    add_issue_to_project,
+    available_options,
+    canonicalize,
+    fetch_project_issue_item_map,
+    find_project_id,
+    load_project_fields,
+    pick_option_id,
+    update_single_select_field,
+)
+
 TASK_GLOB = "tasks/**/*.md"
 TASK_MARKER_PREFIX = "juke-task-id: "
 TASK_STABLE_MARKER_PREFIX = "juke-task-key: "
 MANDATORY_LABEL = "juke-task"
 EXCLUDED_TASK_BASENAMES = {"README.md"}
-DEFAULT_PROJECT_TITLE = "Juke Project"
 DEFAULT_REPO = "juke"
-
-
-class GitHubError(RuntimeError):
-    """Raised when a GitHub API call fails."""
-
-
-@dataclass
-class ProjectField:
-    field_id: str
-    name: str
-    option_by_key: dict[str, str]
-    option_name_by_key: dict[str, str]
-
-
-class GitHubClient:
-    def __init__(self, token: str) -> None:
-        self._session = requests.Session()
-        self._session.headers.update(
-            {
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-                "User-Agent": "juke-task-sync",
-            }
-        )
-
-    def rest(self, method: str, path: str, **kwargs: Any) -> Any:
-        url = f"{API_BASE_URL}{path}"
-        response = self._session.request(method=method, url=url, timeout=30, **kwargs)
-        if response.status_code >= 400:
-            details = ""
-            try:
-                payload = response.json()
-                details = payload.get("message", "")
-            except ValueError:
-                details = response.text
-            raise GitHubError(
-                f"{method} {path} failed with {response.status_code}: {details}"
-            )
-        if response.status_code == 204:
-            return None
-        return response.json()
-
-    def graphql(self, query: str, variables: dict[str, Any] | None = None) -> Any:
-        response = self._session.post(
-            GRAPHQL_URL,
-            json={"query": query, "variables": variables or {}},
-            timeout=30,
-        )
-        if response.status_code >= 400:
-            raise GitHubError(
-                f"GraphQL HTTP {response.status_code}: {response.text[:500]}"
-            )
-        payload = response.json()
-        errors = payload.get("errors")
-        if errors:
-            message = "; ".join(error.get("message", "Unknown GraphQL error") for error in errors)
-            raise GitHubError(f"GraphQL error: {message}")
-        return payload.get("data", {})
-
-
-def canonicalize(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
 def parse_frontmatter(content: str) -> tuple[dict[str, Any] | None, str]:
@@ -256,114 +203,6 @@ def issue_needs_update(issue: dict[str, Any], title: str, body: str, labels: lis
     )
 
 
-def find_project_id(client: GitHubClient, owner: str, project_title: str) -> str:
-    query = """
-    query($login: String!, $after: String) {
-      user(login: $login) {
-        projectsV2(first: 50, after: $after) {
-          nodes {
-            id
-            title
-          }
-          pageInfo {
-            hasNextPage
-            endCursor
-          }
-        }
-      }
-    }
-    """
-
-    cursor: str | None = None
-    while True:
-        data = client.graphql(query, {"login": owner, "after": cursor})
-        projects = data.get("user", {}).get("projectsV2", {})
-        nodes = projects.get("nodes", [])
-        for node in nodes:
-            if node.get("title") == project_title and isinstance(node.get("id"), str):
-                return node["id"]
-
-        page_info = projects.get("pageInfo", {})
-        if not page_info.get("hasNextPage"):
-            break
-        cursor = page_info.get("endCursor")
-        if not cursor:
-            break
-
-    raise GitHubError(f'Could not find user project titled "{project_title}".')
-
-
-def load_project_fields(client: GitHubClient, project_id: str) -> dict[str, ProjectField]:
-    query = """
-    query($projectId: ID!, $after: String) {
-      node(id: $projectId) {
-        ... on ProjectV2 {
-          fields(first: 50, after: $after) {
-            nodes {
-              __typename
-              ... on ProjectV2FieldCommon {
-                id
-                name
-                dataType
-              }
-              ... on ProjectV2SingleSelectField {
-                options {
-                  id
-                  name
-                }
-              }
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
-          }
-        }
-      }
-    }
-    """
-    fields: dict[str, ProjectField] = {}
-    cursor: str | None = None
-
-    while True:
-        data = client.graphql(query, {"projectId": project_id, "after": cursor})
-        fields_connection = data.get("node", {}).get("fields", {})
-        for node in fields_connection.get("nodes", []):
-            if not node or node.get("__typename") != "ProjectV2SingleSelectField":
-                continue
-            name = node.get("name")
-            field_id = node.get("id")
-            if not isinstance(name, str) or not isinstance(field_id, str):
-                continue
-            options = node.get("options", [])
-            option_by_key: dict[str, str] = {}
-            option_name_by_key: dict[str, str] = {}
-            for option in options:
-                option_name = option.get("name")
-                option_id = option.get("id")
-                if not isinstance(option_name, str) or not isinstance(option_id, str):
-                    continue
-                option_key = canonicalize(option_name)
-                option_by_key[option_key] = option_id
-                option_name_by_key[option_key] = option_name
-
-            fields[canonicalize(name)] = ProjectField(
-                field_id=field_id,
-                name=name,
-                option_by_key=option_by_key,
-                option_name_by_key=option_name_by_key,
-            )
-
-        page_info = fields_connection.get("pageInfo", {})
-        if not page_info.get("hasNextPage"):
-            break
-        cursor = page_info.get("endCursor")
-        if not cursor:
-            break
-
-    return fields
-
-
 def load_project(
     client: GitHubClient, owner: str, project_title: str
 ) -> tuple[str, dict[str, ProjectField]]:
@@ -445,121 +284,6 @@ def index_existing_task_issues(
     return by_path, by_stable_key
 
 
-def fetch_project_issue_item_map(client: GitHubClient, project_id: str) -> dict[str, str]:
-    query = """
-    query($projectId: ID!, $after: String) {
-      node(id: $projectId) {
-        ... on ProjectV2 {
-          items(first: 100, after: $after) {
-            nodes {
-              id
-              content {
-                __typename
-                ... on Issue {
-                  id
-                  number
-                }
-              }
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
-          }
-        }
-      }
-    }
-    """
-    mapping: dict[str, str] = {}
-    cursor: str | None = None
-
-    while True:
-        data = client.graphql(query, {"projectId": project_id, "after": cursor})
-        items = (
-            data.get("node", {})
-            .get("items", {})
-        )
-        for node in items.get("nodes", []):
-            content = node.get("content")
-            if not isinstance(content, dict):
-                continue
-            if content.get("__typename") != "Issue":
-                continue
-            issue_id = content.get("id")
-            item_id = node.get("id")
-            if isinstance(issue_id, str) and isinstance(item_id, str):
-                mapping[issue_id] = item_id
-
-        page_info = items.get("pageInfo", {})
-        if not page_info.get("hasNextPage"):
-            break
-        cursor = page_info.get("endCursor")
-        if not cursor:
-            break
-
-    return mapping
-
-
-def add_issue_to_project(client: GitHubClient, project_id: str, issue_node_id: str) -> str:
-    mutation = """
-    mutation($projectId: ID!, $contentId: ID!) {
-      addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
-        item {
-          id
-        }
-      }
-    }
-    """
-    data = client.graphql(mutation, {"projectId": project_id, "contentId": issue_node_id})
-    item_id = (
-        data.get("addProjectV2ItemById", {})
-        .get("item", {})
-        .get("id")
-    )
-    if not isinstance(item_id, str):
-        raise GitHubError("Failed to add issue to project: missing item id.")
-    return item_id
-
-
-def update_single_select_field(
-    client: GitHubClient,
-    project_id: str,
-    item_id: str,
-    field_id: str,
-    option_id: str,
-) -> None:
-    mutation = """
-    mutation(
-      $projectId: ID!,
-      $itemId: ID!,
-      $fieldId: ID!,
-      $optionId: String!
-    ) {
-      updateProjectV2ItemFieldValue(
-        input: {
-          projectId: $projectId
-          itemId: $itemId
-          fieldId: $fieldId
-          value: {singleSelectOptionId: $optionId}
-        }
-      ) {
-        projectV2Item {
-          id
-        }
-      }
-    }
-    """
-    client.graphql(
-        mutation,
-        {
-            "projectId": project_id,
-            "itemId": item_id,
-            "fieldId": field_id,
-            "optionId": option_id,
-        },
-    )
-
-
 def task_files() -> list[Path]:
     files: list[Path] = []
     for path in Path(".").glob(TASK_GLOB):
@@ -571,78 +295,6 @@ def task_files() -> list[Path]:
             continue
         files.append(path)
     return sorted(files)
-
-
-def option_aliases(field_name: str, value_key: str) -> list[str]:
-    if field_name == canonicalize("Status"):
-        status_aliases: dict[str, list[str]] = {
-            canonicalize("ready"): [
-                canonicalize("todo"),
-                canonicalize("to do"),
-                canonicalize("backlog"),
-                canonicalize("not started"),
-            ],
-            canonicalize("in_progress"): [
-                canonicalize("in progress"),
-                canonicalize("doing"),
-                canonicalize("active"),
-                canonicalize("wip"),
-            ],
-            canonicalize("review"): [
-                canonicalize("in review"),
-                canonicalize("qa"),
-                canonicalize("testing"),
-                canonicalize("in progress"),
-            ],
-            canonicalize("blocked"): [
-                canonicalize("on hold"),
-                canonicalize("hold"),
-            ],
-            canonicalize("done"): [
-                canonicalize("complete"),
-                canonicalize("completed"),
-                canonicalize("closed"),
-            ],
-        }
-        return status_aliases.get(value_key, [])
-
-    if field_name == canonicalize("Priority"):
-        priority_aliases: dict[str, list[str]] = {
-            canonicalize("p0"): [canonicalize("critical"), canonicalize("urgent")],
-            canonicalize("p1"): [canonicalize("high")],
-            canonicalize("p2"): [canonicalize("medium"), canonicalize("normal")],
-            canonicalize("p3"): [canonicalize("low"), canonicalize("backlog")],
-        }
-        return priority_aliases.get(value_key, [])
-
-    return []
-
-
-def available_options(field: ProjectField) -> str:
-    names = sorted(field.option_name_by_key.values())
-    if not names:
-        return "(none)"
-    return ", ".join(names)
-
-
-def pick_option_id(field: ProjectField, raw_value: Any) -> tuple[str | None, str | None]:
-    if raw_value is None:
-        return None, None
-    value = str(raw_value).strip()
-    if not value:
-        return None, None
-
-    value_key = canonicalize(value)
-    option_id = field.option_by_key.get(value_key)
-    if option_id:
-        return option_id, field.option_name_by_key.get(value_key)
-
-    for alias_key in option_aliases(canonicalize(field.name), value_key):
-        option_id = field.option_by_key.get(alias_key)
-        if option_id:
-            return option_id, field.option_name_by_key.get(alias_key)
-
-    return None, None
 
 
 def main() -> int:
@@ -671,7 +323,7 @@ def main() -> int:
         )
         return 1
 
-    client = GitHubClient(gh_pat)
+    client = GitHubClient(gh_pat, user_agent="juke-task-sync")
     project_id, project_fields = load_project(client, gh_owner, gh_project_title)
     project_item_map = fetch_project_issue_item_map(client, project_id)
     existing_issues_by_path, existing_issues_by_stable_key = index_existing_task_issues(

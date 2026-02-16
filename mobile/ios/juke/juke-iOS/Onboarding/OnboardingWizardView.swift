@@ -1,7 +1,8 @@
 import SwiftUI
+import JukeKit
 
 struct OnboardingWizardView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
     @StateObject private var store: OnboardingStore
     @Binding var navigateToWorld: Bool
     @Binding var worldFocus: WorldFocus?
@@ -234,7 +235,7 @@ struct GenreStepView: View {
 
 struct ArtistStepView: View {
     @ObservedObject var store: OnboardingStore
-    let session: SessionStore
+    let session: JukeSessionStore
 
     @State private var query = ""
     @State private var results: [OnboardingArtist] = []
@@ -729,7 +730,7 @@ struct LocationStepView: View {
 
 struct ConnectStepView: View {
     @ObservedObject var store: OnboardingStore
-    let session: SessionStore
+    let session: JukeSessionStore
     @Binding var navigateToWorld: Bool
     @Binding var worldFocus: WorldFocus?
 
@@ -847,5 +848,5 @@ struct ConnectStepView: View {
 
 #Preview {
     OnboardingWizardView(userKey: nil, navigateToWorld: .constant(false), worldFocus: .constant(nil))
-        .environmentObject(SessionStore())
+        .environmentObject(JukeSessionStore(keyPrefix: "juke"))
 }

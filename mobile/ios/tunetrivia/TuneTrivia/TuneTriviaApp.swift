@@ -6,10 +6,11 @@
 //
 
 import SwiftUI
+import JukeKit
 
 @main
 struct TuneTriviaApp: App {
-    @StateObject private var session = SessionStore()
+    @StateObject private var session = JukeSessionStore(keyPrefix: "tunetrivia")
 
     var body: some Scene {
         WindowGroup {

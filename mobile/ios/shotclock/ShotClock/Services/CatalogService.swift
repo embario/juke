@@ -1,9 +1,10 @@
 import Foundation
+import JukeKit
 
 struct CatalogService {
-    private let api: APIClient
+    private let api: JukeAPIClient
 
-    init(api: APIClient = .shared) {
+    init(api: JukeAPIClient = .shared) {
         self.api = api
     }
 
@@ -12,7 +13,7 @@ struct CatalogService {
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "external", value: "true"),
         ]
-        let response: CatalogSearchResponse = try await api.get("/tracks/", token: token, queryItems: queryItems)
+        let response: CatalogSearchResponse = try await api.get("/api/v1/tracks/", token: token, queryItems: queryItems)
         return response.results
     }
 }

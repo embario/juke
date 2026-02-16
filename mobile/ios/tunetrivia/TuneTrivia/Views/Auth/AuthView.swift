@@ -6,37 +6,15 @@
 //
 
 import SwiftUI
+import JukeKit
 
 struct AuthView: View {
-    @EnvironmentObject private var session: SessionStore
+    @ObservedObject var session: JukeSessionStore
+    @StateObject private var viewModel: LoginViewModel
 
-    @State private var mode: AuthMode = .login
-    @State private var username = ""
-    @State private var email = ""
-    @State private var password = ""
-    @State private var passwordConfirm = ""
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var successMessage: String?
-
-    // Field-level validation errors
-    @State private var usernameError: String?
-    @State private var emailError: String?
-    @State private var passwordError: String?
-    @State private var passwordConfirmError: String?
-
-    enum AuthMode {
-        case login
-        case register
-    }
-
-    private var isFormValid: Bool {
-        switch mode {
-        case .login:
-            return !username.isEmpty && !password.isEmpty
-        case .register:
-            return !username.isEmpty && !email.isEmpty && !password.isEmpty && !passwordConfirm.isEmpty
-        }
+    init(session: JukeSessionStore) {
+        self.session = session
+        _viewModel = StateObject(wrappedValue: LoginViewModel())
     }
 
     var body: some View {
@@ -61,83 +39,77 @@ struct AuthView: View {
                     }
                     .padding(.top, 60)
 
+                    // Verification deep link result
+                    if let verificationMsg = session.verificationMessage {
+                        TuneTriviaStatusBanner(message: verificationMsg, variant: .success)
+                            .padding(.horizontal, 24)
+                            .onAppear {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                                    session.verificationMessage = nil
+                                }
+                            }
+                    }
+
                     // Form card
                     TuneTriviaCard {
                         VStack(spacing: 20) {
-                            // Success message
-                            if let successMessage = successMessage {
-                                TuneTriviaStatusBanner(message: successMessage, variant: .success)
-                            }
+                            TuneTriviaStatusBanner(message: viewModel.errorMessage, variant: .error)
 
-                            // Error message
-                            if let errorMessage = errorMessage {
-                                TuneTriviaStatusBanner(message: errorMessage, variant: .error)
-                            }
-
-                            // Form fields
                             TuneTriviaInputField(
                                 label: "Username",
                                 placeholder: "Enter your username",
-                                text: $username,
-                                textContentType: .username,
-                                error: usernameError
+                                text: $viewModel.username,
+                                textContentType: .username
                             )
-
-                            if mode == .register {
-                                TuneTriviaInputField(
-                                    label: "Email",
-                                    placeholder: "Enter your email",
-                                    text: $email,
-                                    keyboard: .emailAddress,
-                                    textContentType: .emailAddress,
-                                    error: emailError
-                                )
-                            }
 
                             TuneTriviaInputField(
                                 label: "Password",
                                 placeholder: "Enter your password",
-                                text: $password,
+                                text: $viewModel.password,
                                 kind: .secure,
-                                textContentType: mode == .login ? .password : .newPassword,
-                                error: passwordError
+                                textContentType: .password
                             )
 
-                            if mode == .register {
-                                TuneTriviaInputField(
-                                    label: "Confirm Password",
-                                    placeholder: "Confirm your password",
-                                    text: $passwordConfirm,
-                                    kind: .secure,
-                                    textContentType: .newPassword,
-                                    error: passwordConfirmError
-                                )
-                            }
-
-                            // Submit button
                             Button {
                                 Task {
-                                    await submit()
+                                    await viewModel.login(session: session)
                                 }
                             } label: {
-                                if isLoading {
+                                if viewModel.isLoading {
                                     TuneTriviaSpinner()
                                 } else {
-                                    Text(mode == .login ? "Sign In" : "Create Account")
+                                    Text("Sign In")
                                 }
                             }
                             .buttonStyle(TuneTriviaButtonStyle(variant: .primary))
-                            .disabled(!isFormValid || isLoading)
-                            .opacity(isFormValid ? 1 : 0.6)
+                            .disabled(viewModel.isLoading)
 
-                            // Toggle mode
-                            Button {
-                                toggleMode()
-                            } label: {
-                                Text(mode == .login ? "Don't have an account? Sign Up" : "Already have an account? Sign In")
-                                    .font(.subheadline)
+                            // Divider
+                            HStack {
+                                Rectangle()
+                                    .fill(TuneTriviaPalette.border)
+                                    .frame(height: 1)
+                                Text("or")
+                                    .font(.caption)
+                                    .foregroundColor(TuneTriviaPalette.muted)
+                                Rectangle()
+                                    .fill(TuneTriviaPalette.border)
+                                    .frame(height: 1)
                             }
-                            .buttonStyle(TuneTriviaButtonStyle(variant: .link, isFullWidth: false))
+                            .padding(.vertical, 8)
+
+                            // Register button - redirects to Juke app or web
+                            Button {
+                                openRegistration()
+                            } label: {
+                                Text("Create Account")
+                            }
+                            .buttonStyle(TuneTriviaButtonStyle(variant: .secondary))
+
+                            Text("Registration is handled through the Juke app.")
+                                .font(.caption)
+                                .foregroundColor(TuneTriviaPalette.muted)
+                                .multilineTextAlignment(.center)
                         }
                     }
                     .padding(.horizontal, 24)
@@ -147,90 +119,54 @@ struct AuthView: View {
         }
     }
 
-    private func toggleMode() {
-        mode = mode == .login ? .register : .login
-        clearErrors()
-        clearFields()
+    private func openRegistration() {
+        // Try to open the Juke app for registration
+        if !JukeDeepLinkHandler.openJukeAppForRegistration() {
+            // Fall back to web registration
+            if let webURL = JukeDeepLinkHandler.webRegistrationURL(configuration: .shared) {
+                JukeDeepLinkHandler.openURL(webURL)
+            }
+        }
     }
+}
 
-    private func submit() async {
-        guard isFormValid else { return }
+// MARK: - Login ViewModel (TuneTrivia-specific, login-only)
 
-        clearErrors()
+@MainActor
+final class LoginViewModel: ObservableObject {
+    @Published var username = ""
+    @Published var password = ""
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+
+    func login(session: JukeSessionStore) async {
+        errorMessage = nil
+
+        guard !username.trimmingCharacters(in: .whitespaces).isEmpty else {
+            errorMessage = "Username is required."
+            return
+        }
+        guard !password.isEmpty else {
+            errorMessage = "Password is required."
+            return
+        }
+
         isLoading = true
         defer { isLoading = false }
 
         do {
-            switch mode {
-            case .login:
-                try await session.login(username: username, password: password)
-            case .register:
-                if !validateRegistration() {
-                    return
-                }
-                let message = try await session.register(
-                    username: username,
-                    email: email,
-                    password: password,
-                    passwordConfirm: passwordConfirm
-                )
-                successMessage = message
-                mode = .login
-                clearFields()
-            }
-        } catch let error as APIError {
-            errorMessage = error.errorDescription
+            try await session.login(
+                username: username.trimmingCharacters(in: .whitespaces),
+                password: password
+            )
+            // Clear form on success
+            password = ""
         } catch {
             errorMessage = error.localizedDescription
         }
     }
-
-    private func validateRegistration() -> Bool {
-        var isValid = true
-
-        if username.count < 3 {
-            usernameError = "Username must be at least 3 characters"
-            isValid = false
-        }
-
-        if !email.contains("@") || !email.contains(".") {
-            emailError = "Please enter a valid email address"
-            isValid = false
-        }
-
-        if password.count < 8 {
-            passwordError = "Password must be at least 8 characters"
-            isValid = false
-        }
-
-        if password != passwordConfirm {
-            passwordConfirmError = "Passwords do not match"
-            isValid = false
-        }
-
-        return isValid
-    }
-
-    private func clearErrors() {
-        errorMessage = nil
-        successMessage = nil
-        usernameError = nil
-        emailError = nil
-        passwordError = nil
-        passwordConfirmError = nil
-    }
-
-    private func clearFields() {
-        username = ""
-        email = ""
-        password = ""
-        passwordConfirm = ""
-    }
 }
 
-struct AuthView_Previews: PreviewProvider {
-    static var previews: some View {
-        AuthView()
-            .environmentObject(SessionStore())
-    }
+#Preview {
+    AuthView(session: JukeSessionStore(keyPrefix: "tunetrivia"))
 }

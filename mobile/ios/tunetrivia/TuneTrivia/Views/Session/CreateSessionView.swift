@@ -6,9 +6,10 @@
 //
 
 import SwiftUI
+import JukeKit
 
 struct CreateSessionView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var gameName = ""
@@ -171,7 +172,7 @@ struct CreateSessionView: View {
                 token: token
             )
             navigateToLobby = true
-        } catch let error as APIError {
+        } catch let error as JukeAPIError {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = error.localizedDescription
@@ -220,7 +221,7 @@ struct CreateSessionView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationStack {
             CreateSessionView()
-                .environmentObject(SessionStore())
+                .environmentObject(JukeSessionStore(keyPrefix: "tunetrivia"))
         }
     }
 }

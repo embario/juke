@@ -1,17 +1,18 @@
 import SwiftUI
+import JukeKit
 
 @MainActor
 final class PlaybackBarViewModel: ObservableObject {
-    @Published private(set) var state: PlaybackState?
+    @Published private(set) var state: JukePlaybackState?
     @Published private(set) var error: String?
     @Published private(set) var isBusy = false
 
-    private let service: PlaybackService
-    private let session: SessionStore
+    private let service: JukePlaybackService
+    private let session: JukeSessionStore
     private var progressTimer: Task<Void, Never>?
     private var pollTimer: Task<Void, Never>?
 
-    init(session: SessionStore, service: PlaybackService = PlaybackService()) {
+    init(session: JukeSessionStore, service: JukePlaybackService = JukePlaybackService()) {
         self.session = session
         self.service = service
     }
@@ -19,7 +20,7 @@ final class PlaybackBarViewModel: ObservableObject {
     var isPlaying: Bool { state?.isPlaying ?? false }
     var canControl: Bool { session.token != nil }
 
-    var track: PlaybackTrack? { state?.track }
+    var track: JukePlaybackTrack? { state?.track }
     var progressMs: Int { state?.progressMs ?? 0 }
     var durationMs: Int { track?.durationMs ?? 0 }
     var progressPercent: Double {
@@ -81,8 +82,8 @@ final class PlaybackBarViewModel: ObservableObject {
                 let duration = self.durationMs
                 let next = min(current + 1000, duration)
                 // Mutate state in place to avoid full object replacement
-                if var s = self.state {
-                    self.state = PlaybackState(
+                if let s = self.state {
+                    self.state = JukePlaybackState(
                         provider: s.provider,
                         isPlaying: s.isPlaying,
                         progressMs: next,
@@ -99,7 +100,7 @@ final class PlaybackBarViewModel: ObservableObject {
         isBusy = true
         defer { isBusy = false }
         do {
-            state = try await service.pause(token: token, provider: state?.provider, deviceId: state?.device?.id)
+            state = try await service.pause(token: token, provider: state?.provider, deviceID: state?.device?.id)
             error = nil
             tickProgress()
         } catch {
@@ -112,7 +113,7 @@ final class PlaybackBarViewModel: ObservableObject {
         isBusy = true
         defer { isBusy = false }
         do {
-            state = try await service.resume(token: token, provider: state?.provider, deviceId: state?.device?.id)
+            state = try await service.resume(token: token, provider: state?.provider, deviceID: state?.device?.id)
             error = nil
             tickProgress()
         } catch {
@@ -125,7 +126,7 @@ final class PlaybackBarViewModel: ObservableObject {
         isBusy = true
         defer { isBusy = false }
         do {
-            state = try await service.next(token: token, provider: state?.provider, deviceId: state?.device?.id)
+            state = try await service.next(token: token, provider: state?.provider, deviceID: state?.device?.id)
             error = nil
             tickProgress()
         } catch {
@@ -138,7 +139,7 @@ final class PlaybackBarViewModel: ObservableObject {
         isBusy = true
         defer { isBusy = false }
         do {
-            state = try await service.previous(token: token, provider: state?.provider, deviceId: state?.device?.id)
+            state = try await service.previous(token: token, provider: state?.provider, deviceID: state?.device?.id)
             error = nil
             tickProgress()
         } catch {
@@ -154,9 +155,9 @@ final class PlaybackBarViewModel: ObservableObject {
 
 struct PlaybackBarView: View {
     @StateObject private var vm: PlaybackBarViewModel
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
 
-    init(session: SessionStore) {
+    init(session: JukeSessionStore) {
         _vm = StateObject(wrappedValue: PlaybackBarViewModel(session: session))
     }
 
@@ -205,7 +206,7 @@ struct PlaybackBarView: View {
 
     private var artworkView: some View {
         Group {
-            if let url = vm.track?.artworkUrl, let imageUrl = URL(string: url) {
+            if let url = vm.track?.artworkURL, let imageUrl = URL(string: url) {
                 AsyncImage(url: imageUrl) { phase in
                     switch phase {
                     case .success(let image):

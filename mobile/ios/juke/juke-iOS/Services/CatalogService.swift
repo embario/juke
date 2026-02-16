@@ -1,9 +1,10 @@
 import Foundation
+import JukeKit
 
 final class CatalogService {
-    private let client: APIClient
+    private let client: JukeAPIClient
 
-    init(client: APIClient = .shared) {
+    init(client: JukeAPIClient = .shared) {
         self.client = client
     }
 
@@ -23,7 +24,7 @@ final class CatalogService {
             URLQueryItem(name: "q", value: trimmed),
             URLQueryItem(name: "external", value: "true"),
         ]
-        let response: PaginatedResponse<T> = try await client.send(
+        let response: JukePaginatedResponse<T> = try await client.send(
             "/api/v1/\(resource)/",
             token: token,
             queryItems: queryItems

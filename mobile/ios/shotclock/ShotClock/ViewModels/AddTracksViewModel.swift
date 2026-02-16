@@ -1,4 +1,5 @@
 import SwiftUI
+import JukeKit
 
 @MainActor
 final class AddTracksViewModel: ObservableObject {
@@ -45,7 +46,7 @@ final class AddTracksViewModel: ObservableObject {
                 errorMessage = nil
             } catch {
                 guard !Task.isCancelled else { return }
-                errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
+                errorMessage = (error as? JukeAPIError)?.localizedDescription ?? error.localizedDescription
             }
         }
     }
@@ -60,8 +61,8 @@ final class AddTracksViewModel: ObservableObject {
         do {
             _ = try await sessionService.addTrack(sessionId: sessionId, trackId: track.pk, token: token)
             addedTrackIds.insert(track.pk)
-        } catch let error as APIError {
-            errorMessage = error.errorDescription
+        } catch let error as JukeAPIError {
+            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }

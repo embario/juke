@@ -1,4 +1,5 @@
 import SwiftUI
+import JukeKit
 
 @MainActor
 final class HomeViewModel: ObservableObject {
@@ -24,8 +25,8 @@ final class HomeViewModel: ObservableObject {
 
         do {
             sessions = try await sessionService.listSessions(token: token)
-        } catch let error as APIError {
-            errorMessage = error.errorDescription
+        } catch let error as JukeAPIError {
+            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -52,8 +53,8 @@ final class HomeViewModel: ObservableObject {
                 sessions.insert(session, at: 0)
             }
             return session
-        } catch let error as APIError {
-            joinError = error.errorDescription
+        } catch let error as JukeAPIError {
+            joinError = error.localizedDescription
             return nil
         } catch {
             joinError = error.localizedDescription

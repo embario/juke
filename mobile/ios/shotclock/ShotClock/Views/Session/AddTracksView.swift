@@ -1,7 +1,8 @@
 import SwiftUI
+import JukeKit
 
 struct AddTracksView: View {
-    @EnvironmentObject var session: SessionStore
+    @EnvironmentObject var session: JukeSessionStore
     @StateObject private var viewModel: AddTracksViewModel
 
     init(sessionId: String) {
@@ -195,6 +196,6 @@ struct SearchResultRow: View {
 #Preview {
     NavigationStack {
         AddTracksView(sessionId: "test-id")
-            .environmentObject(SessionStore())
+            .environmentObject(JukeSessionStore(keyPrefix: "shotclock"))
     }
 }

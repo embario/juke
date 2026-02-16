@@ -1,4 +1,5 @@
 import SwiftUI
+import JukeKit
 
 @MainActor
 final class SessionLobbyViewModel: ObservableObject {
@@ -64,8 +65,8 @@ final class SessionLobbyViewModel: ObservableObject {
             let state = try await sessionService.startSession(id: session.id, token: token)
             session = try await sessionService.getSession(id: session.id, token: token)
             didStartSession = true
-        } catch let error as APIError {
-            errorMessage = error.errorDescription
+        } catch let error as JukeAPIError {
+            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }

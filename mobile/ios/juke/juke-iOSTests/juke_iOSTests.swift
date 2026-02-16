@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import JukeKit
 @testable import juke_iOS
 
 class juke_iOSTests: XCTestCase {
@@ -34,8 +35,8 @@ class juke_iOSTests: XCTestCase {
     }
 
     func testAppConfigurationEnvOverridesPlist() {
-        let config = AppConfiguration(
-            env: ["DISABLE_REGISTRATION": "true"],
+        let config = JukeAppConfiguration(
+            environment: ["DISABLE_REGISTRATION": "true"],
             plistValue: "false"
         )
 
@@ -43,8 +44,8 @@ class juke_iOSTests: XCTestCase {
     }
 
     func testAppConfigurationPlistBooleanFallback() {
-        let config = AppConfiguration(
-            env: [:],
+        let config = JukeAppConfiguration(
+            environment: [:],
             plistValue: true
         )
 
@@ -52,7 +53,7 @@ class juke_iOSTests: XCTestCase {
     }
 
     func testAPIConfigurationEnvOverridesPlist() {
-        let config = APIConfiguration(
+        let config = JukeAPIConfiguration(
             environment: ["BACKEND_URL": "http://env.example.com"],
             backendPlist: "http://plist.example.com",
             frontendPlist: nil
@@ -62,7 +63,7 @@ class juke_iOSTests: XCTestCase {
     }
 
     func testAPIConfigurationPlistFallback() {
-        let config = APIConfiguration(
+        let config = JukeAPIConfiguration(
             environment: [:],
             backendPlist: "http://plist.example.com",
             frontendPlist: nil
@@ -194,7 +195,7 @@ final class PlaybackServiceTests: XCTestCase {
             return try self.okResponse(for: request, json: json)
         }
 
-        let state = try await service.next(token: "token-123", provider: "spotify", deviceId: "device-1")
+        let state = try await service.next(token: "token-123", provider: "spotify", deviceID: "device-1")
         XCTAssertEqual(state?.provider, "spotify")
         XCTAssertEqual(state?.isPlaying, true)
         XCTAssertEqual(state?.track?.id, "track-1")
@@ -234,22 +235,150 @@ final class PlaybackServiceTests: XCTestCase {
             return try self.okResponse(for: request, json: json)
         }
 
-        let state = try await service.resume(token: "token-123", provider: nil, deviceId: "device-2")
+        let state = try await service.resume(token: "token-123", provider: nil, deviceID: "device-2")
         XCTAssertEqual(state?.provider, "spotify")
         XCTAssertEqual(state?.device?.id, "device-2")
     }
 
-    private func makeService() -> PlaybackService {
+    func testPlaySendsTrackURIAndPosition() async throws {
+        let service = makeService()
+
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertTrue(
+                request.url?.path == "/api/v1/playback/play"
+                    || request.url?.path == "/api/v1/playback/play/"
+            )
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let body = try self.bodyData(for: request)
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(payload["provider"] as? String, "spotify")
+            XCTAssertEqual(payload["device_id"] as? String, "device-3")
+            XCTAssertEqual(payload["track_uri"] as? String, "spotify:track:track-3")
+            XCTAssertEqual(payload["position_ms"] as? Int, 30_000)
+
+            let json = """
+            {
+              "provider": "spotify",
+              "is_playing": true,
+              "progress_ms": 30000,
+              "track": {
+                "id": "track-3",
+                "uri": "spotify:track:track-3",
+                "name": "Song C",
+                "duration_ms": 180000,
+                "artists": []
+              },
+              "device": {
+                "id": "device-3",
+                "name": "Office Speaker",
+                "type": "Speaker"
+              }
+            }
+            """
+            return try self.okResponse(for: request, json: json)
+        }
+
+        let state = try await service.play(
+            token: "token-123",
+            provider: "spotify",
+            deviceID: "device-3",
+            trackURI: "spotify:track:track-3",
+            positionMs: 30_000
+        )
+        XCTAssertEqual(state?.provider, "spotify")
+        XCTAssertEqual(state?.progressMs, 30_000)
+        XCTAssertEqual(state?.track?.uri, "spotify:track:track-3")
+    }
+
+    func testSeekUsesSeekEndpointAndPosition() async throws {
+        let service = makeService()
+
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertTrue(
+                request.url?.path == "/api/v1/playback/seek"
+                    || request.url?.path == "/api/v1/playback/seek/"
+            )
+            XCTAssertEqual(request.httpMethod, "POST")
+
+            let body = try self.bodyData(for: request)
+            let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(payload["provider"] as? String, "spotify")
+            XCTAssertEqual(payload["device_id"] as? String, "device-4")
+            XCTAssertEqual(payload["position_ms"] as? Int, 45_000)
+
+            let json = """
+            {
+              "provider": "spotify",
+              "is_playing": true,
+              "progress_ms": 45000,
+              "track": {
+                "id": "track-4",
+                "uri": "spotify:track:track-4",
+                "name": "Song D",
+                "duration_ms": 200000,
+                "artists": []
+              },
+              "device": {
+                "id": "device-4",
+                "name": "Car",
+                "type": "Automobile"
+              }
+            }
+            """
+            return try self.okResponse(for: request, json: json)
+        }
+
+        let state = try await service.seek(
+            token: "token-123",
+            positionMs: 45_000,
+            provider: "spotify",
+            deviceID: "device-4"
+        )
+        XCTAssertEqual(state?.provider, "spotify")
+        XCTAssertEqual(state?.progressMs, 45_000)
+        XCTAssertEqual(state?.device?.id, "device-4")
+    }
+
+    func testFetchStateIncludesProviderQuery() async throws {
+        let service = makeService()
+
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertTrue(
+                request.url?.path == "/api/v1/playback/state"
+                    || request.url?.path == "/api/v1/playback/state/"
+            )
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.query, "provider=spotify")
+
+            let json = """
+            {
+              "provider": "spotify",
+              "is_playing": false,
+              "progress_ms": 0,
+              "track": null,
+              "device": null
+            }
+            """
+            return try self.okResponse(for: request, json: json)
+        }
+
+        let state = try await service.fetchState(token: "token-123", provider: "spotify")
+        XCTAssertEqual(state?.provider, "spotify")
+        XCTAssertEqual(state?.isPlaying, false)
+    }
+
+    private func makeService() -> JukePlaybackService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
         let session = URLSession(configuration: configuration)
-        let apiConfig = APIConfiguration(
+        let apiConfig = JukeAPIConfiguration(
             environment: [:],
             backendPlist: "http://backend.example.com",
             frontendPlist: nil
         )
-        let client = APIClient(configuration: apiConfig, session: session)
-        return PlaybackService(client: client)
+        let client = JukeAPIClient(configuration: apiConfig, session: session)
+        return JukePlaybackService(client: client)
     }
 
     private func okResponse(for request: URLRequest, json: String) throws -> (HTTPURLResponse, Data) {

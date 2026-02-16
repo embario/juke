@@ -1,11 +1,12 @@
 import SwiftUI
+import JukeKit
 
 struct SearchDashboardView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
     @StateObject private var viewModel: SearchViewModel
     @State private var activeScopes: Set<SearchScope> = Set(SearchScope.allCases)
 
-    init(session: SessionStore) {
+    init(session: JukeSessionStore) {
         _viewModel = StateObject(wrappedValue: SearchViewModel(session: session))
     }
 
@@ -65,7 +66,7 @@ struct SearchDashboardView: View {
                 Text("Hey, \(session.profile?.preferredName ?? "Juke listener")")
                     .font(.title.bold())
                     .foregroundColor(JukePalette.text)
-                Text(session.profile?.tagline.isEmpty == false ? (session.profile?.tagline ?? "") : "Ready to find new sonic obsessions?")
+                Text(session.profile?.tagline?.isEmpty == false ? (session.profile?.tagline ?? "") : "Ready to find new sonic obsessions?")
                     .foregroundColor(JukePalette.muted)
                 HStack(spacing: 10) {
                     Label("Live catalog", systemImage: "waveform")
@@ -149,11 +150,11 @@ struct SearchDashboardView: View {
                 resultSection(title: "People", icon: "person.2.fill") {
                     ForEach(viewModel.profileResults) { profile in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(profile.displayName.isEmpty ? profile.username : profile.displayName)
+                            Text(profile.preferredName)
                                 .font(.headline)
                                 .foregroundColor(JukePalette.text)
-                            if !profile.tagline.isEmpty {
-                                Text(profile.tagline)
+                            if let tagline = profile.tagline, !tagline.isEmpty {
+                                Text(tagline)
                                     .font(.subheadline)
                                     .foregroundColor(JukePalette.muted)
                             }
@@ -316,7 +317,7 @@ struct SearchDashboardView: View {
 }
 
 #Preview {
-    let session = SessionStore()
+    let session = JukeSessionStore(keyPrefix: "juke")
     session.logout()
     return SearchDashboardView(session: session)
         .environmentObject(session)

@@ -20,6 +20,8 @@ screenshots/
 # Xcode user data
 mobile/ios/**/xcuserdata/
 mobile/ios/**/project.xcworkspace/xcuserdata/
+mobile/ios/Packages/**/.build/
+mobile/ios/Packages/**/.swiftpm/
 
 # Frontend build/cache artifacts
 web/.vite/

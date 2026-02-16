@@ -100,14 +100,28 @@ run_ios_tests() {
     local project_name="$2"
     local scheme_name="$3"
     local log_path="${LOGS_DIR}/ios-tests-${project_name}-$(date +%Y%m%d-%H%M%S).log"
+    local destination="platform=iOS Simulator,name=${SIM_TARGET}"
+    local ios_backend_url="${BACKEND_URL:-http://127.0.0.1:8000}"
+    local ios_disable_registration="${DISABLE_REGISTRATION:-0}"
+
+    if command -v xcrun >/dev/null 2>&1; then
+        if ! xcrun simctl list devices available | grep -F "${SIM_TARGET} (" >/dev/null 2>&1; then
+            echo "Simulator '${SIM_TARGET}' is not available. Falling back to generic iOS Simulator destination."
+            destination="platform=iOS Simulator"
+        fi
+    fi
 
     echo "Running iOS tests for ${project_name}..."
-    if BACKEND_URL="${BACKEND_URL:-}" DISABLE_REGISTRATION="${DISABLE_REGISTRATION:-}" \
-        xcodebuild -project "${project_root}/${project_name}.xcodeproj" \
+    echo "  destination: ${destination}"
+    echo "  backend_url: ${ios_backend_url}"
+    # Use destination without explicit OS version to let Xcode pick an installed runtime.
+    if xcodebuild -project "${project_root}/${project_name}.xcodeproj" \
         -scheme "${scheme_name}" \
-        -destination "platform=iOS Simulator,name=${SIM_TARGET},OS=${SIM_OS}" \
+        -destination "${destination}" \
         -derivedDataPath "${DERIVED_DATA_PATH}" \
         -skip-testing:"${scheme_name}UITests" \
+        BACKEND_URL="${ios_backend_url}" \
+        DISABLE_REGISTRATION="${ios_disable_registration}" \
         test 2>&1 | tee "${log_path}"; then
         echo "iOS tests succeeded for ${project_name} (log: ${log_path})."
     else

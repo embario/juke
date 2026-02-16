@@ -1,8 +1,14 @@
 import SwiftUI
+import JukeKit
 
 struct AuthView: View {
-    @EnvironmentObject var session: SessionStore
-    @StateObject private var viewModel = AuthViewModel()
+    @ObservedObject var session: JukeSessionStore
+    @StateObject private var viewModel: LoginViewModel
+
+    init(session: JukeSessionStore) {
+        self.session = session
+        _viewModel = StateObject(wrappedValue: LoginViewModel())
+    }
 
     var body: some View {
         ZStack {
@@ -36,23 +42,6 @@ struct AuthView: View {
 
                     SCCard {
                         VStack(spacing: 18) {
-                            // Mode toggle
-                            if viewModel.isRegistrationDisabled {
-                                SCStatusBanner(
-                                    message: "Registration is temporarily disabled while email delivery is offline.",
-                                    variant: .warning
-                                )
-                            } else {
-                                HStack(spacing: 0) {
-                                    SCChip(label: "Login", isActive: !viewModel.isRegistering) {
-                                        viewModel.setMode(registering: false)
-                                    }
-                                    SCChip(label: "Register", isActive: viewModel.isRegistering) {
-                                        viewModel.setMode(registering: true)
-                                    }
-                                }
-                            }
-
                             SCInputField(
                                 label: "Username",
                                 placeholder: "Enter username",
@@ -60,50 +49,56 @@ struct AuthView: View {
                                 textContentType: .username
                             )
 
-                            if viewModel.isRegistering {
-                                SCInputField(
-                                    label: "Email",
-                                    placeholder: "Enter email",
-                                    text: $viewModel.email,
-                                    keyboard: .emailAddress,
-                                    textContentType: .emailAddress
-                                )
-                            }
-
                             SCInputField(
                                 label: "Password",
                                 placeholder: "Enter password",
                                 text: $viewModel.password,
                                 kind: .secure,
-                                textContentType: viewModel.isRegistering ? .newPassword : .password
+                                textContentType: .password
                             )
 
-                            if viewModel.isRegistering {
-                                SCInputField(
-                                    label: "Confirm Password",
-                                    placeholder: "Re-enter password",
-                                    text: $viewModel.passwordConfirm,
-                                    kind: .secure,
-                                    textContentType: .newPassword
-                                )
-                            }
-
                             SCStatusBanner(message: viewModel.errorMessage, variant: .error)
-                            SCStatusBanner(message: viewModel.successMessage, variant: .success)
 
                             Button {
                                 Task {
-                                    await viewModel.submit(session: session)
+                                    await viewModel.login(session: session)
                                 }
                             } label: {
                                 if viewModel.isLoading {
                                     SCSpinner()
                                 } else {
-                                    Text(viewModel.isRegistering ? "Create Account" : "Log In")
+                                    Text("Log In")
                                 }
                             }
                             .buttonStyle(SCButtonStyle(variant: .primary))
                             .disabled(viewModel.isLoading)
+
+                            // Divider
+                            HStack {
+                                Rectangle()
+                                    .fill(SCPalette.border)
+                                    .frame(height: 1)
+                                Text("or")
+                                    .font(.caption)
+                                    .foregroundColor(SCPalette.muted)
+                                Rectangle()
+                                    .fill(SCPalette.border)
+                                    .frame(height: 1)
+                            }
+                            .padding(.vertical, 8)
+
+                            // Register button - redirects to Juke app or web
+                            Button {
+                                openRegistration()
+                            } label: {
+                                Text("Create Account")
+                            }
+                            .buttonStyle(SCButtonStyle(variant: .secondary))
+
+                            Text("Registration is handled through the Juke app.")
+                                .font(.caption)
+                                .foregroundColor(SCPalette.muted)
+                                .multilineTextAlignment(.center)
                         }
                     }
                     .padding(.horizontal, 24)
@@ -111,9 +106,55 @@ struct AuthView: View {
             }
         }
     }
+
+    private func openRegistration() {
+        // Try to open the Juke app for registration
+        if !JukeDeepLinkHandler.openJukeAppForRegistration() {
+            // Fall back to web registration
+            if let webURL = JukeDeepLinkHandler.webRegistrationURL(configuration: .shared) {
+                JukeDeepLinkHandler.openURL(webURL)
+            }
+        }
+    }
+}
+
+// MARK: - Login ViewModel (ShotClock-specific, login-only)
+
+@MainActor
+final class LoginViewModel: ObservableObject {
+    @Published var username = ""
+    @Published var password = ""
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+
+    func login(session: JukeSessionStore) async {
+        errorMessage = nil
+
+        guard !username.trimmingCharacters(in: .whitespaces).isEmpty else {
+            errorMessage = "Username is required."
+            return
+        }
+        guard !password.isEmpty else {
+            errorMessage = "Password is required."
+            return
+        }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            try await session.login(
+                username: username.trimmingCharacters(in: .whitespaces),
+                password: password
+            )
+            // Clear form on success
+            password = ""
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 #Preview {
-    AuthView()
-        .environmentObject(SessionStore())
+    AuthView(session: JukeSessionStore(keyPrefix: "shotclock"))
 }
