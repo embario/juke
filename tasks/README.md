@@ -45,3 +45,12 @@ This directory is the repo-native task board for humans and agents.
 - Acceptance criteria
 - Execution notes (files/commands/risks)
 - Handoff notes (what changed, what is next, blockers)
+
+## PR Linkage Automation
+
+- Task files sync to GitHub issues with the `juke-task` label.
+- To link a PR to one or more tasks, add closing keywords in the PR body:
+  - `Closes #123`
+  - `Fixes #456`
+- When a non-draft PR is opened/reopened/marked ready for review, linked task issues move to `In Review` in the `Juke Project`.
+- When that PR is merged into `master`, linked task issues move to `Done`.

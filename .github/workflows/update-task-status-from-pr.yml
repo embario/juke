@@ -1,0 +1,76 @@
+name: Update Task Status From PR
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - closed
+
+concurrency:
+  group: pr-task-status-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  move-to-review:
+    if: ${{ github.event.action != 'closed' && github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      repository-projects: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Move linked tasks to In Review
+        env:
+          JUKE_GH_PAT: ${{ secrets.JUKE_GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_STATUS: review
+        run: python scripts/update_task_status_from_pr.py
+
+  move-to-done:
+    if: ${{ github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'master' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      repository-projects: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Move linked tasks to Done
+        env:
+          JUKE_GH_PAT: ${{ secrets.JUKE_GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_STATUS: done
+        run: python scripts/update_task_status_from_pr.py
