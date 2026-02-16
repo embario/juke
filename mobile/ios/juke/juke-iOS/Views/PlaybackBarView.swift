@@ -1,4 +1,5 @@
 import SwiftUI
+import JukeCore
 
 @MainActor
 final class PlaybackBarViewModel: ObservableObject {
@@ -7,11 +8,11 @@ final class PlaybackBarViewModel: ObservableObject {
     @Published private(set) var isBusy = false
 
     private let service: PlaybackService
-    private let session: SessionStore
+    private let session: JukeSessionStore
     private var progressTimer: Task<Void, Never>?
     private var pollTimer: Task<Void, Never>?
 
-    init(session: SessionStore, service: PlaybackService = PlaybackService()) {
+    init(session: JukeSessionStore, service: PlaybackService = PlaybackService()) {
         self.session = session
         self.service = service
     }
@@ -154,9 +155,9 @@ final class PlaybackBarViewModel: ObservableObject {
 
 struct PlaybackBarView: View {
     @StateObject private var vm: PlaybackBarViewModel
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
 
-    init(session: SessionStore) {
+    init(session: JukeSessionStore) {
         _vm = StateObject(wrappedValue: PlaybackBarViewModel(session: session))
     }
 

@@ -1,10 +1,11 @@
 import SwiftUI
+import JukeCore
 
 struct AuthView: View {
-    @StateObject private var viewModel: AuthViewModel
+    @StateObject private var viewModel: JukeAuthViewModel
 
-    init(session: SessionStore) {
-        _viewModel = StateObject(wrappedValue: AuthViewModel(session: session))
+    init(session: JukeSessionStore) {
+        _viewModel = StateObject(wrappedValue: JukeAuthViewModel(session: session))
     }
 
     var body: some View {
@@ -190,5 +191,5 @@ struct AuthView: View {
 }
 
 #Preview {
-    AuthView(session: SessionStore())
+    AuthView(session: JukeSessionStore(keyPrefix: "juke"))
 }

@@ -6,9 +6,10 @@
 //
 
 import SwiftUI
+import JukeCore
 
 struct SessionLobbyView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
     @Environment(\.dismiss) private var dismiss
 
     let sessionId: Int
@@ -237,7 +238,7 @@ struct SessionLobbyView: View {
             if sessionDetail?.session.status == .playing {
                 navigateToGame = true
             }
-        } catch let error as APIError {
+        } catch let error as JukeAPIError {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = error.localizedDescription
@@ -269,7 +270,7 @@ struct SessionLobbyView: View {
         do {
             _ = try await tuneTriviaService.startGame(sessionId: sessionId, token: token)
             navigateToGame = true
-        } catch let error as APIError {
+        } catch let error as JukeAPIError {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = error.localizedDescription
@@ -455,7 +456,7 @@ struct SessionLobbyView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationStack {
             SessionLobbyView(sessionId: 1)
-                .environmentObject(SessionStore())
+                .environmentObject(JukeSessionStore(keyPrefix: "tunetrivia"))
         }
     }
 }

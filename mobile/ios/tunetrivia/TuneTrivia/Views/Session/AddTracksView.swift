@@ -6,9 +6,10 @@
 //
 
 import SwiftUI
+import JukeCore
 
 struct AddTracksView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
     @Environment(\.dismiss) private var dismiss
 
     let sessionId: Int
@@ -160,7 +161,7 @@ struct AddTracksView: View {
 
         do {
             searchResults = try await tuneTriviaService.searchTracks(query: searchQuery, token: token)
-        } catch let error as APIError {
+        } catch let error as JukeAPIError {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = "Failed to search tracks"
@@ -188,7 +189,7 @@ struct AddTracksView: View {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 successMessage = nil
             }
-        } catch let error as APIError {
+        } catch let error as JukeAPIError {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = "Failed to add track"
@@ -209,7 +210,7 @@ struct AddTracksView: View {
             )
             successMessage = "Added \(tracks.count) tracks"
             dismiss()
-        } catch let error as APIError {
+        } catch let error as JukeAPIError {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = "Failed to auto-select tracks"
@@ -285,7 +286,7 @@ struct AddTracksView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationStack {
             AddTracksView(sessionId: 1, maxSongs: 10, currentCount: 3)
-                .environmentObject(SessionStore())
+                .environmentObject(JukeSessionStore(keyPrefix: "tunetrivia"))
         }
     }
 }

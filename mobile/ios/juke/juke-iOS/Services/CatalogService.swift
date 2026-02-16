@@ -1,9 +1,10 @@
 import Foundation
+import JukeCore
 
 final class CatalogService {
-    private let client: APIClient
+    private let client: JukeAPIClient
 
-    init(client: APIClient = .shared) {
+    init(client: JukeAPIClient = .shared) {
         self.client = client
     }
 

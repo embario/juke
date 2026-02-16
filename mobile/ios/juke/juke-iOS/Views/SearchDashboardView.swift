@@ -1,11 +1,12 @@
 import SwiftUI
+import JukeCore
 
 struct SearchDashboardView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
     @StateObject private var viewModel: SearchViewModel
     @State private var activeScopes: Set<SearchScope> = Set(SearchScope.allCases)
 
-    init(session: SessionStore) {
+    init(session: JukeSessionStore) {
         _viewModel = StateObject(wrappedValue: SearchViewModel(session: session))
     }
 
@@ -65,7 +66,7 @@ struct SearchDashboardView: View {
                 Text("Hey, \(session.profile?.preferredName ?? "Juke listener")")
                     .font(.title.bold())
                     .foregroundColor(JukePalette.text)
-                Text(session.profile?.tagline.isEmpty == false ? (session.profile?.tagline ?? "") : "Ready to find new sonic obsessions?")
+                Text(session.profile?.tagline?.isEmpty == false ? (session.profile?.tagline ?? "") : "Ready to find new sonic obsessions?")
                     .foregroundColor(JukePalette.muted)
                 HStack(spacing: 10) {
                     Label("Live catalog", systemImage: "waveform")
@@ -316,7 +317,7 @@ struct SearchDashboardView: View {
 }
 
 #Preview {
-    let session = SessionStore()
+    let session = JukeSessionStore(keyPrefix: "juke")
     session.logout()
     return SearchDashboardView(session: session)
         .environmentObject(session)

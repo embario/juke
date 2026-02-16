@@ -1,11 +1,13 @@
 import XCTest
+import JukeCore
 @testable import ShotClock
 
 final class ShotClockTests: XCTestCase {
 
     func testAPIClientBaseURL() {
-        let client = APIClient(baseURL: "http://test.example.com")
-        XCTAssertEqual(client.baseURL, "http://test.example.com")
+        let config = JukeAPIConfiguration(baseURL: URL(string: "http://test.example.com")!)
+        let client = JukeAPIClient(configuration: config)
+        XCTAssertEqual(client.baseURL.absoluteString, "http://test.example.com")
     }
 
     func testUserProfilePreferredName_withDisplayName() {
@@ -45,8 +47,8 @@ final class ShotClockTests: XCTestCase {
     }
 
     func testAppConfigurationEnvOverridesPlist() {
-        let config = AppConfiguration(
-            env: ["DISABLE_REGISTRATION": "yes"],
+        let config = JukeAppConfiguration(
+            environment: ["DISABLE_REGISTRATION": "yes"],
             plistValue: "false"
         )
 
@@ -54,8 +56,8 @@ final class ShotClockTests: XCTestCase {
     }
 
     func testAppConfigurationPlistBooleanFallback() {
-        let config = AppConfiguration(
-            env: [:],
+        let config = JukeAppConfiguration(
+            environment: [:],
             plistValue: true
         )
 
@@ -63,20 +65,20 @@ final class ShotClockTests: XCTestCase {
     }
 
     func testResolveBaseURLUsesEnvironment() {
-        let resolved = APIClient.resolveBaseURL(
+        let config = JukeAPIConfiguration(
             environment: ["BACKEND_URL": "http://env.example.com"],
-            plistURL: "http://plist.example.com"
+            backendPlist: "http://plist.example.com"
         )
 
-        XCTAssertEqual(resolved, "http://env.example.com")
+        XCTAssertEqual(config.baseURL.absoluteString, "http://env.example.com")
     }
 
     func testResolveBaseURLUsesPlistWhenEnvironmentMissing() {
-        let resolved = APIClient.resolveBaseURL(
+        let config = JukeAPIConfiguration(
             environment: [:],
-            plistURL: "http://plist.example.com"
+            backendPlist: "http://plist.example.com"
         )
 
-        XCTAssertEqual(resolved, "http://plist.example.com")
+        XCTAssertEqual(config.baseURL.absoluteString, "http://plist.example.com")
     }
 }

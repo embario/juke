@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import JukeCore
 
 struct LeaderboardView: View {
     @State private var entries: [LeaderboardEntry] = []
@@ -89,7 +90,7 @@ struct LeaderboardView: View {
 
         do {
             entries = try await tuneTriviaService.getLeaderboard()
-        } catch let error as APIError {
+        } catch let error as JukeAPIError {
             errorMessage = error.errorDescription
         } catch {
             errorMessage = error.localizedDescription
@@ -188,7 +189,7 @@ struct LeaderboardRow: View {
 
                 HStack(spacing: 6) {
                     Text("\(entry.totalGames) games")
-                    Text("·")
+                    Text("\u{00B7}")
                     Text("\(entry.totalCorrectTrivia) trivia")
                 }
                 .font(.caption)

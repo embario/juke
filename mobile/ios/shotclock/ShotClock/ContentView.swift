@@ -1,14 +1,15 @@
 import SwiftUI
+import JukeCore
 
 struct ContentView: View {
-    @EnvironmentObject var session: SessionStore
+    @EnvironmentObject var session: JukeSessionStore
 
     var body: some View {
         Group {
             if session.token != nil {
                 HomeView()
             } else {
-                AuthView()
+                AuthView(session: session)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: session.token)
@@ -17,5 +18,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .environmentObject(SessionStore())
+        .environmentObject(JukeSessionStore(keyPrefix: "shotclock"))
 }

@@ -1,4 +1,5 @@
 import Foundation
+import JukeCore
 
 // MARK: - Models
 
@@ -45,9 +46,9 @@ struct PlaybackState: Decodable {
 // MARK: - Service
 
 final class PlaybackService {
-    private let client: APIClient
+    private let client: JukeAPIClient
 
-    init(client: APIClient = .shared) {
+    init(client: JukeAPIClient = .shared) {
         self.client = client
     }
 

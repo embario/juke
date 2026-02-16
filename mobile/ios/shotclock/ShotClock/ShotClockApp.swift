@@ -1,8 +1,14 @@
 import SwiftUI
+import JukeCore
 
 @main
 struct ShotClockApp: App {
-    @StateObject private var session = SessionStore()
+    @StateObject private var session = JukeSessionStore(keyPrefix: "shotclock")
+
+    private let deepLinkParser = JukeDeepLinkParser(
+        schemes: ["shotclock"],
+        universalLinkHosts: []
+    )
 
     var body: some Scene {
         WindowGroup {
@@ -22,44 +28,41 @@ struct ShotClockApp: App {
 
     @MainActor
     private func handleDeepLink(_ url: URL) async {
-        guard url.scheme == "shotclock" else { return }
-
-        switch url.host {
-        case "verify-user":
-            await handleVerification(url: url)
-        case "spotify-callback":
+        // Handle Spotify callback directly
+        if url.host == "spotify-callback" {
             SpotifyManager.shared.handleRedirectURL(url)
-        default:
+            return
+        }
+
+        // Use JukeDeepLinkParser for other deep links
+        guard let deepLink = deepLinkParser.parse(url) else { return }
+
+        switch deepLink {
+        case .verifyUser(let userId, let timestamp, let signature):
+            await handleVerification(userId: userId, timestamp: timestamp, signature: signature)
+        case .register, .custom:
             break
         }
     }
 
     @MainActor
-    private func handleVerification(url: URL) async {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let queryItems = components.queryItems else {
-            session.verificationMessage = "Invalid verification link."
-            return
-        }
-
-        let userId = queryItems.first(where: { $0.name == "user_id" })?.value
-        let timestamp = queryItems.first(where: { $0.name == "timestamp" })?.value
-        let signature = queryItems.first(where: { $0.name == "signature" })?.value
-
-        guard let userId, let timestamp, let signature else {
-            session.verificationMessage = "Verification link is missing required parameters."
-            return
-        }
-
+    private func handleVerification(userId: String, timestamp: String, signature: String) async {
         do {
-            try await AuthService().verifyRegistration(
+            let authService = JukeAuthService()
+            _ = try await JukeDeepLinkHandler.handleVerification(
                 userId: userId,
                 timestamp: timestamp,
-                signature: signature
+                signature: signature,
+                authService: authService
             )
             session.verificationMessage = "Email verified! You can now log in."
-        } catch let error as APIError {
-            session.verificationMessage = error.errorDescription ?? "Verification failed."
+        } catch let error as JukeAPIError {
+            switch error {
+            case .server(_, let msg):
+                session.verificationMessage = msg
+            default:
+                session.verificationMessage = "Verification failed."
+            }
         } catch {
             session.verificationMessage = "Verification failed: \(error.localizedDescription)"
         }

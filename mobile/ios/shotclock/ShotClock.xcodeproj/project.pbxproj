@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+<<<<<<< Updated upstream
+=======
+		JUKECORE0001 /* JukeCore in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeCore */; };
+		JUKECORE0005 /* JukeCore in Frameworks */ = {isa = PBXBuildFile; productRef = JUKECORE0002 /* JukeCore */; };
+>>>>>>> Stashed changes
 		SC20000001A0000000000001 /* ShotClockApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000001 /* ShotClockApp.swift */; };
 		SC20000001A0000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000002 /* ContentView.swift */; };
 		SC20000001A0000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = SC10000001A0000000000003 /* Assets.xcassets */; };
@@ -120,6 +125,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				JUKECORE0005 /* JukeCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

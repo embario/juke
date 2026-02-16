@@ -6,9 +6,10 @@
 //
 
 import SwiftUI
+import JukeCore
 
 struct ContentView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
 
     let verifyParams: (userId: String, timestamp: String, signature: String)?
 
@@ -58,6 +59,6 @@ struct ContentView: View {
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
-            .environmentObject(SessionStore())
+            .environmentObject(JukeSessionStore(keyPrefix: "juke"))
     }
 }

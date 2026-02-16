@@ -1,7 +1,8 @@
 import SwiftUI
+import JukeCore
 
 struct HomeView: View {
-    @EnvironmentObject var session: SessionStore
+    @EnvironmentObject var session: JukeSessionStore
     @StateObject private var viewModel = HomeViewModel()
 
     var body: some View {
@@ -213,5 +214,5 @@ struct JoinSessionSheet: View {
 
 #Preview {
     HomeView()
-        .environmentObject(SessionStore())
+        .environmentObject(JukeSessionStore(keyPrefix: "shotclock"))
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import JukeCore
 
 struct WorldFocus: Equatable {
     let lat: Double
@@ -8,7 +9,7 @@ struct WorldFocus: Equatable {
 }
 
 struct JukeWorldView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
     @Environment(\.dismiss) private var dismiss
     let focus: WorldFocus?
     let onExit: (() -> Void)?
@@ -111,7 +112,10 @@ private struct JukeWorldWebView: UIViewRepresentable {
         webView.scrollView.bounces = false
         context.coordinator.webView = webView
 
-        let baseUrl = APIConfiguration.shared.frontendURL.appendingPathComponent("world")
+        guard let frontendURL = JukeAPIConfiguration.shared.frontendURL else {
+            return webView
+        }
+        let baseUrl = frontendURL.appendingPathComponent("world")
         var components = URLComponents(url: baseUrl, resolvingAgainstBaseURL: false)
         var queryItems: [URLQueryItem] = []
         queryItems.append(URLQueryItem(name: "native", value: "1"))

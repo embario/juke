@@ -1,4 +1,5 @@
 import SwiftUI
+import JukeCore
 
 enum VerificationState {
     case loading
@@ -7,14 +8,14 @@ enum VerificationState {
 }
 
 struct VerifyEmailView: View {
-    @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var session: JukeSessionStore
     @State private var state: VerificationState = .loading
 
     private let userId: String
     private let timestamp: String
     private let signature: String
 
-    private let authService = AuthService()
+    private let authService = JukeAuthService()
 
     init(userId: String, timestamp: String, signature: String) {
         self.userId = userId
@@ -82,21 +83,19 @@ struct VerifyEmailView: View {
 
     private func performVerification() async {
         do {
-            let response = try await authService.verifyRegistration(
+            let response = try await JukeDeepLinkHandler.handleVerification(
                 userId: userId,
                 timestamp: timestamp,
-                signature: signature
+                signature: signature,
+                authService: authService
             )
             if let token = response.token, let username = response.username {
                 session.authenticateWithToken(token, username: username)
             }
             state = .success
-            // Auto-navigate to onboarding after a brief pause
-            // ContentView will switch to authenticated state which shows SearchDashboardView;
-            // the onboarding flow is handled via the navigation stack in the authenticated view.
         } catch {
             let message: String
-            if let apiError = error as? APIError {
+            if let apiError = error as? JukeAPIError {
                 switch apiError {
                 case .server(_, let msg):
                     message = msg
@@ -113,5 +112,5 @@ struct VerifyEmailView: View {
 
 #Preview {
     VerifyEmailView(userId: "1", timestamp: "abc", signature: "xyz")
-        .environmentObject(SessionStore())
+        .environmentObject(JukeSessionStore(keyPrefix: "juke"))
 }

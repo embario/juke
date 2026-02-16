@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import JukeCore
 
 @MainActor
 final class PlaybackViewModel: ObservableObject {
@@ -120,8 +121,8 @@ final class PlaybackViewModel: ObservableObject {
         do {
             let state = try await sessionService.nextTrack(id: session.id, token: token)
             applyState(state)
-        } catch let error as APIError {
-            errorMessage = error.errorDescription
+        } catch let error as JukeAPIError {
+            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -134,8 +135,8 @@ final class PlaybackViewModel: ObservableObject {
         do {
             let state = try await sessionService.nextTrack(id: session.id, token: token)
             applyState(state)
-        } catch let error as APIError {
-            errorMessage = error.errorDescription
+        } catch let error as JukeAPIError {
+            errorMessage = error.localizedDescription
             startTimer()
         } catch {
             errorMessage = error.localizedDescription
@@ -154,8 +155,8 @@ final class PlaybackViewModel: ObservableObject {
                 let state = try await sessionService.pauseSession(id: session.id, token: token)
                 applyState(state)
             }
-        } catch let error as APIError {
-            errorMessage = error.errorDescription
+        } catch let error as JukeAPIError {
+            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -168,8 +169,8 @@ final class PlaybackViewModel: ObservableObject {
         do {
             let state = try await sessionService.endSession(id: session.id, token: token)
             applyState(state)
-        } catch let error as APIError {
-            errorMessage = error.errorDescription
+        } catch let error as JukeAPIError {
+            errorMessage = error.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
         }
