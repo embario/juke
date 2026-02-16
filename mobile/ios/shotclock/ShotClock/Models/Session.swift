@@ -55,3 +55,12 @@ struct CreateSessionRequest: Encodable {
 struct JoinSessionRequest: Encodable {
     let inviteCode: String
 }
+
+struct UpdateSessionRequest: Encodable {
+    let title: String
+    let tracksPerPlayer: Int
+    let maxTracks: Int
+    let secondsPerTrack: Int
+    let transitionClip: String
+    let hideTrackOwners: Bool
+}

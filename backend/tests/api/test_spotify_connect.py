@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.http import HttpResponseRedirect
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
@@ -37,4 +38,15 @@ class SpotifyConnectTests(APITestCase):
         self.assertEqual(response['Location'], 'https://accounts.spotify.com/authorize')
         self.assertEqual(response.wsgi_request.user.id, self.user.id)
         self.assertEqual(response.wsgi_request.session.get('spotify_connect_user_id'), self.user.id)
+        self.assertEqual(response.wsgi_request.session.get('spotify_connect_return_to'), return_to)
+
+    @override_settings(SPOTIFY_CONNECT_ALLOWED_RETURN_SCHEMES=['juke', 'shotclock'])
+    @patch('juke_auth.views.social_views.auth')
+    def test_connect_accepts_mobile_return_scheme(self, mock_social_auth):
+        mock_social_auth.return_value = HttpResponseRedirect('https://accounts.spotify.com/authorize')
+        return_to = 'shotclock://spotify-callback'
+
+        response = self.client.get(f"{self.endpoint}?token={self.token.key}&return_to={return_to}")
+
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
         self.assertEqual(response.wsgi_request.session.get('spotify_connect_return_to'), return_to)

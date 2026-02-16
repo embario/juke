@@ -824,6 +824,9 @@ struct ConnectStepView: View {
                 try await service.saveProfile(data: store.data, token: token)
                 store.clearDraft()
                 try? await session.refreshProfile()
+                if connectSpotify {
+                    openSpotifyConnect(token: token)
+                }
                 if let city = store.data.location {
                     worldFocus = WorldFocus(
                         lat: city.lat,
@@ -842,6 +845,24 @@ struct ConnectStepView: View {
 
             isSaving = false
             // ContentView will re-route once onboarding is marked complete
+        }
+    }
+
+    private func openSpotifyConnect(token: String) {
+        let endpoint = JukeAPIConfiguration.shared.baseURL
+            .appendingPathComponent("api/v1/auth/connect/spotify/")
+        guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false) else {
+            return
+        }
+        components.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "return_to", value: "juke://spotify-callback"),
+        ]
+        guard let connectURL = components.url else {
+            return
+        }
+        Task { @MainActor in
+            JukeDeepLinkHandler.openURL(connectURL)
         }
     }
 }

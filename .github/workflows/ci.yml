@@ -13,6 +13,7 @@ jobs:
       ios_juke: ${{ steps.filter.outputs.ios_juke }}
       ios_tunetrivia: ${{ steps.filter.outputs.ios_tunetrivia }}
       ios_shotclock: ${{ steps.filter.outputs.ios_shotclock }}
+      ios_jukekit: ${{ steps.filter.outputs.ios_jukekit }}
       android_juke: ${{ steps.filter.outputs.android_juke }}
       android_shotclock: ${{ steps.filter.outputs.android_shotclock }}
     steps:
@@ -31,6 +32,8 @@ jobs:
               - 'mobile/ios/Packages/JukeKit/**'
             ios_shotclock:
               - 'mobile/ios/shotclock/**'
+              - 'mobile/ios/Packages/JukeKit/**'
+            ios_jukekit:
               - 'mobile/ios/Packages/JukeKit/**'
             android_juke:
               - 'mobile/android/juke/**'
@@ -109,6 +112,18 @@ jobs:
         uses: actions/checkout@v4
       - name: Run iOS tests
         run: bash scripts/test_mobile.sh --ios-only -p shotclock
+
+  ios_tests_jukekit:
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.ios_jukekit == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run JukeKit package tests
+        run: |
+          cd mobile/ios/Packages/JukeKit
+          swift test --disable-sandbox
 
   android_tests_juke:
     needs: changes

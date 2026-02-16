@@ -14,6 +14,7 @@ struct ShotClockApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(session)
+                .jukeTheme(SCJukeTheme())
                 .onOpenURL { url in
                     Task {
                         await handleDeepLink(url)

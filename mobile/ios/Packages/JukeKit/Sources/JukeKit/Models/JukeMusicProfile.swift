@@ -36,19 +36,20 @@ public struct JukeMusicProfile: Codable, Identifiable, Sendable {
         case id
         case username
         case name
-        case displayName = "display_name"
+        case displayName
         case tagline
         case bio
         case location
-        case avatarURL = "avatar_url"
-        case favoriteGenres = "favorite_genres"
-        case favoriteArtists = "favorite_artists"
-        case favoriteAlbums = "favorite_albums"
-        case favoriteTracks = "favorite_tracks"
-        case onboardingCompletedAt = "onboarding_completed_at"
-        case createdAt = "created_at"
-        case modifiedAt = "modified_at"
-        case isOwner = "is_owner"
+        // convertFromSnakeCase maps avatar_url -> avatarUrl (not avatarURL)
+        case avatarURL = "avatarUrl"
+        case favoriteGenres
+        case favoriteArtists
+        case favoriteAlbums
+        case favoriteTracks
+        case onboardingCompletedAt
+        case createdAt
+        case modifiedAt
+        case isOwner
     }
 
     public init(
@@ -142,9 +143,10 @@ public struct JukeMusicProfileSummary: Codable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case username
-        case displayName = "display_name"
+        case displayName
         case tagline
-        case avatarURL = "avatar_url"
+        // convertFromSnakeCase maps avatar_url -> avatarUrl (not avatarURL)
+        case avatarURL = "avatarUrl"
     }
 
     public init(

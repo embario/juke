@@ -22,8 +22,16 @@ final class CreateSessionViewModel: ObservableObject {
 
     private let sessionService: SessionService
 
-    init(sessionService: SessionService = SessionService()) {
+    init(session: PowerHourSession? = nil, sessionService: SessionService = SessionService()) {
         self.sessionService = sessionService
+        if let session {
+            title = session.title
+            tracksPerPlayer = session.tracksPerPlayer
+            maxTracks = session.maxTracks
+            secondsPerTrack = session.secondsPerTrack
+            transitionClip = session.transitionClip
+            hideTrackOwners = session.hideTrackOwners
+        }
     }
 
     func createSession(token: String?) async -> PowerHourSession? {
@@ -50,6 +58,39 @@ final class CreateSessionViewModel: ObservableObject {
 
         do {
             return try await sessionService.createSession(request: request, token: token)
+        } catch let error as JukeAPIError {
+            errorMessage = error.localizedDescription
+            return nil
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func updateSession(id: String, token: String?) async -> PowerHourSession? {
+        guard let token else { return nil }
+
+        let trimmed = title.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            errorMessage = "Session title is required."
+            return nil
+        }
+
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        let request = UpdateSessionRequest(
+            title: trimmed,
+            tracksPerPlayer: tracksPerPlayer,
+            maxTracks: maxTracks,
+            secondsPerTrack: secondsPerTrack,
+            transitionClip: transitionClip,
+            hideTrackOwners: hideTrackOwners
+        )
+
+        do {
+            return try await sessionService.updateSession(id: id, request: request, token: token)
         } catch let error as JukeAPIError {
             errorMessage = error.localizedDescription
             return nil

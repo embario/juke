@@ -24,7 +24,7 @@ final class HomeViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            sessions = try await sessionService.listSessions(token: token)
+            sessions = Self.visibleSessions(from: try await sessionService.listSessions(token: token))
         } catch let error as JukeAPIError {
             errorMessage = error.localizedDescription
         } catch {
@@ -48,10 +48,7 @@ final class HomeViewModel: ObservableObject {
             let session = try await sessionService.joinSession(inviteCode: code, token: token)
             joinCode = ""
             isShowingJoinSheet = false
-            // Add to local list
-            if !sessions.contains(where: { $0.id == session.id }) {
-                sessions.insert(session, at: 0)
-            }
+            upsertSession(session)
             return session
         } catch let error as JukeAPIError {
             joinError = error.localizedDescription
@@ -62,13 +59,31 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    func deleteSession(id: String, token: String?) async {
-        guard let token else { return }
+    func deleteSession(id: String, token: String?) async -> Bool {
+        guard let token else { return false }
         do {
             try await sessionService.deleteSession(id: id, token: token)
             sessions.removeAll { $0.id == id }
+            return true
         } catch {
             errorMessage = "Failed to delete session."
+            return false
         }
+    }
+
+    func upsertSession(_ session: PowerHourSession) {
+        if session.status == .ended {
+            sessions.removeAll { $0.id == session.id }
+            return
+        }
+        if let index = sessions.firstIndex(where: { $0.id == session.id }) {
+            sessions[index] = session
+        } else {
+            sessions.insert(session, at: 0)
+        }
+    }
+
+    nonisolated static func visibleSessions(from sessions: [PowerHourSession]) -> [PowerHourSession] {
+        sessions.filter { $0.status != .ended }
     }
 }

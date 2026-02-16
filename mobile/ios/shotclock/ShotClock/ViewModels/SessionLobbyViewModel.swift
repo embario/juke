@@ -62,7 +62,7 @@ final class SessionLobbyViewModel: ObservableObject {
         guard let token else { return }
         errorMessage = nil
         do {
-            let state = try await sessionService.startSession(id: session.id, token: token)
+            _ = try await sessionService.startSession(id: session.id, token: token)
             session = try await sessionService.getSession(id: session.id, token: token)
             didStartSession = true
         } catch let error as JukeAPIError {

@@ -1,5 +1,9 @@
 package fm.juke.mobile.ui.onboarding
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import android.util.Log
+import fm.juke.mobile.core.di.ServiceLocator
 import fm.juke.mobile.core.design.JukePalette
 import fm.juke.mobile.core.design.components.JukeBackground
 import fm.juke.mobile.core.design.components.JukeButton
@@ -64,9 +69,11 @@ import fm.juke.mobile.core.design.components.JukeStatusVariant
 @Composable
 fun OnboardingRoute(
     viewModel: OnboardingViewModel = viewModel(),
+    sessionToken: String,
     onComplete: (CityLocation?) -> Unit,
 ) {
     val state = viewModel.uiState
+    val context = LocalContext.current
     OnboardingScreen(
         state = state,
         onGoBack = viewModel::goBack,
@@ -83,7 +90,15 @@ fun OnboardingRoute(
         onSetListeningStyle = viewModel::setListeningStyle,
         onSetAgeRange = viewModel::setAgeRange,
         onSetLocation = viewModel::setLocation,
-        onSaveAndFinish = { viewModel.saveAndFinish(onComplete) },
+        onSaveAndFinish = { connectSpotify ->
+            viewModel.saveAndFinish(
+                connectSpotify = connectSpotify,
+                onComplete = onComplete,
+                onConnectSpotify = {
+                    launchSpotifyConnect(context = context, sessionToken = sessionToken)
+                },
+            )
+        },
     )
 }
 
@@ -104,7 +119,7 @@ fun OnboardingScreen(
     onSetListeningStyle: (String?) -> Unit,
     onSetAgeRange: (String?) -> Unit,
     onSetLocation: (CityLocation?) -> Unit,
-    onSaveAndFinish: () -> Unit,
+    onSaveAndFinish: (Boolean) -> Unit,
 ) {
     JukeBackground {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -615,7 +630,7 @@ private fun LocationSearchSurface(onSelect: (CityLocation?) -> Unit) {
 // --- Connect Step ---
 
 @Composable
-private fun ConnectStep(state: OnboardingUiState, onSave: () -> Unit) {
+private fun ConnectStep(state: OnboardingUiState, onSave: (Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Surface(
             shape = RoundedCornerShape(12.dp),
@@ -640,7 +655,7 @@ private fun ConnectStep(state: OnboardingUiState, onSave: () -> Unit) {
         }
 
         JukeButton(
-            onClick = onSave,
+            onClick = { onSave(false) },
             modifier = Modifier.fillMaxWidth().height(56.dp),
             enabled = !state.isSubmitting,
         ) {
@@ -649,6 +664,15 @@ private fun ConnectStep(state: OnboardingUiState, onSave: () -> Unit) {
             } else {
                 Text("Enter Juke World")
             }
+        }
+
+        JukeButton(
+            onClick = { onSave(true) },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            variant = JukeButtonVariant.GHOST,
+            enabled = !state.isSubmitting,
+        ) {
+            Text("Connect Spotify & Enter Juke World")
         }
     }
 }
@@ -690,6 +714,28 @@ private fun SelectionCard(
         ) {
             content()
         }
+    }
+}
+
+private fun launchSpotifyConnect(context: Context, sessionToken: String) {
+    if (sessionToken.isBlank()) {
+        return
+    }
+
+    val connectUri = Uri
+        .parse("${ServiceLocator.normalizedBaseUrl().trimEnd('/')}/api/v1/auth/connect/spotify/")
+        .buildUpon()
+        .appendQueryParameter("token", sessionToken)
+        .appendQueryParameter("return_to", ServiceLocator.normalizedFrontendUrl().trimEnd('/'))
+        .build()
+
+    val intent = Intent(Intent.ACTION_VIEW, connectUri).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        Log.w("Onboarding", "No activity found to handle Spotify connect URL.")
     }
 }
 

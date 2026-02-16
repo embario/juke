@@ -1,9 +1,9 @@
 ---
 id: spotify-credentials-unification
 title: Unify Spotify credentials across backend, web, and all apps
-status: ready
+status: in_progress
 priority: p1
-owner: unassigned
+owner: codex
 area: platform
 label: ALL/GENERAL
 complexity: 5
@@ -48,16 +48,19 @@ Implement a single Spotify account-linking and token model so users connect once
 - Key files:
 - `/Users/embario/Documents/juke/backend/juke_auth/views.py`
 - `/Users/embario/Documents/juke/backend/juke_auth/urls.py`
+- `/Users/embario/Documents/juke/backend/juke_auth/spotify_credentials.py`
 - `/Users/embario/Documents/juke/backend/catalog/services/playback.py`
 - `/Users/embario/Documents/juke/backend/settings/base.py`
-- `/Users/embario/Documents/juke/web/src/features/auth/constants.ts`
 - `/Users/embario/Documents/juke/web/src/features/app/components/Header.tsx`
-- `/Users/embario/Documents/juke/mobile/ios/shotclock/ShotClock/Services/SpotifyManager.swift`
-- `/Users/embario/Documents/juke/mobile/ios/shotclock/ShotClock/ShotClockApp.swift`
+- `/Users/embario/Documents/juke/web/src/features/auth/components/onboarding/api/onboardingApi.ts`
+- `/Users/embario/Documents/juke/web/src/features/auth/components/onboarding/steps/ConnectStep.tsx`
 - `/Users/embario/Documents/juke/mobile/ios/juke/juke-iOS/Onboarding/OnboardingWizardView.swift`
 - `/Users/embario/Documents/juke/mobile/android/juke/app/src/main/java/fm/juke/mobile/ui/onboarding/OnboardingScreen.kt`
+- `/Users/embario/Documents/juke/backend/tests/api/test_spotify_credentials.py`
+- `/Users/embario/Documents/juke/backend/tests/api/test_spotify_connect.py`
+- `/Users/embario/Documents/juke/backend/tests/api/test_playback.py`
 - Commands:
-- `docker compose exec backend python manage.py test`
+- `docker compose exec backend python manage.py test tests.api.test_spotify_credentials tests.api.test_spotify_connect tests.api.test_powerhour_sessions tests.api.test_playback`
 - `docker compose exec web npm test`
 - `scripts/build_and_run_ios.sh -p juke`
 - `scripts/build_and_run_ios.sh -p shotclock`
@@ -69,12 +72,19 @@ Implement a single Spotify account-linking and token model so users connect once
 ## Handoff
 
 - Completed:
-- Task defined from cross-codebase audit of current Spotify auth/token flow.
-- Next:
-- Implement backend token-broker endpoints and shared Spotify token service.
-- Migrate clients incrementally: web connect links, Juke mobile connect entry points, ShotClock iOS SDK auth integration.
-- Apply contract checks so onboarding and Spotify connect states stay consistent across web, iOS, and Android.
-- Add/adjust tests per service.
+- Added backend credential broker service with token status, access-token issue, refresh behavior, and disconnect support.
+- Added authenticated backend endpoints: `/api/v1/auth/spotify/status/`, `/api/v1/auth/spotify/token/`, `/api/v1/auth/spotify/disconnect/`.
+- Added token issue throttle (`spotify_token_issue`) and mobile deep-link return-scheme support for connect callback routing.
+- Migrated backend playback token refresh path to use shared broker service instead of inline provider token logic.
+- Updated web Spotify connect flows (header + onboarding) to use backend connect entry path.
+- Updated Juke iOS and Juke Android onboarding connect flows to route through backend connect endpoint.
+- Added backend regression tests for connect flow, broker endpoints, powerhour Spotify gate, and playback refresh retry path.
+- Verified targeted backend tests pass in Docker.
+- Remaining work:
+- Decide and implement policy for legacy direct social-auth token login path (`SocialAuth`) so clients cannot bypass backend-managed flow unintentionally.
+- Decide whether disconnect semantics require provider-side revoke or if local unlink is sufficient; implement/document final behavior.
+- Add explicit throttle-limit regression test for `/api/v1/auth/spotify/token/` (`429` behavior).
+- Confirm and document final required Spotify scopes for all target clients and playback paths.
+- Update task/PR documentation with final backend contract and rollout notes once merged.
 - Blockers:
-- Confirm required Spotify scopes and callback constraints for ShotClock SDK usage.
-- Resolve missing ShotClock Android data-layer files if Android parity is required in this phase.
+- No technical blockers; remaining items are mostly policy/contract decisions and hardening.

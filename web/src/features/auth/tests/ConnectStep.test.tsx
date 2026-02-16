@@ -48,7 +48,7 @@ vi.mock('../components/onboarding/context/OnboardingProvider', () => ({
 
 vi.mock('../components/onboarding/api/onboardingApi', () => ({
   saveOnboardingProfile: vi.fn().mockResolvedValue(undefined),
-  getSpotifyOAuthUrl: vi.fn(),
+  getSpotifyConnectUrl: vi.fn(),
 }));
 
 vi.mock('../hooks/useAuth', () => ({

@@ -67,6 +67,7 @@ public enum JukeDateParsing {
     /// Uses custom date decoding that tries multiple ISO8601 formats.
     public static func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             let value = try container.decode(String.self)

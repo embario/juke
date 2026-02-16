@@ -5,6 +5,7 @@ struct PlaybackView: View {
     @EnvironmentObject var session: JukeSessionStore
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: PlaybackViewModel
+    @State private var isShowingEndConfirmation = false
 
     init(gameSession: PowerHourSession, tracks: [SessionTrackItem]) {
         _viewModel = StateObject(wrappedValue: PlaybackViewModel(session: gameSession, tracks: tracks))
@@ -27,6 +28,16 @@ struct PlaybackView: View {
         }
         .onDisappear {
             viewModel.stopTimer()
+        }
+        .confirmationDialog("End this session?", isPresented: $isShowingEndConfirmation, titleVisibility: .visible) {
+            Button("End Session", role: .destructive) {
+                Task {
+                    await viewModel.endSession(token: session.token)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will stop playback for everyone in the session.")
         }
     }
 
@@ -116,9 +127,7 @@ struct PlaybackView: View {
 
                 // End
                 Button {
-                    Task {
-                        await viewModel.endSession(token: session.token)
-                    }
+                    isShowingEndConfirmation = true
                 } label: {
                     Image(systemName: "stop.fill")
                         .font(.title2)

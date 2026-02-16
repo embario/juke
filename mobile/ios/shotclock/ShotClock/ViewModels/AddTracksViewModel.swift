@@ -3,6 +3,8 @@ import JukeKit
 
 @MainActor
 final class AddTracksViewModel: ObservableObject {
+    static let searchDebounceNanoseconds: UInt64 = 500_000_000
+
     @Published var searchQuery = ""
     @Published var searchResults: [CatalogTrack] = []
     @Published var isSearching = false
@@ -28,15 +30,17 @@ final class AddTracksViewModel: ObservableObject {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, let token else {
             searchResults = []
+            isSearching = false
             return
         }
 
         searchTask = Task {
             isSearching = true
+            errorMessage = nil
             defer { isSearching = false }
 
             // Debounce
-            try? await Task.sleep(nanoseconds: 400_000_000)
+            try? await Task.sleep(nanoseconds: Self.searchDebounceNanoseconds)
             guard !Task.isCancelled else { return }
 
             do {

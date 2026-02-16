@@ -192,7 +192,11 @@ class OnboardingViewModel(
 
     // --- Save & complete ---
 
-    fun saveAndFinish(onComplete: (CityLocation?) -> Unit) {
+    fun saveAndFinish(
+        connectSpotify: Boolean,
+        onComplete: (CityLocation?) -> Unit,
+        onConnectSpotify: () -> Unit,
+    ) {
         viewModelScope.launch {
             uiState = uiState.copy(isSubmitting = true, error = null)
             val data = uiState.data
@@ -226,6 +230,9 @@ class OnboardingViewModel(
                 .onSuccess {
                     ServiceLocator.sessionStore.setOnboardingCompletedAt(completedAt)
                     uiState = uiState.copy(isSubmitting = false)
+                    if (connectSpotify) {
+                        onConnectSpotify()
+                    }
                     onComplete(data.location)
                 }
                 .onFailure { throwable ->
