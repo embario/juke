@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase
 from social_django.models import UserSocialAuth
 
 from juke_auth.models import JukeUser
+from juke_auth.views import SpotifyTokenIssueThrottle
 
 
 class SpotifyCredentialBrokerAPITests(APITestCase):
@@ -137,3 +138,24 @@ class SpotifyCredentialBrokerAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(UserSocialAuth.objects.filter(user=self.user, provider='spotify').exists())
+
+    @patch.object(SpotifyTokenIssueThrottle, 'scope', 'spotify_token_issue_test', create=True)
+    @patch.object(SpotifyTokenIssueThrottle, 'rate', '1/min', create=True)
+    def test_token_issue_is_throttled_when_rate_limit_exceeded(self):
+        self.authenticate()
+        UserSocialAuth.objects.create(
+            user=self.user,
+            provider='spotify',
+            uid='spotify-user-5',
+            extra_data={
+                'access_token': 'access-5',
+                'refresh_token': 'refresh-5',
+                'expires_at': time.time() + 600,
+            },
+        )
+
+        first_response = self.client.post(self.token_url)
+        second_response = self.client.post(self.token_url)
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)

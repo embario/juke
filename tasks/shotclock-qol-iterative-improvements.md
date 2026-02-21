@@ -7,7 +7,7 @@ owner: codex
 area: ios
 label: IOS
 complexity: 4
-updated_at: 2026-02-16
+updated_at: 2026-02-21
 ---
 
 ## Goal
@@ -70,11 +70,14 @@ Ship a stable, test-backed ShotClock experience by iteratively fixing user-facin
 - Filtered ended sessions from list display and local session upsert handling.
 - Added regression tests for key view-model behavior (session upsert/filter, create-session prefill, debounce constant).
 - Added JukeKit flash-center tests.
+- Added integration-style ShotClock tests with request stubbing for edit/save (`CreateSessionViewModel.updateSession`), delete confirmation action path (`HomeViewModel.deleteSession`), and end-session confirmation action path (`PlaybackViewModel.endSession`).
+- Standardized ShotClock iOS deployment target to `26.0` across project + app/test/UI-test build settings in the Xcode project.
+- Hardened integration tests to support request-path normalization and streamed request bodies in URLProtocol stubs.
 - Verified iOS + JukeKit test runs via `scripts/test_mobile.sh -p shotclock --ios-only --include-jukekit-tests`.
+- Verified ShotClock iOS tests via `scripts/test_mobile.sh -p shotclock --ios-only` and app run via `scripts/build_and_run_ios.sh -p shotclock`.
 - Remaining work:
 - Continue iterative manual QA passes and log-driven fixes for any additional reliability/UX issues discovered.
 - Decide and implement whether Spotify linkage should be required at session creation time (currently enforced at session start time).
-- Add broader integration-style tests for new UI flows where practical (edit/save, delete confirmation, end-session confirmation).
 - Do final polish sweep for copy consistency, edge-case error states, and loading/empty states.
 - Keep bundling these QoL updates with Spotify unification PR scope as requested.
 - Blockers:

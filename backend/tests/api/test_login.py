@@ -79,3 +79,21 @@ class LoginTests(APITestCase):
             resp.data['detail'],
             'Spotify authentication is temporarily unavailable. Please try again.'
         )
+
+    @patch.object(SpotifyOAuth2, 'do_auth')
+    def test_social_login_rejects_already_authenticated_user(self, mock_auth):
+        user = JukeUser.objects.create_user(
+            username='already-signed-in',
+            email='already-signed-in@example.com',
+            password='pass1234',
+        )
+        token, _ = Token.objects.get_or_create(user=user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+        resp = self.client.post(self.social_login_url, data={
+            'access_token': 'TOKEN',
+        }, format='json')
+
+        self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('/api/v1/auth/connect/spotify/', resp.data['detail'])
+        mock_auth.assert_not_called()

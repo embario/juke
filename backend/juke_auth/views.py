@@ -415,6 +415,17 @@ class SocialAuth(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         redirect = request.path
 
+        if request.user.is_authenticated:
+            return Response(
+                {
+                    'detail': (
+                        'You are already signed in. '
+                        'Use /api/v1/auth/connect/spotify/ to link or relink Spotify.'
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         try:
             access_token = request.data['access_token']
         except KeyError:
