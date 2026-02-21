@@ -19,6 +19,7 @@ from rest_framework.views import APIView
 from rest_framework.authtoken.serializers import AuthTokenSerializer
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import UserRateThrottle
 from rest_registration.api.views.register import RegisterView
 try:
     from rest_registration.api.views import VerifyRegistrationView
@@ -37,6 +38,10 @@ from juke_auth.serializers import (
     GlobePointSerializer,
 )
 from juke_auth.models import JukeUser, MusicProfile
+from juke_auth.spotify_credentials import (
+    SpotifyCredentialBroker,
+    SpotifyCredentialError,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -58,8 +63,21 @@ def _validated_return_to(candidate: str | None) -> str:
         return fallback
 
     parsed = urlparse(candidate)
-    if not parsed.scheme or not parsed.netloc:
+    if not parsed.scheme:
         return fallback
+
+    allowed_schemes_raw = getattr(
+        settings,
+        'SPOTIFY_CONNECT_ALLOWED_RETURN_SCHEMES',
+        [],
+    )
+    allowed_schemes = {
+        str(value).strip().lower()
+        for value in allowed_schemes_raw
+        if str(value).strip()
+    }
+    if parsed.scheme.lower() in allowed_schemes:
+        return candidate
 
     allowed_hosts = {urlparse(settings.FRONTEND_URL).netloc}
     for origin in getattr(settings, 'CORS_ALLOWED_ORIGINS', []):
@@ -71,6 +89,10 @@ def _validated_return_to(candidate: str | None) -> str:
         return fallback
 
     return candidate
+
+
+class SpotifyTokenIssueThrottle(UserRateThrottle):
+    scope = 'spotify_token_issue'
 
 
 def spotify_connect(request, *args, **kwargs):
@@ -158,6 +180,48 @@ def spotify_complete(request, *args, **kwargs):
     if isinstance(response, HttpResponseRedirect):
         response['Location'] = return_to
     return response
+
+
+class SpotifyConnectionStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        status_payload = SpotifyCredentialBroker(request.user).status()
+        return Response(status_payload, status=status.HTTP_200_OK)
+
+
+class SpotifyAccessTokenView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [SpotifyTokenIssueThrottle]
+
+    def post(self, request, *args, **kwargs):
+        broker = SpotifyCredentialBroker(request.user)
+        try:
+            token = broker.issue_access_token()
+        except SpotifyCredentialError as exc:
+            return Response(
+                {'detail': exc.detail, 'error': exc.code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                'provider': 'spotify',
+                'token_type': token.token_type,
+                'access_token': token.value,
+                'expires_at': int(token.expires_at) if token.expires_at is not None else None,
+                'expires_in': token.expires_in(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class SpotifyDisconnectView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        SpotifyCredentialBroker(request.user).disconnect()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 def _send_register_verification_email(user, request=None):
@@ -350,6 +414,17 @@ class SocialAuth(generics.CreateAPIView):
 
     def create(self, request, *args, **kwargs):
         redirect = request.path
+
+        if request.user.is_authenticated:
+            return Response(
+                {
+                    'detail': (
+                        'You are already signed in. '
+                        'Use /api/v1/auth/connect/spotify/ to link or relink Spotify.'
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
         try:
             access_token = request.data['access_token']

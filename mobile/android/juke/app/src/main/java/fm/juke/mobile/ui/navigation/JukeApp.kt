@@ -51,16 +51,19 @@ fun JukeApp(sessionViewModel: SessionViewModel = viewModel()) {
                     )
                 }
                 !state.onboardingCompleted -> {
-                    OnboardingRoute(onComplete = { location ->
-                        worldFocus = location?.let {
-                            WorldFocus(
-                                lat = it.lat,
-                                lng = it.lng,
-                                username = state.snapshot.username,
-                            )
-                        }
-                        navigateToWorld = true
-                    })
+                    OnboardingRoute(
+                        sessionToken = state.snapshot.token,
+                        onComplete = { location ->
+                            worldFocus = location?.let {
+                                WorldFocus(
+                                    lat = it.lat,
+                                    lng = it.lng,
+                                    username = state.snapshot.username,
+                                )
+                            }
+                            navigateToWorld = true
+                        },
+                    )
                 }
                 else -> HomeScreen(
                     session = state.snapshot,

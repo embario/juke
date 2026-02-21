@@ -5,9 +5,13 @@ struct SessionLobbyView: View {
     @EnvironmentObject var session: JukeSessionStore
     @StateObject private var viewModel: SessionLobbyViewModel
     @State private var copiedInvite = false
+    @State private var isShowingEditSession = false
+    @StateObject private var flashCenter = JukeKitFlashCenter()
+    private let onSessionUpdated: ((PowerHourSession) -> Void)?
 
-    init(gameSession: PowerHourSession) {
+    init(gameSession: PowerHourSession, onSessionUpdated: ((PowerHourSession) -> Void)? = nil) {
         _viewModel = StateObject(wrappedValue: SessionLobbyViewModel(session: gameSession))
+        self.onSessionUpdated = onSessionUpdated
     }
 
     var body: some View {
@@ -179,12 +183,37 @@ struct SessionLobbyView: View {
         .navigationTitle(viewModel.session.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            if canEditSession {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Edit") {
+                        isShowingEditSession = true
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingEditSession) {
+            NavigationStack {
+                CreateSessionView(existingSession: viewModel.session) { updatedSession in
+                    viewModel.session = updatedSession
+                    onSessionUpdated?(updatedSession)
+                    flashCenter.show("Session updated.", variant: .success)
+                }
+                .environmentObject(session)
+            }
+        }
         .navigationDestination(isPresented: $viewModel.didStartSession) {
             PlaybackView(gameSession: viewModel.session, tracks: viewModel.tracks)
         }
+        .jukeFlashOverlay(flashCenter)
         .task {
             await viewModel.loadDetails(token: session.token)
         }
+    }
+
+    private var canEditSession: Bool {
+        guard let currentUserID = session.profile?.id else { return false }
+        return currentUserID == viewModel.session.admin && viewModel.session.status == .lobby
     }
 }
 

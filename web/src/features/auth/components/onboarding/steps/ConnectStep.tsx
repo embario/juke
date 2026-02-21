@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import { useOnboarding } from '../context/OnboardingProvider';
-import { saveOnboardingProfile, getSpotifyOAuthUrl } from '../api/onboardingApi';
+import { saveOnboardingProfile, getSpotifyConnectUrl } from '../api/onboardingApi';
 
 type Props = {
   token: string;
@@ -37,8 +37,10 @@ export default function ConnectStep({ token }: Props) {
       clearDraft();
 
       if (connectSpotify) {
-        // Redirect to Spotify OAuth
-        window.location.href = getSpotifyOAuthUrl();
+        window.location.href = getSpotifyConnectUrl(
+          token,
+          typeof window !== 'undefined' ? window.location.href : undefined,
+        );
       } else {
         // Navigate to Juke World with welcome state
         const focusState = data.location

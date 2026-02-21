@@ -16,7 +16,7 @@ PROJECT_NAME=""
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") -p <project> [-s simulator] [-o os] [--ios-only | --android-only]
+Usage: $(basename "$0") -p <project> [-s simulator] [-o os] [--ios-only | --android-only] [--include-jukekit-tests]
 
 Options:
   -p  Project name (required): juke, shotclock, or tunetrivia
@@ -24,6 +24,7 @@ Options:
   -o  Simulator OS version (default: ${SIM_OS_DEFAULT})
   --ios-only      Run only iOS tests
   --android-only  Run only Android tests
+  --include-jukekit-tests  Also run Swift package tests for mobile/ios/Packages/JukeKit
 EOF
 }
 
@@ -36,6 +37,7 @@ require_cmd() {
 
 run_ios=true
 run_android=true
+run_jukekit_tests=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -57,6 +59,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --android-only)
             run_ios=false
+            shift
+            ;;
+        --include-jukekit-tests|--jukekit-tests)
+            run_jukekit_tests=true
             shift
             ;;
         -h|--help)
@@ -93,6 +99,7 @@ echo "Mobile test runner"
 echo "  repo: ${REPO_ROOT}"
 echo "  ios: ${run_ios} (sim: ${SIM_TARGET}, os: ${SIM_OS})"
 echo "  android: ${run_android} (project: ${ANDROID_PROJECT_NAME})"
+echo "  juke kit tests: ${run_jukekit_tests}"
 echo "  env file: ${ENV_FILE:-.env}"
 
 run_ios_tests() {
@@ -149,6 +156,33 @@ run_android_tests() {
     echo "Android tests log: ${log_path}"
 }
 
+run_jukekit_package_tests() {
+    local package_root="${IOS_ROOT}/Packages/JukeKit"
+    local log_path="${LOGS_DIR}/ios-tests-JukeKit-$(date +%Y%m%d-%H%M%S).log"
+    local swiftpm_module_cache="${DERIVED_DATA_PATH}/swiftpm-module-cache"
+    local clang_module_cache="${DERIVED_DATA_PATH}/clang-module-cache"
+
+    if [[ ! -d "${package_root}" ]]; then
+        echo "Cannot find JukeKit package at ${package_root}" >&2
+        exit 1
+    fi
+
+    mkdir -p "${swiftpm_module_cache}" "${clang_module_cache}"
+    echo "Running JukeKit Swift package tests..."
+    pushd "${package_root}" >/dev/null
+    if SWIFTPM_MODULECACHE_OVERRIDE="${swiftpm_module_cache}" \
+        CLANG_MODULE_CACHE_PATH="${clang_module_cache}" \
+        swift test --disable-sandbox 2>&1 | tee "${log_path}"; then
+        popd >/dev/null
+        echo "JukeKit tests succeeded (log: ${log_path})."
+    else
+        popd >/dev/null
+        echo "JukeKit tests failed. Inspect ${log_path}." >&2
+        tail -n 40 "${log_path}" >&2 || true
+        exit 1
+    fi
+}
+
 if "${run_ios}"; then
     require_cmd xcodebuild
     case "${PROJECT_NAME}" in
@@ -167,6 +201,11 @@ fi
 if "${run_android}"; then
     require_cmd java
     run_android_tests
+fi
+
+if "${run_jukekit_tests}"; then
+    require_cmd swift
+    run_jukekit_package_tests
 fi
 
 echo "Done."

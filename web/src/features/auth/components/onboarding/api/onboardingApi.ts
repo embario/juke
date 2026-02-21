@@ -6,6 +6,7 @@
 
 import { apiClient } from '@shared/api/apiClient';
 import type { Genre, Artist, CityLocation, OnboardingData } from '../types';
+import { buildSpotifyConnectPath } from '../../../constants';
 
 // Fetch featured genres with top artists
 export async function fetchFeaturedGenres(): Promise<Genre[]> {
@@ -228,8 +229,6 @@ export async function saveOnboardingProfile(data: OnboardingData, token: string)
   await apiClient.patch('/api/v1/music-profiles/me/', payload, { token });
 }
 
-// Get Spotify OAuth URL - use full backend URL
-export function getSpotifyOAuthUrl(): string {
-  const backendUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.BACKEND_URL || 'http://localhost:8001';
-  return `${backendUrl}/api/v1/social-auth/login/spotify/`;
+export function getSpotifyConnectUrl(token: string, returnTo?: string): string {
+  return buildSpotifyConnectPath(token, returnTo);
 }

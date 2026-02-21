@@ -4,6 +4,8 @@ import JukeKit
 struct HomeView: View {
     @EnvironmentObject var session: JukeSessionStore
     @StateObject private var viewModel = HomeViewModel()
+    @StateObject private var flashCenter = JukeKitFlashCenter()
+    @State private var pendingDeleteSession: PowerHourSession?
 
     var body: some View {
         NavigationStack {
@@ -38,7 +40,10 @@ struct HomeView: View {
                     // Action Buttons
                     HStack(spacing: 12) {
                         NavigationLink {
-                            CreateSessionView()
+                            CreateSessionView { createdSession in
+                                viewModel.upsertSession(createdSession)
+                                flashCenter.show("Session created.", variant: .success)
+                            }
                         } label: {
                             Label("New Session", systemImage: "plus.circle.fill")
                         }
@@ -76,19 +81,31 @@ struct HomeView: View {
                         .padding(.horizontal, 40)
                         Spacer()
                     } else {
-                        ScrollView {
-                            LazyVStack(spacing: 12) {
-                                ForEach(viewModel.sessions) { gameSession in
-                                    NavigationLink {
-                                        SessionLobbyView(gameSession: gameSession)
-                                    } label: {
-                                        SessionRow(gameSession: gameSession)
+                        List {
+                            ForEach(viewModel.sessions) { gameSession in
+                                NavigationLink {
+                                    SessionLobbyView(gameSession: gameSession) { updatedSession in
+                                        viewModel.upsertSession(updatedSession)
+                                    }
+                                } label: {
+                                    SessionRow(gameSession: gameSession)
+                                }
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    if canDeleteSession(gameSession) {
+                                        Button(role: .destructive) {
+                                            pendingDeleteSession = gameSession
+                                        } label: {
+                                            Label("Remove", systemImage: "trash")
+                                        }
                                     }
                                 }
                             }
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 32)
                         }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.clear)
                         .refreshable {
                             await viewModel.loadSessions(token: session.token)
                         }
@@ -102,12 +119,49 @@ struct HomeView: View {
                 }
             }
             .sheet(isPresented: $viewModel.isShowingJoinSheet) {
-                JoinSessionSheet(viewModel: viewModel, token: session.token)
+                JoinSessionSheet(viewModel: viewModel, token: session.token) { joinedSession in
+                    flashCenter.show("Joined \(joinedSession.title).", variant: .success)
+                }
+            }
+            .jukeFlashOverlay(flashCenter)
+            .alert("Remove session?", isPresented: isShowingDeleteConfirmation) {
+                Button("Remove", role: .destructive) {
+                    let sessionToDelete = pendingDeleteSession
+                    pendingDeleteSession = nil
+                    guard let sessionToDelete else { return }
+                    Task {
+                        let didDelete = await viewModel.deleteSession(id: sessionToDelete.id, token: session.token)
+                        if didDelete {
+                            flashCenter.show("Session removed.", variant: .warning)
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingDeleteSession = nil
+                }
+            } message: {
+                Text("This will permanently remove \"\(pendingDeleteSession?.title ?? "this session")\".")
             }
         }
         .task {
             await viewModel.loadSessions(token: session.token)
         }
+    }
+
+    private var isShowingDeleteConfirmation: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteSession != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingDeleteSession = nil
+                }
+            }
+        )
+    }
+
+    private func canDeleteSession(_ sessionItem: PowerHourSession) -> Bool {
+        guard let currentUserID = session.profile?.id else { return false }
+        return currentUserID == sessionItem.admin
     }
 }
 
@@ -164,6 +218,7 @@ struct SessionRow: View {
 struct JoinSessionSheet: View {
     @ObservedObject var viewModel: HomeViewModel
     let token: String?
+    let onJoined: (PowerHourSession) -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -187,7 +242,9 @@ struct JoinSessionSheet: View {
 
                 Button {
                     Task {
-                        _ = await viewModel.joinSession(token: token)
+                        if let joinedSession = await viewModel.joinSession(token: token) {
+                            onJoined(joinedSession)
+                        }
                     }
                 } label: {
                     if viewModel.isJoining {

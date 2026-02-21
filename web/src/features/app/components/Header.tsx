@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '@uikit/components/Button';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { SPOTIFY_AUTH_PATH } from '../../auth/constants';
+import { SPOTIFY_AUTH_PATH, buildSpotifyConnectPath } from '../../auth/constants';
 
 type Props = {
   onToggleSidebar: () => void;
@@ -9,8 +9,12 @@ type Props = {
 };
 
 const Header = ({ onToggleSidebar, isSidebarOpen }: Props) => {
-  const { isAuthenticated, username, logout } = useAuth();
+  const { isAuthenticated, username, logout, token } = useAuth();
   const navigate = useNavigate();
+  const spotifyConnectPath = buildSpotifyConnectPath(
+    token,
+    typeof window !== 'undefined' ? window.location.href : undefined,
+  );
 
   const handleLogout = () => {
     logout();
@@ -51,7 +55,7 @@ const Header = ({ onToggleSidebar, isSidebarOpen }: Props) => {
             </button>
             <a
               className="pill pill--accent"
-              href={SPOTIFY_AUTH_PATH}
+              href={spotifyConnectPath}
               aria-label="Connect Spotify account"
             >
               Connect Spotify

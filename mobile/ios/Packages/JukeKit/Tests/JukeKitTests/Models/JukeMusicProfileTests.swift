@@ -146,7 +146,7 @@ final class JukeMusicProfileTests: XCTestCase {
         }
         """.data(using: .utf8)!
 
-        let summary = try JSONDecoder().decode(JukeMusicProfileSummary.self, from: json)
+        let summary = try JukeDateParsing.makeDecoder().decode(JukeMusicProfileSummary.self, from: json)
 
         XCTAssertEqual(summary.username, "testuser")
         XCTAssertEqual(summary.displayName, "Test User")

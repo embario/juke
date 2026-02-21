@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from catalog.models import Track
+from juke_auth.spotify_credentials import SpotifyCredentialBroker, SpotifyCredentialError
 
 from .models import PowerHourSession, SessionPlayer, SessionTrack
 from .serializers import (
@@ -133,6 +134,16 @@ class SessionViewSet(viewsets.ModelViewSet, IsSessionAdmin):
         admin_check = self._check_admin(request, session)
         if admin_check:
             return admin_check
+
+        # Ensure the session admin has an active Spotify link before starting.
+        broker = SpotifyCredentialBroker(request.user)
+        try:
+            broker.issue_access_token()
+        except SpotifyCredentialError as exc:
+            return Response(
+                {'detail': exc.detail, 'error': exc.code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if session.status != 'lobby':
             return Response(

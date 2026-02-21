@@ -80,4 +80,53 @@ final class JukeDateParsingTests: XCTestCase {
 
         XCTAssertThrowsError(try decoder.decode(TestModel.self, from: json))
     }
+
+    func testDecoderParsesDatesWithCustomCodingKeys() throws {
+        struct TestModel: Decodable {
+            let inviteCode: String
+            let tracksPerPlayer: Int
+            let createdAt: Date
+
+            enum CodingKeys: String, CodingKey {
+                case inviteCode
+                case tracksPerPlayer
+                case createdAt
+            }
+        }
+
+        let json = """
+        {
+            "invite_code": "ABCD1234",
+            "tracks_per_player": 3,
+            "created_at": "2026-01-15T10:30:00.123Z"
+        }
+        """.data(using: .utf8)!
+
+        let decoder = JukeDateParsing.makeDecoder()
+        let model = try decoder.decode(TestModel.self, from: json)
+
+        XCTAssertEqual(model.inviteCode, "ABCD1234")
+        XCTAssertEqual(model.tracksPerPlayer, 3)
+        XCTAssertNotNil(model.createdAt)
+    }
+
+    func testDecoderConvertsSnakeCaseToCamelCaseWithoutCustomCodingKeys() throws {
+        struct TestModel: Decodable {
+            let inviteCode: String
+            let tracksPerPlayer: Int
+        }
+
+        let json = """
+        {
+            "invite_code": "ABCD1234",
+            "tracks_per_player": 3
+        }
+        """.data(using: .utf8)!
+
+        let decoder = JukeDateParsing.makeDecoder()
+        let model = try decoder.decode(TestModel.self, from: json)
+
+        XCTAssertEqual(model.inviteCode, "ABCD1234")
+        XCTAssertEqual(model.tracksPerPlayer, 3)
+    }
 }

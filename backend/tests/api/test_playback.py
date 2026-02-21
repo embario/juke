@@ -1,4 +1,5 @@
-from unittest.mock import patch
+import time
+from unittest.mock import MagicMock, patch
 
 from django.utils import timezone
 from rest_framework import status
@@ -7,6 +8,7 @@ from social_django.models import UserSocialAuth
 from spotipy.exceptions import SpotifyException
 
 from juke_auth.models import JukeUser
+from juke_auth.spotify_credentials import SpotifyAccessToken
 
 
 class PlaybackAPITests(APITestCase):
@@ -192,3 +194,32 @@ class PlaybackAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         client.seek_track.assert_called_with(position_ms=42000, device_id='device-1')
+
+    @patch('catalog.services.playback.SpotifyCredentialBroker.issue_access_token')
+    @patch('catalog.services.playback.spotipy.Spotify')
+    def test_playback_retries_with_forced_refresh_after_401(
+        self,
+        mock_spotify,
+        mock_issue_access_token,
+    ):
+        first_client = MagicMock()
+        second_client = MagicMock()
+        third_client = MagicMock()
+
+        first_client.start_playback.side_effect = SpotifyException(401, -1, 'The access token expired')
+        second_client.start_playback.return_value = None
+        third_client.current_playback.return_value = self._playback_payload()
+        mock_spotify.side_effect = [first_client, second_client, third_client]
+
+        token = SpotifyAccessToken(value='token-2', expires_at=time.time() + 3600)
+        mock_issue_access_token.side_effect = [token, token, token, token]
+
+        response = self.client.post(
+            f'{self.playback_url}play/',
+            data={'track_uri': 'spotify:track:123', 'device_id': 'device-abc'},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertTrue(
+            any(call.kwargs.get('force_refresh') is True for call in mock_issue_access_token.call_args_list)
+        )

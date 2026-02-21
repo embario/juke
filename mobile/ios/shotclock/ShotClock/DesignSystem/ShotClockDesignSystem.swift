@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import JukeKit
 
 // MARK: - Tokens
 
@@ -16,6 +17,22 @@ enum SCPalette {
     static let success = Color(hex: "#10B981")
     static let warning = Color(hex: "#FBBF24")
     static let error = Color(hex: "#F43F5E")
+}
+
+struct SCJukeTheme: JukeTheme {
+    let background = SCPalette.background
+    let panel = SCPalette.panel
+    let panelAlt = SCPalette.panelAlt
+    let accent = SCPalette.accent
+    let accentSoft = SCPalette.accentSoft
+    let secondary = SCPalette.secondary
+    let text = SCPalette.text
+    let muted = SCPalette.muted
+    let border = SCPalette.border
+    let success = SCPalette.success
+    let warning = SCPalette.warning
+    let error = SCPalette.error
+    let primaryButtonForeground = SCPalette.text
 }
 
 extension Color {

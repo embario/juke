@@ -15,34 +15,16 @@ struct AddTracksView: View {
 
             VStack(spacing: 0) {
                 // Search bar
-                HStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(SCPalette.muted)
-                    TextField("Search Spotify...", text: $viewModel.searchQuery)
-                        .foregroundColor(SCPalette.text)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .onSubmit {
-                            viewModel.search(token: session.token)
-                        }
-                    if !viewModel.searchQuery.isEmpty {
-                        Button {
-                            viewModel.searchQuery = ""
-                            viewModel.searchResults = []
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(SCPalette.muted)
-                        }
+                JukeKitTrackSearchField(
+                    text: $viewModel.searchQuery,
+                    placeholder: "Search Spotify...",
+                    onSubmit: {
+                        viewModel.search(token: session.token)
+                    },
+                    onClear: {
+                        viewModel.searchResults = []
                     }
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-                .background(SCPalette.panelAlt.opacity(0.65))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(SCPalette.border, lineWidth: 1)
                 )
-                .cornerRadius(14)
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
                 .padding(.bottom, 12)
@@ -50,7 +32,7 @@ struct AddTracksView: View {
                 // Content
                 if viewModel.isSearching {
                     Spacer()
-                    SCSpinner()
+                    JukeKitTrackSearchLoadingView(message: "Loading Tracks, please wait...")
                     Spacer()
                 } else if viewModel.searchResults.isEmpty && !viewModel.searchQuery.isEmpty {
                     Spacer()

@@ -62,7 +62,8 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
    - When problems occur during testing or development, agents are authorized to inspect backend, web, and iOS/Android logs in their respective locations and Docker containers.
    - No explicit virtualenv is required; agents must use Docker containers for troubleshooting and log inspection.
    - No explicit permission is required to read log files or use `logcat`.
-8. **Iterative mobile development loop (MANDATORY)**
+8. **Iterating mode (MANDATORY for mobile fixes)**
+   - "Iterating" means a tight manual-test loop: user reports issue -> agent inspects logs -> agent ships a fix + tests -> rebuild/rerun -> repeat.
    - For each change, rebuild and rerun using the platform build script (`scripts/build_and_run_ios.sh -p <project>` or `scripts/build_and_run_android.sh -p <project>`).
    - Capture the PIDs printed by the script (Android emulator PID + app PID; iOS app PID) and use them to scope log inspection.
    - Review the per-run logs saved by the scripts before checking backend/web logs in Docker containers.

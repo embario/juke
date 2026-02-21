@@ -3,14 +3,33 @@
 ## Location & Layout
 
 ```
-mobile/ios/juke
-├── juke-iOS.xcodeproj/          # Project file used by scripts + CI
-├── juke-iOS/                    # App sources (SwiftUI/UIKit, Assets.xcassets, Config)
-├── juke-iOSTests/               # Unit tests
-└── juke-iOSUITests/             # UI test target
+mobile/ios/
+├── juke/                        # Juke app target + tests
+├── shotclock/                   # ShotClock app target + tests
+├── tunetrivia/                  # TuneTrivia app target + tests
+└── Packages/JukeKit/            # Shared Swift package used by all iOS apps
 ```
 
-All iOS project files now live under `mobile/ios/juke`; the former root-level `iOS/` directory has been removed.
+All iOS projects and shared packages live under `mobile/ios`.
+
+## Naming Conventions (MANDATORY)
+
+These naming rules apply to all iOS app targets (`juke`, `shotclock`, `tunetrivia`) and shared packages (`Packages/JukeKit`):
+
+- Use `UpperCamelCase` for Swift types (`struct`, `class`, `enum`, `protocol`) and `lowerCamelCase` for properties, methods, and variables.
+- Use `camelCase` model properties in Swift for API payloads (`inviteCode`, `tracksPerPlayer`) and rely on shared coding strategy for snake_case JSON from backend.
+- Name files after the primary type (`HomeView.swift`, `SessionService.swift`, `JukeAPIClient.swift`). One primary type per file unless a small helper enum/extension is tightly coupled.
+- Keep view models suffixed with `ViewModel`, services with `Service`, and stores/managers with `Store` or `Manager` consistently across all apps.
+- Prefix cross-app shared types in `JukeKit` with `Juke` when ambiguity is possible (`JukeAPIClient`, `JukeSessionStore`, `JukeAuthService`).
+- Keep app-specific namespaces clear:
+  - `Juke*` for Juke app domain types.
+  - `PowerHour*` / `ShotClock*` for ShotClock domain types.
+  - `TuneTrivia*` for TuneTrivia domain types.
+- Test files must mirror production type names with `Tests` suffix (`JukeDateParsingTests.swift`, `HomeViewModelTests.swift`); test methods follow `test<Behavior>_<ExpectedResult>()`.
+- Avoid new hyphenated product/module names in code identifiers. Hyphens may remain in legacy Xcode target names, but Swift symbols and new modules should be alphanumeric `UpperCamelCase`.
+- Use `UPPER_SNAKE_CASE` only for compile-time flags/env keys; use `lowerCamelCase` for Swift constants (`static let defaultTimeout`).
+
+When introducing shared logic, prefer moving it into `Packages/JukeKit` with neutral, reusable naming instead of duplicating app-specific implementations.
 
 ## Toolchain
 
@@ -22,7 +41,8 @@ All iOS project files now live under `mobile/ios/juke`; the former root-level `i
 
 ```bash
 # Automated path (build + simulator boot + install + launch)
-scripts/build_and_run_ios.sh "iPhone 17 Pro"   # optional simulator name argument
+scripts/build_and_run_ios.sh -p <project>      # required: juke, shotclock, tunetrivia
+scripts/build_and_run_ios.sh -p <project> -s "iPhone 17 Pro"   # optional simulator override
 
 # Manual path
 xed mobile/ios/juke/juke-iOS.xcodeproj          # opens Xcode
@@ -30,12 +50,12 @@ xed mobile/ios/juke/juke-iOS.xcodeproj          # opens Xcode
 ```
 
 The helper script:
-1. Builds the `juke-iOS` scheme into `.derived-data` at repo root.
+1. Builds the selected project scheme (`juke-iOS`, `ShotClock`, or `TuneTrivia`) into `.derived-data` at repo root.
 2. Resolves/boots the requested simulator via `xcrun simctl`.
 3. Installs the Debug app bundle (`.app`).
 4. Launches it using `xcrun simctl launch` and the bundle ID.
 
-Logs from `xcodebuild` stream to `/tmp/juke-ios-build.log` for quick inspection after failures.
+Per-run logs are written under `logs/` (for example `ios-build-<project>-<timestamp>.log` and `simulator-<project>-<device>-<timestamp>.log`).
 
 ## Troubleshooting Permissions (MANDATORY)
 

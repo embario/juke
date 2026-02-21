@@ -3,8 +3,19 @@ import JukeKit
 
 struct CreateSessionView: View {
     @EnvironmentObject var session: JukeSessionStore
-    @StateObject private var viewModel = CreateSessionViewModel()
+    @StateObject private var viewModel: CreateSessionViewModel
     @Environment(\.dismiss) private var dismiss
+    let existingSession: PowerHourSession?
+    let onSessionSaved: (PowerHourSession) -> Void
+
+    init(
+        existingSession: PowerHourSession? = nil,
+        onSessionSaved: @escaping (PowerHourSession) -> Void = { _ in }
+    ) {
+        self.existingSession = existingSession
+        self.onSessionSaved = onSessionSaved
+        _viewModel = StateObject(wrappedValue: CreateSessionViewModel(session: existingSession))
+    }
 
     var body: some View {
         ZStack {
@@ -129,10 +140,18 @@ struct CreateSessionView: View {
 
                     SCStatusBanner(message: viewModel.errorMessage, variant: .error)
 
-                    // Create button
+                    // Save button
                     Button {
                         Task {
-                            if let _ = await viewModel.createSession(token: session.token) {
+                            let savedSession: PowerHourSession?
+                            if let existingSession {
+                                savedSession = await viewModel.updateSession(id: existingSession.id, token: session.token)
+                            } else {
+                                savedSession = await viewModel.createSession(token: session.token)
+                            }
+
+                            if let savedSession {
+                                onSessionSaved(savedSession)
                                 dismiss()
                             }
                         }
@@ -140,7 +159,7 @@ struct CreateSessionView: View {
                         if viewModel.isLoading {
                             SCSpinner()
                         } else {
-                            Text("Create Session")
+                            Text(existingSession == nil ? "Create Session" : "Save Changes")
                         }
                     }
                     .buttonStyle(SCButtonStyle(variant: .primary))
@@ -151,7 +170,7 @@ struct CreateSessionView: View {
                 .padding(.vertical, 24)
             }
         }
-        .navigationTitle("New Session")
+        .navigationTitle(existingSession == nil ? "New Session" : "Edit Session")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
     }

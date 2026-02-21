@@ -25,6 +25,12 @@ struct SessionService {
         try await api.get("/api/v1/powerhour/sessions/\(id)/", token: token)
     }
 
+    func updateSession(id: String, request: UpdateSessionRequest, token: String) async throws -> PowerHourSession {
+        struct UpdateAck: Decodable {}
+        let _: UpdateAck = try await api.patch("/api/v1/powerhour/sessions/\(id)/", body: request, token: token)
+        return try await getSession(id: id, token: token)
+    }
+
     func deleteSession(id: String, token: String) async throws {
         try await api.delete("/api/v1/powerhour/sessions/\(id)/", token: token)
     }

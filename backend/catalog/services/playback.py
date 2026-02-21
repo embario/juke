@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import abc
 import logging
-import time
 from typing import Any, Callable, Dict, Optional
 
 from django.utils import timezone
 from rest_framework.exceptions import APIException
 from social_django.models import UserSocialAuth
-from social_django.utils import load_strategy
 import spotipy
 from spotipy.exceptions import SpotifyException
+
+from juke_auth.spotify_credentials import SpotifyCredentialBroker, SpotifyCredentialError
 
 logger = logging.getLogger(__name__)
 
@@ -159,56 +159,17 @@ class PlaybackService:
 class SpotifyPlaybackProvider(PlaybackProvider):
     slug = 'spotify'
     social_provider = 'spotify'
-    TOKEN_SKEW_SECONDS = 45
 
     def __init__(self, user, social_account: Optional[UserSocialAuth] = None) -> None:
         super().__init__(user, social_account)
-        self.strategy = load_strategy()
+        self.credential_broker = SpotifyCredentialBroker(user=self.user)
 
-    def _require_social_account(self) -> UserSocialAuth:
-        if not self.social_account:
-            raise PlaybackProviderNotLinked('Link your Spotify account to control playback.')
-        return self.social_account
-
-    def _ensure_access_token(self) -> str:
-        account = self._require_social_account()
-        data = account.extra_data or {}
-        token = data.get('access_token')
-        expires_at = data.get('expires_at') or data.get('expires')
-        now = time.time()
-
-        if expires_at:
-            try:
-                expires_ts = float(expires_at)
-            except (TypeError, ValueError):
-                expires_ts = 0
-            if expires_ts - self.TOKEN_SKEW_SECONDS <= now:
-                self._refresh_token(account)
-                data = account.extra_data or {}
-                token = data.get('access_token')
-
-        if not token:
-            raise PlaybackProviderNotLinked('Spotify authentication expired. Please reconnect your account.')
-        return token
-
-    def _refresh_token(self, account: UserSocialAuth) -> None:
-        refresh_token = account.extra_data.get('refresh_token') if account.extra_data else None
-        if not refresh_token:
-            raise PlaybackProviderNotLinked('Spotify authentication is missing a refresh token.')
+    def _ensure_access_token(self, *, force_refresh: bool = False) -> str:
         try:
-            account.refresh_token(self.strategy)
-            account.refresh_from_db()
-            self.social_account = account
-        except Exception as exc:  # pylint: disable=broad-except
-            response_detail = ''
-            response = getattr(exc, 'response', None)
-            if response is not None:
-                try:
-                    response_detail = response.text
-                except Exception:  # pragma: no cover - best effort logging
-                    response_detail = ''
-            logger.error('Unable to refresh Spotify token: %s %s', exc, response_detail)
-            raise PlaybackProviderNotLinked('Spotify authentication expired. Please reconnect your account.') from exc
+            token = self.credential_broker.issue_access_token(force_refresh=force_refresh)
+        except SpotifyCredentialError as exc:
+            raise PlaybackProviderNotLinked(exc.detail) from exc
+        return token.value
 
     def _client(self) -> spotipy.Spotify:
         token = self._ensure_access_token()
@@ -224,7 +185,7 @@ class SpotifyPlaybackProvider(PlaybackProvider):
                 token_invalid = exc.http_status == 401 and attempts == 0
                 if token_invalid:
                     logger.debug('Spotify token expired for user %s; attempting refresh.', getattr(self.user, 'pk', self.user))
-                    self._refresh_token(self._require_social_account())
+                    self._ensure_access_token(force_refresh=True)
                     attempts += 1
                     continue
                 playback_not_found = exc.http_status == 404 and exc.code == -1
