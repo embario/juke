@@ -1,28 +1,7 @@
 package fm.tunetrivia.mobile.data.network.dto
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-
-@Serializable
-data class LoginRequest(
-    val username: String,
-    val password: String,
-)
-
-@Serializable
-data class LoginResponse(
-    val token: String,
-)
-
-@Serializable
-data class RegisterRequest(
-    val username: String,
-    val email: String,
-    val password: String,
-    @SerialName("password_confirm") val passwordConfirm: String,
-)
-
-@Serializable
-data class RegisterResponse(
-    val detail: String? = null,
-)
+// Delegated to JukeCore — typealiases for existing import compatibility.
+typealias LoginRequest = fm.juke.core.auth.dto.LoginRequest
+typealias LoginResponse = fm.juke.core.auth.dto.LoginResponse
+typealias RegisterRequest = fm.juke.core.auth.dto.RegisterRequest
+typealias RegisterResponse = fm.juke.core.auth.dto.RegisterResponse

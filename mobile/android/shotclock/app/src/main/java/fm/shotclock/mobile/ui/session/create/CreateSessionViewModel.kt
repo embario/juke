@@ -7,7 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fm.shotclock.mobile.core.di.ServiceLocator
 import fm.shotclock.mobile.data.network.dto.CreateSessionRequest
-import fm.shotclock.mobile.data.network.humanReadableMessage
+import fm.juke.core.network.humanReadableMessage
 import fm.shotclock.mobile.data.repository.PowerHourRepository
 import fm.shotclock.mobile.model.PowerHourSession
 import kotlinx.coroutines.launch

@@ -14,7 +14,7 @@ import fm.tunetrivia.mobile.core.design.TuneTriviaPalette
 import fm.tunetrivia.mobile.core.design.components.TuneTriviaBackground
 import fm.tunetrivia.mobile.core.design.components.TuneTriviaSpinner
 import fm.tunetrivia.mobile.ui.auth.AuthRoute
-import fm.tunetrivia.mobile.ui.session.AppSessionUiState
+import fm.juke.core.session.AppSessionUiState
 import fm.tunetrivia.mobile.ui.session.AppSessionViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 

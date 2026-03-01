@@ -14,7 +14,7 @@ import fm.shotclock.mobile.core.design.ShotClockPalette
 import fm.shotclock.mobile.core.design.components.ShotClockBackground
 import fm.shotclock.mobile.core.design.components.ShotClockSpinner
 import fm.shotclock.mobile.ui.auth.AuthRoute
-import fm.shotclock.mobile.ui.session.AppSessionUiState
+import fm.juke.core.session.AppSessionUiState
 import fm.shotclock.mobile.ui.session.AppSessionViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 

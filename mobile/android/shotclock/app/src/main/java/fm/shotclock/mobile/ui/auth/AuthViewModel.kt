@@ -7,7 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fm.shotclock.mobile.BuildConfig
 import fm.shotclock.mobile.core.di.ServiceLocator
-import fm.shotclock.mobile.data.network.humanReadableMessage
+import fm.juke.core.network.humanReadableMessage
 import fm.shotclock.mobile.data.repository.AuthRepositoryContract
 import kotlinx.coroutines.launch
 

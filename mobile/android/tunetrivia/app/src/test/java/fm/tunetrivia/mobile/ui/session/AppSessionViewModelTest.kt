@@ -1,5 +1,6 @@
 package fm.tunetrivia.mobile.ui.session
 
+import fm.juke.core.session.AppSessionUiState
 import fm.tunetrivia.mobile.data.local.SessionSnapshot
 import fm.tunetrivia.mobile.testutil.FakeAuthRepository
 import fm.tunetrivia.mobile.testutil.MainDispatcherRule

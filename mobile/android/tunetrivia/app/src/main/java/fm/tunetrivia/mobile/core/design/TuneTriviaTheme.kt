@@ -6,11 +6,13 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import fm.juke.core.design.LocalJukePlatformPalette
 
 private val TuneTriviaColors = lightColorScheme(
     primary = TuneTriviaPalette.Accent,
@@ -117,10 +119,12 @@ private val TuneTriviaShapes = Shapes(
 fun TuneTriviaTheme(
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = TuneTriviaColors,
-        typography = TuneTriviaTypography,
-        shapes = TuneTriviaShapes,
-        content = content,
-    )
+    CompositionLocalProvider(LocalJukePlatformPalette provides TuneTriviaPalette) {
+        MaterialTheme(
+            colorScheme = TuneTriviaColors,
+            typography = TuneTriviaTypography,
+            shapes = TuneTriviaShapes,
+            content = content,
+        )
+    }
 }

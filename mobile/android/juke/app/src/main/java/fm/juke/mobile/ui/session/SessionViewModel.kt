@@ -19,7 +19,7 @@ sealed interface SessionUiState {
 
 class SessionViewModel(
     private val repository: AuthRepositoryContract = ServiceLocator.authRepository,
-    private val sessionStore: fm.juke.mobile.data.local.SessionStore = ServiceLocator.sessionStore,
+    private val sessionStore: fm.juke.mobile.data.local.JukeSessionStore = ServiceLocator.sessionStore,
     private val profileRepository: fm.juke.mobile.data.repository.ProfileRepository = ServiceLocator.profileRepository,
 ) : ViewModel() {
 

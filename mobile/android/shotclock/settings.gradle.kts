@@ -16,3 +16,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "ShotClock"
 include(":app")
+
+includeBuild("../../Packages/JukeCore") {
+    dependencySubstitution {
+        substitute(module("fm.juke:core")).using(project(":"))
+    }
+}

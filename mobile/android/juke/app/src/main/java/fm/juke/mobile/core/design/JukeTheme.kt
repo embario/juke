@@ -8,11 +8,13 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import fm.juke.core.design.LocalJukePlatformPalette
 
 private val DarkColors = darkColorScheme(
     primary = JukePalette.Accent,
@@ -125,10 +127,12 @@ fun JukeTheme(
     useDarkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (useDarkTheme) DarkColors else LightColors,
-        typography = JukeTypography,
-        shapes = JukeShapes,
-        content = content,
-    )
+    CompositionLocalProvider(LocalJukePlatformPalette provides JukePalette) {
+        MaterialTheme(
+            colorScheme = if (useDarkTheme) DarkColors else LightColors,
+            typography = JukeTypography,
+            shapes = JukeShapes,
+            content = content,
+        )
+    }
 }
