@@ -6,10 +6,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fm.juke.mobile.core.di.ServiceLocator
-import fm.juke.mobile.data.network.humanReadableMessage
 import fm.juke.mobile.data.repository.ProfileRepository
-import fm.juke.mobile.model.MusicProfile
-import fm.juke.mobile.model.ProfileSummary
+import fm.juke.core.network.humanReadableMessage
+import fm.juke.core.profile.MusicProfile
+import fm.juke.core.profile.ProfileSummary
 import kotlinx.coroutines.launch
 
 data class ProfileUiState(

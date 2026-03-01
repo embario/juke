@@ -15,7 +15,7 @@ Use this file as the first stop for work selection.
 | mlcore-phase4-hardening-cutover | ML Core Phase 4 - Hardening, model operations, cutover, and legacy ML removal | ready | p1 | unassigned | BACKEND/ML | platform | 4 | `tasks/mlcore-phase4-hardening-cutover-and-legacy-removal.md` | 2026-02-11 |
 | spotify-credentials-unification | Unify Spotify credentials across backend, web, and all apps | review | p1 | codex | ALL/GENERAL | platform | 5 | `tasks/spotify-credentials-unification.md` | 2026-02-21 |
 | spotify-provider-signup-onboarding | Support onboarding-complete registration flow for Spotify-first signup | ready | p1 | unassigned | ALL/GENERAL | platform | 4 | `tasks/spotify-provider-signup-onboarding.md` | 2026-02-21 |
-| shotclock-android-data-layer-recovery | Restore ShotClock Android data layer and compile baseline | ready | p1 | unassigned | ANDROID | android | 3 | `tasks/shotclock-android-data-layer-recovery.md` | 2026-02-16 |
+| shotclock-android-data-layer-recovery | Restore ShotClock Android data layer and compile baseline | review | p1 | codex | ANDROID | android | 3 | `tasks/shotclock-android-data-layer-recovery.md` | 2026-03-01 |
 | shotclock-qol-iterative-improvements | Iterate on ShotClock QoL, session reliability, and UX polish | in_progress | p1 | codex | IOS | ios | 4 | `tasks/shotclock-qol-iterative-improvements.md` | 2026-02-16 |
 | shotclock-qol-followup-improvements | Follow-up ShotClock QoL improvements and polish pass | ready | p1 | unassigned | IOS | ios | 3 | `tasks/shotclock-qol-followup-improvements.md` | 2026-02-21 |
 | onboarding-contract-profile-unification | Unify onboarding contract and profile data sources across clients | ready | p1 | unassigned | ALL/GENERAL | platform | 4 | `tasks/onboarding-contract-and-profile-source-unification.md` | 2026-02-16 |
@@ -26,6 +26,6 @@ Use this file as the first stop for work selection.
 | cross-platform-notifications-reengagement | Build cross-platform notifications and re-engagement journeys | ready | p2 | unassigned | ALL/GENERAL | platform | 4 | `tasks/cross-platform-notifications-and-re-engagement.md` | 2026-02-16 |
 | social-graph-activity-foundation | Build social graph and follow/activity foundations | ready | p2 | unassigned | ALL/GENERAL | platform | 5 | `tasks/social-graph-and-follow-activity-foundation.md` | 2026-02-16 |
 | native-juke-world-mobile | Deliver native Juke World experience for iOS and Android | ready | p2 | unassigned | CLIENTS | clients | 4 | `tasks/native-juke-world-ios-android-experience.md` | 2026-02-16 |
-| android-reusable-app-component-library | Reusable App component library | ready | p2 | unassigned | ANDROID | android | 5 | `tasks/android-reusable-app-component-library.md` | 2026-02-10 |
+| android-reusable-app-component-library | Reusable App component library | review | p2 | codex | ANDROID | android | 5 | `tasks/android-reusable-app-component-library.md` | 2026-03-01 |
 | ios-reusable-app-component-library | Reusable App component library | ready | p2 | unassigned | IOS | ios | 5 | `tasks/ios-reusable-app-component-library.md` | 2026-02-10 |
 | backlog-migrate-todo | Migrate legacy TODO entries into task files | done | p2 | unassigned | PROCESS | process | 1 | `tasks/TODO` | 2026-02-10 |

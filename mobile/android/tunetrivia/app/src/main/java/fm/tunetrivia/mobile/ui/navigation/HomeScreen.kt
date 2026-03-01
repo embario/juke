@@ -29,6 +29,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import fm.juke.core.session.SessionSnapshot
 import fm.tunetrivia.mobile.core.design.TuneTriviaPalette
 import fm.tunetrivia.mobile.core.design.components.TuneTriviaBackground
 import fm.tunetrivia.mobile.core.design.components.TuneTriviaButton
@@ -37,7 +38,6 @@ import fm.tunetrivia.mobile.core.design.components.TuneTriviaCard
 import fm.tunetrivia.mobile.core.design.components.TuneTriviaSpinner
 import fm.tunetrivia.mobile.core.design.components.TuneTriviaStatusBanner
 import fm.tunetrivia.mobile.core.design.components.TuneTriviaStatusVariant
-import fm.tunetrivia.mobile.data.local.SessionSnapshot
 import fm.tunetrivia.mobile.model.SessionStatus
 import fm.tunetrivia.mobile.model.TuneTriviaSession
 import fm.tunetrivia.mobile.ui.session.home.HomeViewModel

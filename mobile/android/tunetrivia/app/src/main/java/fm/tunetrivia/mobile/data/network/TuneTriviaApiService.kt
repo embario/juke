@@ -4,10 +4,6 @@ import fm.tunetrivia.mobile.data.network.dto.AddTrackRequest
 import fm.tunetrivia.mobile.data.network.dto.CreateSessionRequest
 import fm.tunetrivia.mobile.data.network.dto.JoinSessionRequest
 import fm.tunetrivia.mobile.data.network.dto.LeaderboardEntryDto
-import fm.tunetrivia.mobile.data.network.dto.LoginRequest
-import fm.tunetrivia.mobile.data.network.dto.LoginResponse
-import fm.tunetrivia.mobile.data.network.dto.RegisterRequest
-import fm.tunetrivia.mobile.data.network.dto.RegisterResponse
 import fm.tunetrivia.mobile.data.network.dto.SessionDetailResponse
 import fm.tunetrivia.mobile.data.network.dto.SpotifyTrackDto
 import fm.tunetrivia.mobile.data.network.dto.SubmitGuessRequest
@@ -25,15 +21,6 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface TuneTriviaApiService {
-    @POST("api/v1/auth/api-auth-token/")
-    suspend fun login(@Body body: LoginRequest): LoginResponse
-
-    @POST("api/v1/auth/accounts/register/")
-    suspend fun register(@Body body: RegisterRequest): RegisterResponse
-
-    @POST("api/v1/auth/session/logout/")
-    suspend fun logout(@Header("Authorization") token: String)
-
     @POST("api/v1/tunetrivia/sessions/")
     suspend fun createSession(
         @Header("Authorization") token: String,

@@ -3,8 +3,8 @@ package fm.juke.mobile.ui.session
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fm.juke.mobile.core.di.ServiceLocator
-import fm.juke.mobile.data.local.SessionSnapshot
-import fm.juke.mobile.data.repository.AuthRepositoryContract
+import fm.juke.core.auth.AuthRepositoryContract
+import fm.juke.core.session.SessionSnapshot
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +19,7 @@ sealed interface SessionUiState {
 
 class SessionViewModel(
     private val repository: AuthRepositoryContract = ServiceLocator.authRepository,
-    private val sessionStore: fm.juke.mobile.data.local.SessionStore = ServiceLocator.sessionStore,
+    private val sessionStore: fm.juke.mobile.data.local.JukeSessionStore = ServiceLocator.sessionStore,
     private val profileRepository: fm.juke.mobile.data.repository.ProfileRepository = ServiceLocator.profileRepository,
 ) : ViewModel() {
 

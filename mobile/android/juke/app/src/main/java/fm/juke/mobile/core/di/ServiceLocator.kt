@@ -2,50 +2,25 @@ package fm.juke.mobile.core.di
 
 import android.content.Context
 import fm.juke.mobile.BuildConfig
-import fm.juke.mobile.data.local.SessionStore
-import fm.juke.mobile.data.network.JukeApiService
-import fm.juke.mobile.data.repository.AuthRepository
-import fm.juke.mobile.data.repository.AuthRepositoryContract
-import fm.juke.mobile.data.repository.CatalogRepository
+import fm.juke.mobile.data.local.JukeSessionStore
 import fm.juke.mobile.data.repository.ProfileRepository
-import kotlinx.serialization.json.Json
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
+import fm.juke.core.auth.AuthRepository
+import fm.juke.core.auth.AuthRepositoryContract
+import fm.juke.core.catalog.CatalogRepository
+import fm.juke.core.di.CoreConfig
+import fm.juke.core.di.CoreServiceLocator
+import fm.juke.core.network.NetworkModule
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.dnsoverhttps.DnsOverHttps
 import okhttp3.Dns
-import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import coil.ImageLoader
-import java.net.InetAddress
 import android.os.Build
+import java.net.InetAddress
 
 object ServiceLocator {
-    private lateinit var appContext: Context
-
-    private val json = Json {
-        ignoreUnknownKeys = true
-        explicitNulls = false
-    }
-
-    private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = if (BuildConfig.DEBUG) {
-            HttpLoggingInterceptor.Level.BODY
-        } else {
-            HttpLoggingInterceptor.Level.BASIC
-        }
-    }
-
-    private val okHttpClient by lazy {
-        OkHttpClient.Builder()
-            .addInterceptor(loggingInterceptor)
-            .build()
-    }
 
     val imageLoader: ImageLoader by lazy {
-        ensureInitialized()
-        val baseClient = okHttpClient.newBuilder().build()
+        val baseClient = CoreServiceLocator.okHttpClient.newBuilder().build()
         val client = if (BuildConfig.DEBUG && !isEmulator()) {
             val bootstrap = listOf(
                 InetAddress.getByName("8.8.8.8"),
@@ -76,62 +51,43 @@ object ServiceLocator {
         } else {
             baseClient
         }
-        ImageLoader.Builder(appContext)
+        ImageLoader.Builder(CoreServiceLocator.appContext)
             .okHttpClient(client)
             .build()
     }
 
-    private val retrofit by lazy {
-        val contentType = "application/json".toMediaType()
-        Retrofit.Builder()
-            .baseUrl(normalizedBaseUrl())
-            .addConverterFactory(json.asConverterFactory(contentType))
-            .client(okHttpClient)
-            .build()
-    }
-
-    val apiService: JukeApiService by lazy {
-        retrofit.create(JukeApiService::class.java)
-    }
-
-    val sessionStore: SessionStore by lazy {
-        ensureInitialized()
-        SessionStore(appContext)
+    // Juke overrides sessionStore with JukeSessionStore (adds onboarding).
+    val sessionStore: JukeSessionStore by lazy {
+        JukeSessionStore(CoreServiceLocator.appContext)
     }
 
     val authRepository: AuthRepositoryContract by lazy {
-        AuthRepository(apiService, sessionStore)
+        AuthRepository(CoreServiceLocator.coreApiService, sessionStore)
     }
 
     val profileRepository: ProfileRepository by lazy {
-        ProfileRepository(apiService, sessionStore)
+        ProfileRepository(CoreServiceLocator.coreApiService, sessionStore)
     }
 
     val catalogRepository: CatalogRepository by lazy {
-        CatalogRepository(apiService, sessionStore)
+        CatalogRepository(CoreServiceLocator.coreApiService, sessionStore)
     }
 
     fun init(context: Context) {
-        if (!::appContext.isInitialized) {
-            appContext = context.applicationContext
-        }
+        CoreServiceLocator.init(
+            context,
+            CoreConfig(
+                backendUrl = BuildConfig.BACKEND_URL,
+                isDebug = BuildConfig.DEBUG,
+            ),
+        )
     }
 
-    internal fun normalizedBaseUrl(rawBaseUrl: String = BuildConfig.BACKEND_URL): String {
-        val raw = rawBaseUrl.trimEnd('/')
-        return "$raw/"
-    }
+    internal fun normalizedBaseUrl(rawBaseUrl: String = BuildConfig.BACKEND_URL): String =
+        NetworkModule.normalizeUrl(rawBaseUrl)
 
-    internal fun normalizedFrontendUrl(rawFrontendUrl: String = BuildConfig.FRONTEND_URL): String {
-        val raw = rawFrontendUrl.trimEnd('/')
-        return "$raw/"
-    }
-
-    private fun ensureInitialized() {
-        check(::appContext.isInitialized) {
-            "ServiceLocator.init(Context) must be called before accessing dependencies."
-        }
-    }
+    internal fun normalizedFrontendUrl(rawFrontendUrl: String = BuildConfig.FRONTEND_URL): String =
+        NetworkModule.normalizeUrl(rawFrontendUrl)
 
     private fun isEmulator(): Boolean {
         val fingerprint = Build.FINGERPRINT

@@ -1,8 +1,5 @@
 package fm.shotclock.mobile.ui.session.playback
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +42,7 @@ import fm.shotclock.mobile.core.design.components.ShotClockSpinner
 import fm.shotclock.mobile.core.design.components.ShotClockStatusBanner
 import fm.shotclock.mobile.model.SessionStatus
 import fm.shotclock.mobile.model.SessionTrack
+import fm.shotclock.mobile.ui.session.share.sharePlaylist
 
 @Composable
 fun PlaybackScreen(
@@ -336,25 +334,5 @@ private fun CompletionOverlay(
         ) {
             Text(text = "Done")
         }
-    }
-}
-
-private fun sharePlaylist(context: Context, tracks: List<SessionTrack>, title: String) {
-    val trackList = tracks.mapIndexed { index, track ->
-        "${index + 1}. ${track.trackName} - ${track.trackArtist}"
-    }.joinToString("\n")
-    val message = "ShotClock Playlist: $title\n\n$trackList"
-    val intent = Intent(Intent.ACTION_SENDTO).apply {
-        data = Uri.parse("smsto:")
-        putExtra("sms_body", message)
-    }
-    if (intent.resolveActivity(context.packageManager) != null) {
-        context.startActivity(intent)
-    } else {
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, message)
-        }
-        context.startActivity(Intent.createChooser(shareIntent, "Share playlist"))
     }
 }

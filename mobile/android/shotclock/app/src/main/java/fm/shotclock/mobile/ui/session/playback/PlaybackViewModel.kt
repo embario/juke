@@ -6,9 +6,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fm.shotclock.mobile.core.di.ServiceLocator
-import fm.shotclock.mobile.data.network.humanReadableMessage
+import fm.juke.core.network.humanReadableMessage
 import fm.shotclock.mobile.data.repository.PowerHourRepository
 import fm.shotclock.mobile.model.PowerHourSession
+import fm.shotclock.mobile.model.SessionPlayer
 import fm.shotclock.mobile.model.SessionStatus
 import fm.shotclock.mobile.model.SessionTrack
 import kotlinx.coroutines.Job
@@ -19,6 +20,7 @@ import kotlinx.coroutines.launch
 data class PlaybackUiState(
     val isLoading: Boolean = true,
     val session: PowerHourSession? = null,
+    val players: List<SessionPlayer> = emptyList(),
     val tracks: List<SessionTrack> = emptyList(),
     val secondsRemaining: Int = 0,
     val error: String? = null,
@@ -30,7 +32,7 @@ data class PlaybackUiState(
 
 class PlaybackViewModel(
     private val sessionId: String,
-    private val currentUserId: Int,
+    private val currentUsername: String,
     private val repository: PowerHourRepository = ServiceLocator.powerHourRepository,
 ) : ViewModel() {
 
@@ -41,7 +43,7 @@ class PlaybackViewModel(
     private var countdownJob: Job? = null
 
     val isAdmin: Boolean
-        get() = uiState.session?.adminId == currentUserId
+        get() = uiState.players.any { it.username == currentUsername && it.isAdmin }
 
     val currentTrack: SessionTrack?
         get() {
@@ -72,6 +74,7 @@ class PlaybackViewModel(
                         session = session,
                         hasEnded = session.status == SessionStatus.ENDED,
                     )
+                    loadPlayers()
                     loadTracks()
                     if (session.status == SessionStatus.ACTIVE) {
                         startCountdown(session.secondsPerTrack)
@@ -96,6 +99,15 @@ class PlaybackViewModel(
         }
     }
 
+    private fun loadPlayers() {
+        viewModelScope.launch {
+            repository.listPlayers(sessionId)
+                .onSuccess { players ->
+                    uiState = uiState.copy(players = players)
+                }
+        }
+    }
+
     private fun startPolling() {
         pollingJob?.cancel()
         pollingJob = viewModelScope.launch {
@@ -109,6 +121,8 @@ class PlaybackViewModel(
                             session = updated,
                             hasEnded = updated.status == SessionStatus.ENDED,
                         )
+                        loadPlayers()
+                        loadTracks()
                         // Reset countdown on track change or resume
                         if (updated.currentTrackIndex != previousIndex ||
                             (previousStatus == SessionStatus.PAUSED && updated.status == SessionStatus.ACTIVE)

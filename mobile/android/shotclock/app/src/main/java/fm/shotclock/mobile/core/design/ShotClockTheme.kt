@@ -1,17 +1,18 @@
 package fm.shotclock.mobile.core.design
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import fm.juke.core.design.LocalJukePlatformPalette
 
 private val ShotClockColors = darkColorScheme(
     primary = ShotClockPalette.Accent,
@@ -118,10 +119,12 @@ private val ShotClockShapes = Shapes(
 fun ShotClockTheme(
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = ShotClockColors,
-        typography = ShotClockTypography,
-        shapes = ShotClockShapes,
-        content = content,
-    )
+    CompositionLocalProvider(LocalJukePlatformPalette provides ShotClockPalette) {
+        MaterialTheme(
+            colorScheme = ShotClockColors,
+            typography = ShotClockTypography,
+            shapes = ShotClockShapes,
+            content = content,
+        )
+    }
 }

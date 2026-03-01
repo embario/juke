@@ -1,8 +1,5 @@
 package fm.shotclock.mobile.ui.session.ended
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +48,7 @@ import fm.shotclock.mobile.data.repository.PowerHourRepository
 import fm.shotclock.mobile.model.PowerHourSession
 import fm.shotclock.mobile.model.SessionPlayer
 import fm.shotclock.mobile.model.SessionTrack
+import fm.shotclock.mobile.ui.session.share.sharePlaylist
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -306,24 +304,4 @@ private fun SectionLabel(title: String) {
         color = ShotClockPalette.Muted,
         modifier = Modifier.padding(start = 4.dp),
     )
-}
-
-private fun sharePlaylist(context: Context, tracks: List<SessionTrack>, title: String) {
-    val trackList = tracks.mapIndexed { index, track ->
-        "${index + 1}. ${track.trackName} - ${track.trackArtist}"
-    }.joinToString("\n")
-    val message = "ShotClock Playlist: $title\n\n$trackList"
-    val intent = Intent(Intent.ACTION_SENDTO).apply {
-        data = Uri.parse("smsto:")
-        putExtra("sms_body", message)
-    }
-    if (intent.resolveActivity(context.packageManager) != null) {
-        context.startActivity(intent)
-    } else {
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, message)
-        }
-        context.startActivity(Intent.createChooser(shareIntent, "Share playlist"))
-    }
 }

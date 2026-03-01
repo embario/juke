@@ -1,5 +1,6 @@
 package fm.juke.mobile.data.network
 
+import fm.juke.core.network.humanReadableMessage
 import java.io.IOException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -21,7 +22,7 @@ class NetworkErrorsTest {
         val error = IOException("socket closed")
 
         assertEquals(
-            "We couldn't talk to the Juke servers. Please check your connection.",
+            "We couldn't reach the servers. Please check your connection.",
             error.humanReadableMessage(),
         )
     }

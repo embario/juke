@@ -1,13 +1,13 @@
 ---
 id: shotclock-android-data-layer-recovery
 title: Restore ShotClock Android data layer and compile baseline
-status: ready
+status: review
 priority: p1
-owner: unassigned
+owner: codex
 area: android
 label: ANDROID
 complexity: 3
-updated_at: 2026-02-16
+updated_at: 2026-03-01
 ---
 
 ## Goal
@@ -52,8 +52,23 @@ Recover the missing ShotClock Android data layer so the app compiles, runs, and 
 ## Handoff
 
 - Completed:
-- Task seeded from cross-client audit; missing `data` package references confirmed in source imports.
+- Restored the missing ShotClock Android compatibility layer under `app/src/main/java/fm/shotclock/mobile/data/`:
+  - Added `ShotClockApiService` for power-hour endpoints while keeping `CoreApiService` inheritance for shared auth/profile/catalog calls.
+  - Added session/request DTOs (`SessionDto`, `SessionPlayerDto`, `SessionTrackDto`, `CreateSessionRequest`, etc.).
+  - Added local `CatalogRepository` and `ProfileRepository` wrappers that translate `JukeCore` models back into ShotClock’s existing domain models.
+  - Added `PowerHourRepository` with session CRUD, playback controls, player/track listing, add/remove/import track flows, and token handling.
+- Updated `SessionListRoute`, `SessionLobbyViewModel`, and `PlaybackViewModel` to use the authenticated username from `SessionSnapshot` for admin checks, matching the current `JukeCore` auth snapshot contract.
+- Verified `cd mobile/android/shotclock && BACKEND_URL=http://localhost:8000 ./gradlew :app:compileDebugKotlin` succeeds.
+- Verified `cd mobile/android/shotclock && BACKEND_URL=http://localhost:8000 ./gradlew :app:testDebugUnitTest` succeeds (`NO-SOURCE` for unit tests).
+- Verified `scripts/build_and_run_android.sh -p shotclock` succeeds.
+- Captured run artifacts:
+  - Emulator PID: `56117`
+  - App PID: `2844`
+  - Emulator log: `logs/emulator-jukeApi36-20260301-095154.log`
+  - Build/install log: `logs/android-build-shotclock-20260301-095154.log`
+  - App logcat: `logs/logcat-shotclock-20260301-095154.log`
 - Next:
-- Rebuild data/local, data/network, and data/repository modules incrementally and restore compile.
+- Manually verify login, session list, session creation, add tracks, and playback on emulator/device against a live backend.
+- Add focused unit tests around the restored `PowerHourRepository` mapping/flow if ShotClock test coverage is being expanded.
 - Blockers:
-
+- None for compile/build baseline. Backend-connected manual flow verification is still pending.

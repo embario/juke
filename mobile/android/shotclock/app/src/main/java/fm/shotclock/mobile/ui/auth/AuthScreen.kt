@@ -17,6 +17,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import fm.juke.core.auth.AuthMode
+import fm.juke.core.auth.AuthUiState
 import fm.shotclock.mobile.core.design.ShotClockPalette
 import fm.shotclock.mobile.core.design.components.*
 

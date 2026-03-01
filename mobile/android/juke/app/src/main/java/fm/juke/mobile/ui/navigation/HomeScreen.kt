@@ -26,7 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import fm.juke.mobile.core.design.JukePalette
 import fm.juke.mobile.core.design.components.JukeBackground
-import fm.juke.mobile.data.local.SessionSnapshot
+import fm.juke.core.session.SessionSnapshot
 import fm.juke.mobile.ui.profile.ProfileRoute
 import fm.juke.mobile.ui.search.CatalogRoute
 import androidx.compose.foundation.clickable

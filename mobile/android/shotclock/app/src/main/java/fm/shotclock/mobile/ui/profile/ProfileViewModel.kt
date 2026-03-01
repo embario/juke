@@ -6,7 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fm.shotclock.mobile.core.di.ServiceLocator
-import fm.shotclock.mobile.data.network.humanReadableMessage
+import fm.juke.core.network.humanReadableMessage
 import fm.shotclock.mobile.data.repository.ProfileRepository
 import fm.shotclock.mobile.model.MusicProfile
 import kotlinx.coroutines.launch

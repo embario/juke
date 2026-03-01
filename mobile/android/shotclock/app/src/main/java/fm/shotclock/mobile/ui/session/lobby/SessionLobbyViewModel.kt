@@ -6,7 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fm.shotclock.mobile.core.di.ServiceLocator
-import fm.shotclock.mobile.data.network.humanReadableMessage
+import fm.juke.core.network.humanReadableMessage
 import fm.shotclock.mobile.data.repository.PowerHourRepository
 import fm.shotclock.mobile.model.PowerHourSession
 import fm.shotclock.mobile.model.SessionPlayer
@@ -30,7 +30,7 @@ data class SessionLobbyUiState(
 
 class SessionLobbyViewModel(
     private val sessionId: String,
-    private val currentUserId: Int,
+    private val currentUsername: String,
     private val repository: PowerHourRepository = ServiceLocator.powerHourRepository,
 ) : ViewModel() {
 
@@ -40,7 +40,7 @@ class SessionLobbyViewModel(
     private var pollingJob: Job? = null
 
     val isAdmin: Boolean
-        get() = uiState.session?.adminId == currentUserId
+        get() = uiState.players.any { it.username == currentUsername && it.isAdmin }
 
     init {
         loadSession()

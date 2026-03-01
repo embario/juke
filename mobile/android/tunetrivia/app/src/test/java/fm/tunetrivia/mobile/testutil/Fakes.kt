@@ -1,15 +1,10 @@
 package fm.tunetrivia.mobile.testutil
 
-import fm.tunetrivia.mobile.data.local.SessionSnapshot
 import fm.tunetrivia.mobile.data.network.TuneTriviaApiService
 import fm.tunetrivia.mobile.data.network.dto.AddTrackRequest
 import fm.tunetrivia.mobile.data.network.dto.CreateSessionRequest
 import fm.tunetrivia.mobile.data.network.dto.JoinSessionRequest
 import fm.tunetrivia.mobile.data.network.dto.LeaderboardEntryDto
-import fm.tunetrivia.mobile.data.network.dto.LoginRequest
-import fm.tunetrivia.mobile.data.network.dto.LoginResponse
-import fm.tunetrivia.mobile.data.network.dto.RegisterRequest
-import fm.tunetrivia.mobile.data.network.dto.RegisterResponse
 import fm.tunetrivia.mobile.data.network.dto.SessionDetailResponse
 import fm.tunetrivia.mobile.data.network.dto.SpotifyTrackDto
 import fm.tunetrivia.mobile.data.network.dto.SubmitGuessRequest
@@ -19,10 +14,7 @@ import fm.tunetrivia.mobile.data.network.dto.TuneTriviaGuessDto
 import fm.tunetrivia.mobile.data.network.dto.TuneTriviaPlayerDto
 import fm.tunetrivia.mobile.data.network.dto.TuneTriviaRoundDto
 import fm.tunetrivia.mobile.data.network.dto.TuneTriviaSessionDto
-import fm.tunetrivia.mobile.data.repository.AuthRepositoryContract
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 
 object TestFixtures {
     fun sessionDto(
@@ -115,36 +107,6 @@ object TestFixtures {
     )
 }
 
-class FakeAuthRepository : AuthRepositoryContract {
-    private val sessionFlow = MutableStateFlow<SessionSnapshot?>(null)
-
-    var loginResult: Result<Unit> = Result.success(Unit)
-    var registerResult: Result<String> = Result.success("ok")
-    var logoutCalls: Int = 0
-
-    override val session: Flow<SessionSnapshot?> = sessionFlow
-
-    override suspend fun login(username: String, password: String): Result<Unit> = loginResult
-
-    override suspend fun register(
-        username: String,
-        email: String,
-        password: String,
-        confirm: String,
-    ): Result<String> = registerResult
-
-    override suspend fun logout() {
-        logoutCalls += 1
-        sessionFlow.value = null
-    }
-
-    override suspend fun currentSession(): SessionSnapshot? = sessionFlow.value
-
-    fun setSession(snapshot: SessionSnapshot?) {
-        sessionFlow.value = snapshot
-    }
-}
-
 class FakeTuneTriviaApiService : TuneTriviaApiService {
     var lastAuthToken: String? = null
     var lastJoinToken: String? = null
@@ -170,12 +132,6 @@ class FakeTuneTriviaApiService : TuneTriviaApiService {
     var autoSelectError: Throwable? = null
     var awardPointsError: Throwable? = null
     var addTrackDelayMs: Long = 0
-
-    override suspend fun login(body: LoginRequest): LoginResponse = LoginResponse("token")
-
-    override suspend fun register(body: RegisterRequest): RegisterResponse = RegisterResponse("registered")
-
-    override suspend fun logout(token: String) {}
 
     override suspend fun createSession(token: String, body: CreateSessionRequest): SessionDetailResponse {
         lastAuthToken = token

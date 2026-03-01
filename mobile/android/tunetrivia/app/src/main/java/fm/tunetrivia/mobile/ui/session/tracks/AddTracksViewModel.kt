@@ -4,8 +4,8 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import fm.juke.core.network.humanReadableMessage
 import fm.tunetrivia.mobile.core.di.ServiceLocator
-import fm.tunetrivia.mobile.data.network.humanReadableMessage
 import fm.tunetrivia.mobile.data.repository.TuneTriviaRepository
 import fm.tunetrivia.mobile.model.SpotifyTrack
 import kotlinx.coroutines.launch

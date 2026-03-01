@@ -1,0 +1,1 @@
+# JukeCore consumer proguard rules

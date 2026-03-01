@@ -22,6 +22,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import fm.juke.core.auth.AuthMode
+import fm.juke.core.auth.AuthUiState
+import fm.juke.core.auth.canSubmit
 import fm.juke.mobile.core.design.JukeTheme
 import fm.juke.mobile.core.design.components.JukeBackground
 import fm.juke.mobile.core.design.components.JukeButton
@@ -191,15 +194,5 @@ private fun AuthModeToggle(
                 },
             )
         }
-    }
-}
-
-private fun AuthUiState.canSubmit(): Boolean {
-    if (username.trim().isEmpty() || password.isBlank()) return false
-    if (isRegistrationDisabled && mode == AuthMode.REGISTER) return false
-    return if (mode == AuthMode.REGISTER) {
-        email.trim().isNotEmpty() && confirmPassword.isNotBlank()
-    } else {
-        true
     }
 }

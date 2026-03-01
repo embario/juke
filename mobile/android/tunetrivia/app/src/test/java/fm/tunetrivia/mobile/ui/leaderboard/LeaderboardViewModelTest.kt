@@ -1,9 +1,9 @@
 package fm.tunetrivia.mobile.ui.leaderboard
 
 import fm.tunetrivia.mobile.data.repository.TuneTriviaRepository
-import fm.tunetrivia.mobile.testutil.FakeAuthRepository
+import fm.juke.core.testing.FakeAuthRepository
+import fm.juke.core.testing.MainDispatcherRule
 import fm.tunetrivia.mobile.testutil.FakeTuneTriviaApiService
-import fm.tunetrivia.mobile.testutil.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
