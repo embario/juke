@@ -1,6 +1,6 @@
 package fm.shotclock.mobile.model
 
-import fm.shotclock.mobile.data.network.dto.MusicProfileDto
+import fm.juke.core.profile.dto.MusicProfileDto
 
 data class MusicProfile(
     val username: String,

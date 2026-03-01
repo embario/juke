@@ -6,6 +6,7 @@ import fm.tunetrivia.mobile.data.network.dto.CreateSessionRequest
 import fm.tunetrivia.mobile.data.network.dto.JoinSessionRequest
 import fm.tunetrivia.mobile.data.network.dto.SubmitGuessRequest
 import fm.tunetrivia.mobile.data.network.dto.SubmitTriviaRequest
+import fm.juke.core.auth.AuthRepositoryContract
 import fm.tunetrivia.mobile.model.LeaderboardEntry
 import fm.tunetrivia.mobile.model.SessionDetail
 import fm.tunetrivia.mobile.model.SpotifyTrack

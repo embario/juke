@@ -30,7 +30,7 @@ data class SessionLobbyUiState(
 
 class SessionLobbyViewModel(
     private val sessionId: String,
-    private val currentUserId: Int,
+    private val currentUsername: String,
     private val repository: PowerHourRepository = ServiceLocator.powerHourRepository,
 ) : ViewModel() {
 
@@ -40,7 +40,7 @@ class SessionLobbyViewModel(
     private var pollingJob: Job? = null
 
     val isAdmin: Boolean
-        get() = uiState.session?.adminId == currentUserId
+        get() = uiState.players.any { it.username == currentUsername && it.isAdmin }
 
     init {
         loadSession()

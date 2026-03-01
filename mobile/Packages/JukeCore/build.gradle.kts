@@ -10,6 +10,10 @@ android {
     namespace = "fm.juke.core"
     compileSdk = 36
 
+    testFixtures {
+        enable = true
+    }
+
     defaultConfig {
         minSdk = 26
 
@@ -79,4 +83,9 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+
+    testFixturesImplementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    testFixturesImplementation("androidx.compose.runtime:runtime")
+    testFixturesImplementation("junit:junit:4.13.2")
+    testFixturesImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
 }

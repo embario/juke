@@ -6,12 +6,12 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import fm.juke.mobile.core.di.ServiceLocator
-import fm.juke.mobile.data.network.humanReadableMessage
-import fm.juke.mobile.data.repository.CatalogRepository
-import fm.juke.mobile.model.Album
-import fm.juke.mobile.model.Artist
-import fm.juke.mobile.model.CatalogResourceType
-import fm.juke.mobile.model.Track
+import fm.juke.core.catalog.Album
+import fm.juke.core.catalog.Artist
+import fm.juke.core.catalog.CatalogRepository
+import fm.juke.core.catalog.CatalogResourceType
+import fm.juke.core.catalog.Track
+import fm.juke.core.network.humanReadableMessage
 import kotlinx.coroutines.launch
 
 data class CatalogUiState(

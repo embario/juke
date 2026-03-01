@@ -7,9 +7,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.util.Log
 import fm.juke.mobile.core.di.ServiceLocator
-import fm.juke.mobile.data.network.humanReadableMessage
-import fm.juke.mobile.data.repository.CatalogRepository
 import fm.juke.mobile.data.repository.ProfileRepository
+import fm.juke.core.catalog.CatalogRepository
+import fm.juke.core.network.humanReadableMessage
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject

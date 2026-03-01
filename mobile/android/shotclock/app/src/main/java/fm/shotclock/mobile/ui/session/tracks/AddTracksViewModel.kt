@@ -5,15 +5,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import fm.shotclock.mobile.core.di.ServiceLocator
 import fm.juke.core.network.humanReadableMessage
+import fm.juke.core.search.DebouncedSearch
+import fm.shotclock.mobile.core.di.ServiceLocator
 import fm.shotclock.mobile.data.repository.CatalogRepository
 import fm.shotclock.mobile.data.repository.PowerHourRepository
 import fm.shotclock.mobile.model.PowerHourSession
 import fm.shotclock.mobile.model.SessionTrack
 import fm.shotclock.mobile.model.Track
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 enum class AddTracksTab { SEARCH, IMPORT }
@@ -40,7 +39,7 @@ class AddTracksViewModel(
     var uiState by mutableStateOf(AddTracksUiState())
         private set
 
-    private var searchJob: Job? = null
+    private val debouncedSearch = DebouncedSearch(viewModelScope)
 
     init {
         loadSessionTracks()
@@ -82,13 +81,10 @@ class AddTracksViewModel(
 
     fun updateQuery(value: String) {
         uiState = uiState.copy(query = value, error = null)
-        searchJob?.cancel()
         if (value.trim().length >= 2) {
-            searchJob = viewModelScope.launch {
-                delay(400) // debounce
-                performSearch(value.trim())
-            }
+            debouncedSearch.submit(value.trim(), ::performSearch)
         } else {
+            debouncedSearch.cancel()
             uiState = uiState.copy(searchResults = emptyList())
         }
     }
@@ -160,5 +156,10 @@ class AddTracksViewModel(
                     )
                 }
         }
+    }
+
+    override fun onCleared() {
+        debouncedSearch.cancel()
+        super.onCleared()
     }
 }

@@ -3,10 +3,10 @@ package fm.juke.mobile.core.di
 import android.content.Context
 import fm.juke.mobile.BuildConfig
 import fm.juke.mobile.data.local.JukeSessionStore
-import fm.juke.mobile.data.repository.AuthRepository
-import fm.juke.mobile.data.repository.AuthRepositoryContract
-import fm.juke.mobile.data.repository.CatalogRepository
 import fm.juke.mobile.data.repository.ProfileRepository
+import fm.juke.core.auth.AuthRepository
+import fm.juke.core.auth.AuthRepositoryContract
+import fm.juke.core.catalog.CatalogRepository
 import fm.juke.core.di.CoreConfig
 import fm.juke.core.di.CoreServiceLocator
 import fm.juke.core.network.NetworkModule
@@ -14,8 +14,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.dnsoverhttps.DnsOverHttps
 import okhttp3.Dns
 import coil.ImageLoader
-import java.net.InetAddress
 import android.os.Build
+import java.net.InetAddress
 
 object ServiceLocator {
 

@@ -1,5 +1,6 @@
 package fm.juke.mobile.data.network
 
+import fm.juke.core.network.humanReadableMessage
 import java.io.IOException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody

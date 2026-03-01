@@ -31,10 +31,10 @@ import fm.juke.mobile.core.design.components.JukeInputField
 import fm.juke.mobile.core.design.components.JukeSpinner
 import fm.juke.mobile.core.design.components.JukeStatusBanner
 import fm.juke.mobile.core.design.components.JukeStatusVariant
-import fm.juke.mobile.model.Album
-import fm.juke.mobile.model.Artist
-import fm.juke.mobile.model.CatalogResourceType
-import fm.juke.mobile.model.Track
+import fm.juke.core.catalog.Album
+import fm.juke.core.catalog.Artist
+import fm.juke.core.catalog.CatalogResourceType
+import fm.juke.core.catalog.Track
 
 @Composable
 fun CatalogRoute(viewModel: CatalogViewModel = viewModel()) {

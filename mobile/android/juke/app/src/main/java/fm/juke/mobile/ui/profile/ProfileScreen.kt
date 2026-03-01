@@ -31,8 +31,8 @@ import fm.juke.mobile.core.design.components.JukeInputField
 import fm.juke.mobile.core.design.components.JukeSpinner
 import fm.juke.mobile.core.design.components.JukeStatusBanner
 import fm.juke.mobile.core.design.components.JukeStatusVariant
-import fm.juke.mobile.model.MusicProfile
-import fm.juke.mobile.model.ProfileSummary
+import fm.juke.core.profile.MusicProfile
+import fm.juke.core.profile.ProfileSummary
 
 @Composable
 fun ProfileRoute(viewModel: ProfileViewModel = viewModel()) {

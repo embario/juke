@@ -3,11 +3,11 @@ id: android-reusable-app-component-library
 title: Reusable App component library
 status: review
 priority: p2
-owner: claude
+owner: codex
 area: android
 label: ANDROID
 complexity: 5
-updated_at: 2026-02-26
+updated_at: 2026-03-01
 ---
 
 ## Goal
@@ -24,7 +24,6 @@ Establish a reusable Android app component library.
 
 - Full visual redesign unrelated to component reuse.
 - iOS/web component library implementation (tracked separately).
-- Feature 7 (Utilities & Test Infrastructure) — deferred to a follow-up session.
 
 ## Acceptance Criteria
 
@@ -79,20 +78,52 @@ Establish a reusable Android app component library.
 - Each app's theme composable provides `LocalJukePlatformPalette` via `CompositionLocalProvider`.
 - All app components rewritten as thin wrappers that delegate to core, preserving exact existing function signatures.
 - Exceptions kept app-specific: `JukeBackground` (structurally different glow layout), all three app Buttons (variant systems differ too much to unify).
-- Builds and unit tests pass for Juke and TuneTrivia. ShotClock compiles but has pre-existing missing data layer issues unrelated to this work.
+- Builds and unit tests pass for Juke and TuneTrivia. ShotClock's compile gap was resolved in follow-up recovery work, and the reusable-library compatibility layer now builds across all three Android apps.
+
+### Feature 7: Utilities & Test Infrastructure
+- Added shared Android text-sharing helpers in `JukeCore` (`fm.juke.core.share.shareSmsOrText`) and moved ShotClock's duplicated share-launch logic behind a single app-local helper file that keeps ShotClock-specific copy in the app module.
+- Added shared `DebouncedSearch` in `JukeCore` and switched ShotClock's add-tracks flow to use it instead of maintaining its own ad hoc debounce job.
+- Enabled `JukeCore` `testFixtures` and extracted reusable Android test helpers into `fm.juke.core.testing`:
+  - `MainDispatcherRule`
+  - `FakeAuthRepository`
+  - `FakeSessionStore`
+- Updated TuneTrivia's tests to consume the shared test fixtures instead of app-local copies.
+- Moved shared auth/session tests into `JukeCore` (`AuthViewModelTest`, `AppSessionViewModelTest`) and deleted redundant app-wrapper tests from Juke and TuneTrivia.
+
+### Follow-up Boundary Cleanup
+- Removed app-local compatibility shims for shared auth/session/catalog/profile types across `juke`, `shotclock`, and `tunetrivia`.
+- Updated app code and tests to import shared `JukeCore` types directly where the implementation is genuinely common.
+- Kept app-only code in app modules:
+  - `juke`: `JukeSessionStore`, onboarding flow, profile specialization, world UI.
+  - `shotclock`: power-hour API surface, DTOs/models, repositories, and session/playback flows.
+  - `tunetrivia`: trivia API surface, DTOs/models, repository, and game flows.
+- Converted each app auth view model into a thin app wrapper over `fm.juke.core.auth.AuthViewModel`, so common auth state/logic only exists once in `JukeCore`.
+- Deleted stale wrapper files that only re-exported `JukeCore` types from app packages, including old auth/session aliases, DTO aliases, model aliases, network error re-exports, and the unused `JukeApiService`.
+- Verified all three Android apps still compile, pass unit tests, and launch via `scripts/build_and_run_android.sh`.
 
 ## Next
 
-- **Feature 7 (Utilities & Test Infrastructure)**: Extract `ShareUtils`, `DebouncedSearch`, `MainDispatcherRule`, `FakeAuthRepository`, `FakeSessionStore` into JukeCore. Low-risk, follows the same typealias migration pattern. Documented in `docs/arch/android-juke-core-architecture.md` under "Feature 7 Remaining Work".
-- **ShotClock data layer recovery**: ShotClock still can't fully compile due to missing app-specific API service, DTOs, and repositories (tracked separately in `tasks/shotclock-android-data-layer-recovery.md`).
+- **Boundary hardening**: add lint or architecture checks if we want to prevent future app-package re-export shims for `JukeCore` classes.
+- **ShotClock runtime validation**: backend-connected manual flow validation is still tracked in `tasks/shotclock-android-data-layer-recovery.md`.
 
 ## Blockers
 
 - None for completed features.
-- Feature 7 deferred by user decision, not blocked.
 
 ## Handoff
 
 - Completed: Features 1–6 (Networking, Auth, DI, Session, Profile/Catalog, UI Components)
-- Next: Feature 7 (Utilities & Test Infra) in a follow-up session
+- Completed follow-up: shared/core boundary cleanup across all three Android apps
+- Verification:
+  - `cd mobile/Packages/JukeCore && BACKEND_URL=http://localhost:8000 ./gradlew test`
+  - `cd mobile/android/juke && BACKEND_URL=http://localhost:8000 ./gradlew :app:compileDebugKotlin`
+  - `cd mobile/android/juke && BACKEND_URL=http://localhost:8000 ./gradlew :app:testDebugUnitTest`
+  - `cd mobile/android/shotclock && BACKEND_URL=http://localhost:8000 ./gradlew :app:compileDebugKotlin`
+  - `cd mobile/android/shotclock && BACKEND_URL=http://localhost:8000 ./gradlew :app:testDebugUnitTest`
+  - `cd mobile/android/tunetrivia && BACKEND_URL=http://localhost:8000 ./gradlew :app:compileDebugKotlin`
+  - `cd mobile/android/tunetrivia && BACKEND_URL=http://localhost:8000 ./gradlew :app:testDebugUnitTest`
+  - `scripts/build_and_run_android.sh -p juke` -> emulator PID `39334`, app PID `2588`, logs in `logs/android-build-juke-20260301-180824.log` and `logs/logcat-juke-20260301-180824.log`
+  - `scripts/build_and_run_android.sh -p shotclock` -> emulator reused on `emulator-5554`, app PID `4126`, logs in `logs/android-build-shotclock-20260301-181442.log` and `logs/logcat-shotclock-20260301-181442.log`
+  - `scripts/build_and_run_android.sh -p tunetrivia` -> emulator reused on `emulator-5554`, app PID `4028`, logs in `logs/android-build-tunetrivia-20260301-181442.log` and `logs/logcat-tunetrivia-20260301-181442.log`
+- Next: architecture guardrails if we want CI to prevent future `JukeCore` re-export shims
 - Blockers: None

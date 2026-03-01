@@ -48,7 +48,7 @@ import fm.shotclock.mobile.core.design.components.ShotClockInputField
 import fm.shotclock.mobile.core.design.components.ShotClockSpinner
 import fm.shotclock.mobile.core.design.components.ShotClockStatusBanner
 import fm.shotclock.mobile.core.di.ServiceLocator
-import fm.shotclock.mobile.data.local.SessionSnapshot
+import fm.juke.core.session.SessionSnapshot
 import fm.juke.core.network.humanReadableMessage
 import fm.shotclock.mobile.data.repository.PowerHourRepository
 import fm.shotclock.mobile.model.PowerHourSession
@@ -216,7 +216,7 @@ fun SessionListRoute(
             val lobbyVm = remember(s.sessionId) {
                 SessionLobbyViewModel(
                     sessionId = s.sessionId,
-                    currentUserId = session.userId,
+                    currentUsername = session.username,
                 )
             }
             SessionLobbyScreen(
@@ -251,7 +251,7 @@ fun SessionListRoute(
             val playbackVm = remember(s.sessionId) {
                 PlaybackViewModel(
                     sessionId = s.sessionId,
-                    currentUserId = session.userId,
+                    currentUsername = session.username,
                 )
             }
             PlaybackScreen(

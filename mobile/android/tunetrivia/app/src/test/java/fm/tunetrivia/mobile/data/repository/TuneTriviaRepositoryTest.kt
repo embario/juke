@@ -1,7 +1,7 @@
 package fm.tunetrivia.mobile.data.repository
 
-import fm.tunetrivia.mobile.data.local.SessionSnapshot
-import fm.tunetrivia.mobile.testutil.FakeAuthRepository
+import fm.juke.core.session.SessionSnapshot
+import fm.juke.core.testing.FakeAuthRepository
 import fm.tunetrivia.mobile.testutil.FakeTuneTriviaApiService
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest

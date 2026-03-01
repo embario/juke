@@ -1,6 +1,6 @@
 package fm.shotclock.mobile.model
 
-import fm.shotclock.mobile.data.network.dto.TrackDto
+import fm.juke.core.catalog.dto.TrackDto
 
 data class Track(
     val id: Int,

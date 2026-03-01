@@ -3,8 +3,6 @@ package fm.shotclock.mobile.ui.session.lobby
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,6 +59,7 @@ import fm.shotclock.mobile.model.PowerHourSession
 import fm.shotclock.mobile.model.SessionPlayer
 import fm.shotclock.mobile.model.SessionStatus
 import fm.shotclock.mobile.model.SessionTrack
+import fm.shotclock.mobile.ui.session.share.shareInvite
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -454,21 +453,4 @@ private fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText("Invite Code", text))
     Toast.makeText(context, "Invite code copied!", Toast.LENGTH_SHORT).show()
-}
-
-private fun shareInvite(context: Context, inviteCode: String, title: String) {
-    val message = "Join my ShotClock session \"$title\"! Use invite code: $inviteCode"
-    val intent = Intent(Intent.ACTION_SENDTO).apply {
-        data = Uri.parse("smsto:")
-        putExtra("sms_body", message)
-    }
-    if (intent.resolveActivity(context.packageManager) != null) {
-        context.startActivity(intent)
-    } else {
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, message)
-        }
-        context.startActivity(Intent.createChooser(shareIntent, "Share invite"))
-    }
 }

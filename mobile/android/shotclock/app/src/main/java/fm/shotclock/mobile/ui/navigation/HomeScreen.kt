@@ -9,9 +9,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import fm.juke.core.session.SessionSnapshot
 import fm.shotclock.mobile.core.design.ShotClockPalette
 import fm.shotclock.mobile.core.design.components.ShotClockBackground
-import fm.shotclock.mobile.data.local.SessionSnapshot
 import fm.shotclock.mobile.ui.session.lobby.SessionListRoute
 import fm.shotclock.mobile.ui.profile.ProfileRoute
 
