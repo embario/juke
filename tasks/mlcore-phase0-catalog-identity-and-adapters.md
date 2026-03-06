@@ -1,9 +1,9 @@
 ---
 id: mlcore-phase0-catalog-identity-adapters
 title: ML Core Phase 0 - Catalog identity augmentation and adapter IDs
-status: ready
+status: review
 priority: p1
-owner: unassigned
+owner: codex
 area: platform
 label: BACKEND/ML
 labels:
@@ -12,7 +12,7 @@ labels:
   - backend
   - migrations
 complexity: 4
-updated_at: 2026-02-16
+updated_at: 2026-03-05
 ---
 
 ## Goal
@@ -63,5 +63,15 @@ Augment existing catalog models to become the canonical identity layer for the i
 ## Handoff
 
 - Completed:
+  - Upgraded backend to Python 3.14 (`backend/Dockerfile`, `backend/pyproject.toml`) for native `uuid.uuid7()`.
+  - `juke_id` (UUIDv7, unique, non-null, auto-default) added to `MusicResource` abstract base → inherited by Genre/Artist/Album/Track. Removed redundant `db_index` (unique implies index; avoids PostgreSQL reverse-migration churn).
+  - `mbid` (UUID, nullable, indexed) added to Artist/Album/Track only (Genre intentionally excluded per arch §5.1).
+  - Migration `catalog/migrations/0003_*.py` uses 3-step pattern (AddField null=True → RunPython backfill → AlterField unique=True) per Django docs on unique callable-default fields. Reversibility verified.
+  - Four adapter models added (`GenreExternalIdentifier`, `ArtistExternalIdentifier`, `AlbumExternalIdentifier`, `TrackExternalIdentifier`) with FK `to_field='juke_id'`, `unique_together=('source','external_id')`, explicit `db_table` names matching arch spec. Migration `catalog/migrations/0004_*.py`.
+  - `IdentityResolver` service (`catalog/services/identity.py`) implementing precedence: `juke_id` → `mbid` → adapter. Deterministic no-fall-through on miss. `select_related` on adapter lookups.
+  - Tests: `tests/unit/test_external_identifiers.py` (9 tests), `tests/unit/test_identity_resolver.py` (17 tests). Full suite: 214 tests pass.
 - Next:
+  - Phase 1 work (`mlcore-phase1-metadata-cooccurrence`) can now reference `juke_id` as the canonical join key.
+  - Consider backfilling `ExternalIdentifier` rows from existing `spotify_id` values once adapter-write paths are exercised.
 - Blockers:
+  - None.

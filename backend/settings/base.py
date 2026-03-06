@@ -148,6 +148,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'juke_auth',
     'catalog',
+    'mlcore',
     'recommender',
     'powerhour',
     'tunetrivia',
@@ -335,6 +336,17 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 RECOMMENDER_ENGINE_BASE_URL = _required_env("RECOMMENDER_ENGINE_BASE_URL")
 RECOMMENDER_ENGINE_TIMEOUT = int(os.environ.get('RECOMMENDER_ENGINE_TIMEOUT', '15'))
+
+# ML Core — corpus governance (arch §6)
+# License mode consumed by mlcore.services.corpus.LicensePolicy:
+#   production — only production_approved sources + production/both env rows (default; use for serving)
+#   research   — research/both env rows (experiments only; promotion guard still enforces prod rules)
+#   both       — any row with a non-blank license (reconciliation tooling; not for training)
+JUKE_ALLOWED_LICENSES = os.environ.get('JUKE_ALLOWED_LICENSES', 'production')
+# Fail-closed: unknown sources (absent from SOURCE_CLASSIFICATION) are classified 'blocked'.
+# Setting False downgrades unknowns to 'research_only' — only meaningful in research mode,
+# since production mode whitelists against production_approved regardless.
+JUKE_LICENSE_FAIL_CLOSED = _env_flag('JUKE_LICENSE_FAIL_CLOSED', True)
 
 # OpenAI / TuneTrivia
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')

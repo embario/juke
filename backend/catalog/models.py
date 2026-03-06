@@ -1,4 +1,5 @@
 import datetime
+import uuid
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -9,9 +10,17 @@ CHOICES_ALBUM_TYPE = (
     ('COMPILATION', 'Compilation'),
 )
 
+EXTERNAL_ID_SOURCES = (
+    ('spotify', 'Spotify'),
+    ('apple_music', 'Apple Music'),
+    ('youtube_music', 'YouTube Music'),
+    ('musicbrainz', 'MusicBrainz'),
+)
+
 
 class MusicResource(models.Model):
     """ Generic class for all music-related resource models. """
+    juke_id = models.UUIDField(unique=True, null=False, default=uuid.uuid7, editable=False)
     spotify_id = models.CharField(max_length=30, blank=False, null=False, unique=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
@@ -32,6 +41,7 @@ class Genre(MusicResource):
 class Artist(MusicResource):
     name = models.CharField(blank=False, null=False, max_length=512)
     genres = models.ManyToManyField(Genre, related_name='artists')
+    mbid = models.UUIDField(null=True, blank=True, db_index=True)
 
 
 def _normalize_release_date(raw_value, precision=None):
@@ -74,6 +84,7 @@ class Album(MusicResource):
 
     total_tracks = models.IntegerField(null=False)
     release_date = models.DateField(null=False)
+    mbid = models.UUIDField(null=True, blank=True, db_index=True)
 
     @staticmethod
     def get_or_create_with_validated_data(data):
@@ -101,6 +112,7 @@ class Track(MusicResource):
     disc_number = models.IntegerField(null=False, default=1)
     duration_ms = models.IntegerField(null=False)
     explicit = models.BooleanField(null=False, default=False)
+    mbid = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta:
         unique_together = ('album', 'track_number')
@@ -120,6 +132,46 @@ class Track(MusicResource):
             defaults=defaults,
         )
         return instance, created
+
+
+class ExternalIdentifier(models.Model):
+    """Maps external provider IDs onto canonical catalog resources (via juke_id FK)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source = models.CharField(max_length=32, choices=EXTERNAL_ID_SOURCES)
+    external_id = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        abstract = True
+        unique_together = ('source', 'external_id')
+
+
+class GenreExternalIdentifier(ExternalIdentifier):
+    genre = models.ForeignKey(Genre, to_field='juke_id', on_delete=models.CASCADE, related_name='external_ids')
+
+    class Meta(ExternalIdentifier.Meta):
+        db_table = 'catalog_genre_external_id'
+
+
+class ArtistExternalIdentifier(ExternalIdentifier):
+    artist = models.ForeignKey(Artist, to_field='juke_id', on_delete=models.CASCADE, related_name='external_ids')
+
+    class Meta(ExternalIdentifier.Meta):
+        db_table = 'catalog_artist_external_id'
+
+
+class AlbumExternalIdentifier(ExternalIdentifier):
+    album = models.ForeignKey(Album, to_field='juke_id', on_delete=models.CASCADE, related_name='external_ids')
+
+    class Meta(ExternalIdentifier.Meta):
+        db_table = 'catalog_album_external_id'
+
+
+class TrackExternalIdentifier(ExternalIdentifier):
+    track = models.ForeignKey(Track, to_field='juke_id', on_delete=models.CASCADE, related_name='external_ids')
+
+    class Meta(ExternalIdentifier.Meta):
+        db_table = 'catalog_track_external_id'
 
 
 class ImageResource(models.Model):
