@@ -52,6 +52,7 @@ Deliver production-usable non-embedding baselines for metadata graph and cooccur
 - Risks:
 - Sparse cooccurrence coverage for niche items.
 - Source data normalization quality impacts PMI scores.
+- Arch §3.2 lists "conflicting rights annotations" as a fail-closed rejection trigger, but the Phase 0 `CorpusManifest` schema (one `license` + one `allowed_envs` per row) has no single-row field where a conflict can live. Interpretation: this is a cross-row reconciliation check at ingestion time — reject or flag when the same `checksum` appears under multiple `source` values with disagreeing `allowed_envs`/`license`. The Phase 0 `LicensePolicy.evaluate()` does not cover this; the training pipeline here must add the check before feeding `eligible_queryset()` output to the trainer.
 
 ## Handoff
 
