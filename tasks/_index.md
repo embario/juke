@@ -21,7 +21,17 @@ Use this file as the first stop for work selection.
 | onboarding-contract-profile-unification | Unify onboarding contract and profile data sources across clients | ready | p1 | unassigned | ALL/GENERAL | platform | 4 | `tasks/onboarding-contract-and-profile-source-unification.md` | 2026-02-16 |
 | musicprofile-favorites-resolvable-identity | MusicProfile favorite_* stores name strings — make resolvable to juke_ids | blocked | p2 | unassigned | BACKEND/ML | platform | 3 | `tasks/musicprofile-favorites-resolvable-identity.md` | 2026-03-06 |
 | mlcore-cooccurrence-training-provenance | Co-occurrence training provenance — version stats table + link eval to training runs | ready | p2 | unassigned | BACKEND/ML | platform | 3 | `tasks/mlcore-cooccurrence-training-provenance.md` | 2026-03-06 |
-| realtime-world-session-events | Build realtime event infrastructure for Juke World and live sessions | ready | p1 | unassigned | ALL/GENERAL | platform | 5 | `tasks/realtime-world-and-session-events-platform.md` | 2026-02-16 |
+| realtime-world-session-events | Build realtime event infrastructure for Juke World and live sessions | ready | p1 | unassigned | ALL/GENERAL | platform | 5 | `tasks/realtime-world-and-session-events-platform.md` | 2026-03-06 |
+| cli-phase0-architecture-and-design | Juke CLI Phase 0 - Architecture, TUX design, and roadmap generation | review | p1 | codex | CLI | platform | 3 | `tasks/cli-phase0-architecture-and-design.md` | 2026-03-06 |
+| cli-phase1-daemon-ipc-auth | Juke CLI Phase 1 - Daemon skeleton, IPC protocol, auth, polling transport | ready | p1 | unassigned | CLI | cli | 4 | `tasks/cli-phase1-daemon-ipc-auth-foundation.md` | 2026-03-06 |
+| cli-phase2-backend-ws-transport | Juke CLI Phase 2 - Backend WebSocket transport (realtime/ app + ASGI) | ready | p1 | unassigned | BACKEND | backend | 3 | `tasks/cli-phase2-backend-websocket-transport.md` | 2026-03-06 |
+| cli-phase3-catalog-playback-tui | Juke CLI Phase 3 - Catalog browsing, playback controls, and daemon WS client | ready | p1 | unassigned | CLI | cli | 4 | `tasks/cli-phase3-catalog-playback-tui.md` | 2026-03-06 |
+| cli-phase4-recs-and-facts | Juke CLI Phase 4 - Recommendations pane and fun-facts sidebar | blocked | p2 | unassigned | CLI | cli | 3 | `tasks/cli-phase4-recommendations-and-facts.md` | 2026-03-06 |
+| cli-phase5-direct-messaging | Juke CLI Phase 5 - Direct messaging pane | blocked | p2 | unassigned | CLI | cli | 4 | `tasks/cli-phase5-direct-messaging.md` | 2026-03-06 |
+| cli-phase6-music-generation | Juke CLI Phase 6 - Music generation prompt pane | blocked | p3 | unassigned | CLI | cli | 3 | `tasks/cli-phase6-music-generation.md` | 2026-03-06 |
+| backend-track-facts-llm | Track fun-facts LLM endpoint | ready | p2 | unassigned | BACKEND | backend | 2 | `tasks/backend-track-facts-llm-endpoint.md` | 2026-03-06 |
+| backend-direct-messaging | Direct messaging foundation - messaging/ app + MessageConsumer | blocked | p2 | unassigned | BACKEND | backend | 4 | `tasks/backend-direct-messaging-foundation.md` | 2026-03-06 |
+| backend-music-generation | Music generation service - prompt to audio via external gen API | ready | p3 | unassigned | BACKEND | backend | 4 | `tasks/backend-music-generation-service.md` | 2026-03-06 |
 | dep-upgrade-phase-1 | Dependency upgrades phase 1 | ready | p1 | unassigned | ALL/GENERAL | platform | 5 | `tasks/dependency-upgrade-audit.md` | 2026-02-11 |
 | clients-feature-parity | Reach feature parity with all Juke app clients | ready | p1 | unassigned | CLIENTS | clients | 5 | `tasks/clients-feature-parity.md` | 2026-02-16 |
 | web-playback-next-track | Fix playback to play the next track in the album | review | p1 | unassigned | WEB | web | 2 | `tasks/web-playback-next-track.md` | 2026-02-11 |

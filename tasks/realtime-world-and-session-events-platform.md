@@ -7,7 +7,7 @@ owner: unassigned
 area: platform
 label: ALL/GENERAL
 complexity: 5
-updated_at: 2026-02-16
+updated_at: 2026-03-06
 ---
 
 ## Goal
@@ -38,6 +38,17 @@ Introduce a shared realtime event layer so Juke World and live session experienc
 
 - Idea rank: `#7`
 - Portfolio classification: `experimental`
+- **Transport provided by cli-phase2.** The WebSocket foundation
+  (`backend/realtime/` app, `TokenAuthMiddleware`, `ProtocolTypeRouter` ASGI
+  switch, `channels-redis` channel layer) is delivered by
+  `tasks/cli-phase2-backend-websocket-transport.md` as reusable platform infra.
+  That task ships with one narrow consumer (`PlaybackConsumer`) as a proving
+  ground. This task inherits the transport and its scope shrinks to: adding
+  `world.*` / `session.*` event types, the consumers + publisher hooks for
+  them, and the web-side subscriptions. No transport strategy decisions left
+  to make — WS via Django Channels, token-header auth, channel-layer pub/sub.
+  See `docs/arch/cli-juke-terminal-architecture.md` §7 for the full transport
+  design.
 - Key files:
 - `/Users/embario/Documents/juke/backend/settings/urls.py`
 - `/Users/embario/Documents/juke/backend/juke_auth/views.py`
@@ -56,6 +67,11 @@ Introduce a shared realtime event layer so Juke World and live session experienc
 - Completed:
 - Task seeded for cross-surface realtime requirements that exceed current polling paths.
 - Next:
-- Select transport, define event schema, and deliver one vertical slice (world points live update).
+- Define `world.*` / `session.*` event schema and deliver one vertical slice
+  (world points live update) on top of the cli-phase2 transport.
 - Blockers:
+- `cli-phase2-backend-ws-transport` provides `backend/realtime/`,
+  `TokenAuthMiddleware`, and the ASGI switch. Soft blocker — this task could
+  still own the transport if the CLI program stalls, but the preferred path is
+  to inherit it.
 
