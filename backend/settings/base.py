@@ -314,6 +314,7 @@ CELERY_TASK_ROUTES = {
     'catalog.tasks.sync_spotify_genres': {'queue': 'catalog'},
     'catalog.tasks.crawl_catalog': {'queue': 'catalog'},
     'recommender.tasks.ingest_training_data': {'queue': 'recommender'},
+    'mlcore.tasks.train_cooccurrence': {'queue': 'mlcore'},
 }
 CELERY_BEAT_SCHEDULE = {
     'sync-spotify-genres-daily': {
@@ -347,6 +348,16 @@ JUKE_ALLOWED_LICENSES = os.environ.get('JUKE_ALLOWED_LICENSES', 'production')
 # Setting False downgrades unknowns to 'research_only' — only meaningful in research mode,
 # since production mode whitelists against production_approved regardless.
 JUKE_LICENSE_FAIL_CLOSED = _env_flag('JUKE_LICENSE_FAIL_CLOSED', True)
+
+# ML Core — recommender defaults (arch §2 decision 14)
+JUKE_RECOMMENDER_DEFAULT_LIMIT = int(os.environ.get('JUKE_RECOMMENDER_DEFAULT_LIMIT', '10'))
+
+# ML Core — promotion gate thresholds (arch §9 Phase 1).
+# Relative lifts are fractions (0.05 = +5%); coverage is absolute fraction of catalog.
+JUKE_PROMOTION_GATE_NDCG_MIN_LIFT = float(os.environ.get('JUKE_PROMOTION_GATE_NDCG_MIN_LIFT', '0.05'))
+JUKE_PROMOTION_GATE_RECALL_MIN_LIFT = float(os.environ.get('JUKE_PROMOTION_GATE_RECALL_MIN_LIFT', '0.03'))
+JUKE_PROMOTION_GATE_COLDSTART_MAX_REGRESSION = float(os.environ.get('JUKE_PROMOTION_GATE_COLDSTART_MAX_REGRESSION', '0.02'))
+JUKE_PROMOTION_GATE_COVERAGE_MIN = float(os.environ.get('JUKE_PROMOTION_GATE_COVERAGE_MIN', '0.30'))
 
 # OpenAI / TuneTrivia
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')

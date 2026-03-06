@@ -5,6 +5,7 @@ import logging
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Sequence
+from uuid import UUID
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
@@ -12,10 +13,13 @@ from pydantic import BaseModel, Field
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from app.scorers import extract_seed_feature_ids, score_cooccurrence, score_metadata
+
 MODEL_VERSION = os.environ.get('RECOMMENDER_MODEL_VERSION', 'v1.0.0')
 VECTOR_DIM = int(os.environ.get('RECOMMENDER_VECTOR_DIM', '32'))
 DB_POOL_MIN = int(os.environ.get('RECOMMENDER_DB_POOL_MIN', '1'))
 DB_POOL_MAX = int(os.environ.get('RECOMMENDER_DB_POOL_MAX', '10'))
+DEFAULT_LIMIT = int(os.environ.get('JUKE_RECOMMENDER_DEFAULT_LIMIT', '10'))
 
 logger = logging.getLogger(__name__)
 
@@ -117,12 +121,12 @@ def _ensure_pool_connection() -> ConnectionPool:
         raise HTTPException(status_code=503, detail='Recommender data unavailable') from exc
 
 
-def _run_query(sql: str) -> List[Dict[str, Any]]:
+def _run_query(sql: str, params: Sequence[Any] | None = None) -> List[Dict[str, Any]]:
     pool = _ensure_pool_connection()
     try:
         with pool.connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(sql)
+                cur.execute(sql, params)
                 return list(cur.fetchall())
     except HTTPException:
         raise
@@ -270,3 +274,103 @@ def recommend(request: RecommendationRequest):
 
     response.generated_at = datetime.utcnow()
     return response
+
+
+# ---------------------------------------------------------------------------
+# ML Core Phase 1 — baseline rankers (arch §7.1, §7.2)
+#
+# These endpoints operate on canonical juke_id UUIDs (arch §5.1). They are
+# independent of the legacy hash-token path above; legacy removal is Phase 4.
+# ---------------------------------------------------------------------------
+
+class BaselineRequest(BaseModel):
+    seed_item_ids: List[UUID] = Field(..., min_length=1)
+    exclude_ids: List[UUID] = Field(default_factory=list)
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=100)
+
+
+class BaselineItem(BaseModel):
+    juke_id: UUID
+    score: float
+    components: Dict[str, float] = Field(default_factory=dict)
+
+
+class BaselineResponse(BaseModel):
+    items: List[BaselineItem]
+    ranker: str
+    seed_count: int
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# Resolve seed track juke_ids → their artist_ids, album_ids, genre_ids.
+# M2M tables use integer PKs, so we join through catalog_track.
+_SEED_FEATURES_SQL = """
+    SELECT
+        t.juke_id,
+        t.album_id,
+        aa.artist_id,
+        ag.genre_id
+    FROM catalog_track t
+    LEFT JOIN catalog_album_artists aa ON aa.album_id = t.album_id
+    LEFT JOIN catalog_artist_genres ag ON ag.artist_id = aa.artist_id
+    WHERE t.juke_id = ANY(%s)
+"""
+
+# Candidates that match ANY seed feature.
+_METADATA_CANDIDATES_SQL = """
+    SELECT DISTINCT
+        t.juke_id,
+        t.album_id,
+        aa.artist_id,
+        ag.genre_id
+    FROM catalog_track t
+    LEFT JOIN catalog_album_artists aa ON aa.album_id = t.album_id
+    LEFT JOIN catalog_artist_genres ag ON ag.artist_id = aa.artist_id
+    WHERE t.album_id = ANY(%s)
+       OR aa.artist_id = ANY(%s)
+       OR ag.genre_id = ANY(%s)
+"""
+
+# Pairs are stored canonically (a < b); query both orientations.
+_COOCCURRENCE_SQL = """
+    SELECT item_b_juke_id AS neighbour, pmi_score, co_count
+    FROM mlcore_item_cooccurrence
+    WHERE item_a_juke_id = ANY(%s)
+    UNION ALL
+    SELECT item_a_juke_id AS neighbour, pmi_score, co_count
+    FROM mlcore_item_cooccurrence
+    WHERE item_b_juke_id = ANY(%s)
+"""
+
+
+def _as_item(s) -> BaselineItem:
+    return BaselineItem(juke_id=s.juke_id, score=s.score, components=s.components)
+
+
+@app.post('/engine/recommend/metadata', response_model=BaselineResponse)
+def recommend_metadata(request: BaselineRequest):
+    exclude = set(request.seed_item_ids) | set(request.exclude_ids)
+    seed_rows = _run_query(_SEED_FEATURES_SQL, [list(request.seed_item_ids)])
+    if not seed_rows:
+        return BaselineResponse(items=[], ranker='metadata', seed_count=len(request.seed_item_ids))
+    albums, artists, genres = extract_seed_feature_ids(seed_rows)
+    cand_rows = _run_query(_METADATA_CANDIDATES_SQL, [albums, artists, genres])
+    scored = score_metadata(seed_rows, cand_rows, exclude, request.limit)
+    return BaselineResponse(
+        items=[_as_item(s) for s in scored],
+        ranker='metadata',
+        seed_count=len(request.seed_item_ids),
+    )
+
+
+@app.post('/engine/recommend/cooccurrence', response_model=BaselineResponse)
+def recommend_cooccurrence(request: BaselineRequest):
+    exclude = set(request.seed_item_ids) | set(request.exclude_ids)
+    seeds = list(request.seed_item_ids)
+    rows = _run_query(_COOCCURRENCE_SQL, [seeds, seeds])
+    scored = score_cooccurrence(rows, exclude, request.limit)
+    return BaselineResponse(
+        items=[_as_item(s) for s in scored],
+        ranker='cooccurrence',
+        seed_count=len(request.seed_item_ids),
+    )
