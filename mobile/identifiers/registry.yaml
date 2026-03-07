@@ -1,0 +1,115 @@
+version: 1
+meta:
+  canonical_identifier_pattern: "com.juke.<project-name>"
+  environments:
+    - development
+    - production
+
+global:
+  environment_refs:
+    development:
+      backend_url_env_var: BACKEND_URL
+      frontend_url_env_var: FRONTEND_URL
+      disable_registration_env_var: DISABLE_REGISTRATION
+    production:
+      backend_url_env_var: BACKEND_URL
+      frontend_url_env_var: FRONTEND_URL
+      disable_registration_env_var: DISABLE_REGISTRATION
+
+  auth:
+    spotify_connect_path: /api/v1/auth/connect/spotify/
+    spotify_connect_token_query_param: token
+    spotify_connect_return_to_query_param: return_to
+
+  signing_env_vars:
+    ios:
+      development_team_env_var: IOS_DEVELOPMENT_TEAM
+      code_sign_identity_env_var: IOS_CODE_SIGN_IDENTITY
+      provisioning_profile_specifier_env_var: IOS_PROVISIONING_PROFILE_SPECIFIER
+    android:
+      keystore_path_env_var: ANDROID_KEYSTORE_PATH
+      key_alias_env_var: ANDROID_KEY_ALIAS
+      keystore_password_env_var: ANDROID_KEYSTORE_PASSWORD
+      key_password_env_var: ANDROID_KEY_PASSWORD
+
+projects:
+  juke:
+    shared:
+      display_name: Juke
+      session_key_prefix: juke
+
+    ios:
+      xcodeproj: mobile/ios/juke/juke-iOS.xcodeproj
+      scheme: juke-iOS
+      target_name: juke-iOS
+      bundle_id: com.juke.juke
+      test_bundle_id: com.juke.juke.tests
+      ui_test_bundle_id: com.juke.juke.uitests
+      url_schemes:
+        - juke
+      universal_link_hosts:
+        - juke.fm
+        - www.juke.fm
+
+    android:
+      gradle_project_dir: mobile/android/juke
+      application_id: com.juke.juke
+      namespace: com.juke.juke
+      launcher_activity: .MainActivity
+      deep_link_schemes:
+        - juke
+      deep_link_hosts:
+        - spotify-callback
+      spotify_connect_return_to: juke://spotify-callback
+
+  shotclock:
+    shared:
+      display_name: ShotClock
+      session_key_prefix: shotclock
+
+    ios:
+      xcodeproj: mobile/ios/shotclock/ShotClock.xcodeproj
+      scheme: ShotClock
+      target_name: ShotClock
+      bundle_id: com.juke.shotclock
+      test_bundle_id: com.juke.shotclock.tests
+      ui_test_bundle_id: com.juke.shotclock.uitests
+      url_schemes:
+        - shotclock
+      universal_link_hosts: []
+
+    android:
+      gradle_project_dir: mobile/android/shotclock
+      application_id: com.juke.shotclock
+      namespace: com.juke.shotclock
+      launcher_activity: .MainActivity
+      deep_link_schemes:
+        - shotclock
+      deep_link_hosts:
+        - verify-user
+
+  tunetrivia:
+    shared:
+      display_name: TuneTrivia
+      session_key_prefix: tunetrivia
+
+    ios:
+      xcodeproj: mobile/ios/tunetrivia/TuneTrivia.xcodeproj
+      scheme: TuneTrivia
+      target_name: TuneTrivia
+      bundle_id: com.juke.tunetrivia
+      test_bundle_id: com.juke.tunetrivia.tests
+      ui_test_bundle_id: com.juke.tunetrivia.uitests
+      url_schemes:
+        - tunetrivia
+      universal_link_hosts: []
+
+    android:
+      gradle_project_dir: mobile/android/tunetrivia
+      application_id: com.juke.tunetrivia
+      namespace: com.juke.tunetrivia
+      launcher_activity: .MainActivity
+      deep_link_schemes:
+        - tunetrivia
+      deep_link_hosts:
+        - verify-user

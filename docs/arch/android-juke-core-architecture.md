@@ -19,9 +19,9 @@ layout (`mobile/ios/Packages/JukeKit/`).
 
 | App | Kotlin Files (main) | Approx Lines | Package |
 |-----|---------------------|-------------|---------|
-| Juke | 38 | ~1,600 | `fm.juke.mobile` |
-| ShotClock | 35 | ~2,900 | `fm.shotclock.mobile` |
-| TuneTrivia | 44 | ~3,200 | `fm.tunetrivia.mobile` |
+| Juke | 38 | ~1,600 | `com.juke.juke` |
+| ShotClock | 35 | ~2,900 | `com.juke.shotclock` |
+| TuneTrivia | 44 | ~3,200 | `com.juke.tunetrivia` |
 | **Total** | **117** | **~7,700** | |
 
 ### Critical Finding: ShotClock Missing Data Layer

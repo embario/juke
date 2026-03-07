@@ -29,7 +29,7 @@ trap cleanup EXIT
 tail -n 50 -F "${LOG_FILE}" &
 TAIL_PID=$!
 
-adb logcat -v color fm.juke.mobile:D AndroidRuntime:E *:S &
+adb logcat -v color com.juke.juke:D com.juke.shotclock:D com.juke.tunetrivia:D AndroidRuntime:E *:S &
 LOGCAT_PID=$!
 
 wait "${TAIL_PID}"

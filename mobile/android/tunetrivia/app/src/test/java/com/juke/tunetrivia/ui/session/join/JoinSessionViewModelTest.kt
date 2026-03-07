@@ -1,0 +1,46 @@
+package com.juke.tunetrivia.ui.session.join
+
+import com.juke.tunetrivia.data.repository.TuneTriviaRepository
+import fm.juke.core.testing.FakeAuthRepository
+import fm.juke.core.testing.MainDispatcherRule
+import com.juke.tunetrivia.testutil.FakeTuneTriviaApiService
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class JoinSessionViewModelTest {
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
+
+    @Test
+    fun `updateCode uppercases and truncates to six chars`() {
+        val vm = JoinSessionViewModel(
+            repository = TuneTriviaRepository(FakeTuneTriviaApiService(), FakeAuthRepository()),
+        )
+
+        vm.updateCode("ab12cd34")
+
+        assertEquals("AB12CD", vm.uiState.value.code)
+    }
+
+    @Test
+    fun `join validates code length and invokes callback on success`() = runTest {
+        val vm = JoinSessionViewModel(
+            repository = TuneTriviaRepository(FakeTuneTriviaApiService(), FakeAuthRepository()),
+        )
+        var joinedId: Int? = null
+
+        vm.join(onJoined = { joinedId = it }, needsDisplayName = false)
+        assertEquals("Please enter a 6-character code.", vm.uiState.value.error)
+
+        vm.updateCode("ABC123")
+        vm.join(onJoined = { joinedId = it }, needsDisplayName = false)
+        advanceUntilIdle()
+
+        assertEquals(1, joinedId)
+    }
+}

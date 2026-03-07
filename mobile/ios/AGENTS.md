@@ -35,7 +35,7 @@ When introducing shared logic, prefer moving it into `Packages/JukeKit` with neu
 
 - Xcode 15+ recommended (script targets latest simulator OS).
 - Swift Package Manager dependencies are embedded in the project; run `xcodebuild -resolvePackageDependencies` if needed.
-- Bundle ID defaults to `embario.juke-iOS` (overridable via project settings).
+- Bundle IDs follow `com.juke.<project-name>` (for example `com.juke.juke`).
 
 ## Build & Run
 

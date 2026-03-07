@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "fm.tunetrivia.mobile"
+    namespace = "com.juke.tunetrivia"
     compileSdk = 36
 
     val backendUrl = System.getenv("BACKEND_URL")
@@ -20,7 +20,7 @@ android {
     val disableRegistration = if (disableRegistrationRaw in listOf("1", "true", "yes", "on")) "true" else "false"
 
     defaultConfig {
-        applicationId = "fm.tunetrivia.mobile"
+        applicationId = "com.juke.tunetrivia"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

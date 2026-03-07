@@ -342,8 +342,8 @@ App Launch
 | Real-time Sync | Polling (3s interval when active) | Simple, no WebSocket infra needed |
 | SMS Sharing | `Intent.ACTION_SENDTO` | Standard Android SMS intent |
 | Navigation | Session-state-driven composable | Same pattern as Juke (sealed interface) |
-| Package | `fm.tunetrivia.mobile` | Matches Juke convention (fm.*.mobile) |
-| App ID | `fm.tunetrivia.mobile` | Unique Play Store identifier |
+| Package | `com.juke.tunetrivia` | Android namespace used by source packages |
+| App ID | `com.juke.tunetrivia` | Unique Play Store identifier |
 
 ---
 
@@ -620,7 +620,7 @@ Applied to accent-colored text (e.g., "TuneTrivia" logo):
 ## 13. Build & Deployment
 
 - **Build Script**: `scripts/build_and_run_android.sh -p tunetrivia`
-- **App ID**: `fm.tunetrivia.mobile`
+- **App ID**: `com.juke.tunetrivia`
 - **Scheme**: TuneTrivia
 - **Emulator**: API 36 Google APIs arm64, Pixel 7 profile
 - **Tests**: `./gradlew :app:testDebugUnitTest` (unit), `./gradlew :app:connectedDebugAndroidTest` (instrumented)

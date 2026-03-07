@@ -5,10 +5,10 @@
 -keepclasseswithmembers class kotlinx.serialization.json.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--keep,includedescriptorclasses class fm.shotclock.mobile.**$$serializer { *; }
--keepclassmembers class fm.shotclock.mobile.** {
+-keep,includedescriptorclasses class com.juke.shotclock.**$$serializer { *; }
+-keepclassmembers class com.juke.shotclock.** {
     *** Companion;
 }
--keepclasseswithmembers class fm.shotclock.mobile.** {
+-keepclasseswithmembers class com.juke.shotclock.** {
     kotlinx.serialization.KSerializer serializer(...);
 }

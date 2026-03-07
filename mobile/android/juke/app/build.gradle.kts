@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "fm.juke.mobile"
+    namespace = "com.juke.juke"
     compileSdk = 36
 
     val backendUrl = System.getenv("BACKEND_URL")
@@ -23,7 +23,7 @@ android {
     val disableRegistration = if (disableRegistrationRaw in listOf("1", "true", "yes", "on")) "true" else "false"
 
     defaultConfig {
-        applicationId = "fm.juke.mobile"
+        applicationId = "com.juke.juke"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

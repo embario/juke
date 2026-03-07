@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "fm.shotclock.mobile"
+    namespace = "com.juke.shotclock"
     compileSdk = 36
 
     val backendUrl = System.getenv("BACKEND_URL")
@@ -20,7 +20,7 @@ android {
     val disableRegistration = if (disableRegistrationRaw in listOf("1", "true", "yes", "on")) "true" else "false"
 
     defaultConfig {
-        applicationId = "fm.shotclock.mobile"
+        applicationId = "com.juke.shotclock"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
