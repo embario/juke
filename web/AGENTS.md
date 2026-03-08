@@ -32,6 +32,7 @@ npm run build-storybook    # Static Storybook export
 ```
 
 - `VITE_API_BASE_URL` controls the API root and should be set in `.env`.
+- `WEB_ALLOWED_HOSTS` controls the Vite dev-server host allowlist and should be set in `.env` when you access the frontend via a non-local hostname.
 - `JUKE_RUNTIME_ENV` aligns with backend settings and toggles analytics/logging gates.
 
 ## Troubleshooting Permissions (MANDATORY)

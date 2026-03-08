@@ -1,0 +1,31 @@
+# Summary
+This iterative task is about designing and building a command-line interface app for Juke that can give power-users a friendly alternative to mobile apps and web UIs for listening, socializing, and discovering new music through the Juke music ecosystem. This CLI app will run as a daemon on popular Linux distros, Mac OS, and Windows, and it will expose a fresh and exciting Terminal User-interface (TUI) for end-users to:
+
+- search for music (genres/artists/albums/tracks/playlists)
+- control the music via playback controls 
+- direct message (DM) other Juke users
+- use LLMs to offer them fun facts about the current track that's playing
+- recommend music that flows from the currently playing track
+- generate new music based on user prompts
+
+Basically, this Juke CLI will be another app in the ecosystem that's offered to Juke power-users to gain more control over music listening, sharing, and discovery. There will be reading materials in the project repo for you to ramp up on the current state of development, so I expect you to find them and use them as an anchor point for engaging in work now. This is an iterative task, so I expect you to ingest the proper context and work diligently to satisfy the acceptance criteria in stages - do not attempt to complete the task in one fell swoop.
+
+# Acceptance Criteria (Phase 0: Architecture/Design/Tasks)
+For this task, you will be implementing Phase 0 (Architecture, Design, and Foundation work) for the Juke CLI App. This includes:
+* Architectural Design 
+* TUI/TUX design
+* Implementation plan based on both designs
+* Generating new phases of work to complete the project
+
+
+# Don't Forget
+* Read `AGENTS.md` file to fully understand how to work and build against the various projects. Anytime you have context window compaction, read this file to get ramped up again.
+* Read the architecture documentation in `docs/arch` to understand the project holistically. Read the defined tasks in `tasks` to understand the technical details of the implementation phases within the project. Report back on your implementation plan to begin our session.
+* Once the implementation plan is approved, you may start your work. We will see how far this goes - again, please do not rush the development process.
+
+# (Phase 1: )
+# (Phase 2: )
+# (Phase 3: )
+# (Phase 4: )
+# (Phase 5: )
+# (Phase 6: )
