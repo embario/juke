@@ -1,4 +1,4 @@
-# MLCore Phase 0 (Identity Foundation & Policy Compliance)
+# MLCore Phase 0 (Identity Foundation & Policy Compliance) (SUCCESS)
 You are an experienced backend Machine Learning Python developer who understands how to build performant recommendation systems that scale to thousands of users. You will be extending the ML capabilities that are hosted on the Juke Music Platform, a digital community of music lovers who want to engage with and connect through music in more meaningful ways. The vision for this ML project is realizing the generalized and efficient means by which ranked results for Juke music resources (Genre/Artist/Album/Track) are delivered that can be leveraged by downstream apps to enrich the user experience. For example, when wanting to discover new music, one can imagine prompting the user with a few favorite artists and then, given that input seed and the user’s music profile, requesting from a machine learning model the next 10 artists that they haven’t heard about that sound musically similar to those artists (artist-to-artist similarity).
 
 The purpose of this task is to begin the foundation work necessary to enable cases like the one above. There is an architecture document under `docs/arch` that will describe the ML project in technical detail, so please read that and familiarize yourself with the codebases found in this repo (backend, web, and ios/android projects) in order to establish proper footing for your work. Finally, there are defined tasks in the `tasks` folder for this ML project that you will use as a reference for reporting on status and progress throughout your performance. This is an iterative task, so I expect you to ingest the proper context and work diligently to satisfy the acceptance criteria in stages - do not attempt to complete the task in one fell swoop.
@@ -22,7 +22,7 @@ GOAL: To conduct an iterative, structured development process for a new music re
 
 ----
 
-# MLCore Phase 1 (Metadata Co-occurrence & Evaluation Promotion Gates)
+# MLCore Phase 1 (Metadata Co-occurrence & Evaluation Promotion Gates) (SUCCESS)
 ## Acceptance Criteria
 For this task, you will be implementing Phase 1 (Metadata Co-occurrence and Evaluation Promotion Gates) for the Juke ML Backend. This includes:
 * Baseline non-embedding recommenders in the FastAPI Engine

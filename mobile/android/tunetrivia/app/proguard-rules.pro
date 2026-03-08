@@ -5,10 +5,10 @@
 -keepclasseswithmembers class kotlinx.serialization.json.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--keep,includedescriptorclasses class fm.tunetrivia.mobile.**$$serializer { *; }
--keepclassmembers class fm.tunetrivia.mobile.** {
+-keep,includedescriptorclasses class com.juke.tunetrivia.**$$serializer { *; }
+-keepclassmembers class com.juke.tunetrivia.** {
     *** Companion;
 }
--keepclasseswithmembers class fm.tunetrivia.mobile.** {
+-keepclasseswithmembers class com.juke.tunetrivia.** {
     kotlinx.serialization.KSerializer serializer(...);
 }

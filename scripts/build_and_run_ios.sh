@@ -125,19 +125,19 @@ case "${IOS_PROJECT_NAME}" in
     juke)
         XCODEPROJ_NAME="juke-iOS.xcodeproj"
         SCHEME_NAME="juke-iOS"
-        BUNDLE_ID="embario.juke-iOS"
+        BUNDLE_ID="com.juke.juke"
         APP_NAME="juke-iOS.app"
         ;;
     shotclock)
         XCODEPROJ_NAME="ShotClock.xcodeproj"
         SCHEME_NAME="ShotClock"
-        BUNDLE_ID="embario.ShotClock"
+        BUNDLE_ID="com.juke.shotclock"
         APP_NAME="ShotClock.app"
         ;;
     tunetrivia)
         XCODEPROJ_NAME="TuneTrivia.xcodeproj"
         SCHEME_NAME="TuneTrivia"
-        BUNDLE_ID="embario.TuneTrivia"
+        BUNDLE_ID="com.juke.tunetrivia"
         APP_NAME="TuneTrivia.app"
         ;;
     *)

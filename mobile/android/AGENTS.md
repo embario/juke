@@ -13,7 +13,7 @@ mobile/android/juke
 └── gradlew(.bat)        # Wrapper entrypoints
 ```
 
-Set `ANDROID_PROJECT_NAME` if you ever rename the folder (defaults to `juke`). App ID defaults to `fm.juke.mobile` (see `scripts/build_and_run_android.sh`).
+Set `ANDROID_PROJECT_NAME` if you ever rename the folder (defaults to `juke`). App IDs follow `com.juke.<project-name>` (for example `com.juke.juke`; see `scripts/build_and_run_android.sh`).
 
 ## Toolchain
 
@@ -31,7 +31,7 @@ scripts/build_and_run_android.sh        # installs SDK components, creates/boots
 cd mobile/android/juke
 ./gradlew :app:assembleDebug            # builds APK
 ./gradlew :app:installDebug             # installs onto attached emulator/device
-adb shell monkey -p fm.juke.mobile 1    # launches the app
+adb shell monkey -p com.juke.juke 1     # launches the app
 ```
 
 The helper script creates the AVD (`jukeApi36`), waits for boot, installs the debug build, then launches via `adb shell monkey`. Logs stream under `.android-emulator/` at the repo root.

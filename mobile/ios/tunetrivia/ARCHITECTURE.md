@@ -694,7 +694,7 @@ struct AlbumArtView: View {
 ## 8. Build & Deployment
 
 - **Build Script**: `scripts/build_and_run_ios.sh` with `IOS_PROJECT_NAME=tunetrivia`
-- **Bundle ID**: `embario.TuneTrivia`
+- **Bundle ID**: `com.juke.tunetrivia`
 - **Scheme**: `TuneTrivia`
 - **Icon Pipeline**: SVG → `scripts/render_icons.cjs` → BrandAssets/AppIcon.appiconset/
 - **Simulator**: iPhone 17 Pro (default target)

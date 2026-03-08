@@ -342,8 +342,8 @@ App Launch
 | Real-time Sync | Polling (3s interval when active) | Simple, no WebSocket infra needed |
 | SMS Sharing | `Intent.ACTION_SENDTO` | Standard Android SMS intent |
 | Navigation | Session-state-driven composable | Same pattern as Juke (sealed interface) |
-| Package | `fm.shotclock.mobile` | Matches Juke convention (fm.*.mobile) |
-| App ID | `fm.shotclock.mobile` | Unique Play Store identifier |
+| Package | `com.juke.shotclock` | Android namespace used by source packages |
+| App ID | `com.juke.shotclock` | Unique Play Store identifier |
 
 ---
 
@@ -620,7 +620,7 @@ Applied to accent-colored text (e.g., "ShotClock" logo):
 ## 13. Build & Deployment
 
 - **Build Script**: `scripts/build_and_run_android.sh -p shotclock`
-- **App ID**: `fm.shotclock.mobile`
+- **App ID**: `com.juke.shotclock`
 - **Scheme**: ShotClock
 - **Emulator**: API 36 Google APIs arm64, Pixel 7 profile
 - **Tests**: `./gradlew :app:testDebugUnitTest` (unit), `./gradlew :app:connectedDebugAndroidTest` (instrumented)
