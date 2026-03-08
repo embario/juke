@@ -10,10 +10,15 @@ export default defineConfig(({ mode }) => {
   const rootEnv = loadEnv(mode, repoRoot, '');
   const localEnv = loadEnv(mode, process.cwd(), '');
   const env = { ...rootEnv, ...localEnv };
+  const splitCsvEnv = (value?: string) =>
+    value?.split(',').map((entry) => entry.trim()).filter(Boolean) ?? [];
   const BACKEND_URL = env.BACKEND_URL ?? process.env.BACKEND_URL ?? '';
   const BACKEND_TARGET = env.BACKEND_TARGET ?? process.env.BACKEND_TARGET ?? BACKEND_URL;
   const RUNTIME_ENV = (env.JUKE_RUNTIME_ENV ?? process.env.JUKE_RUNTIME_ENV ?? 'development').toLowerCase();
   const API_BASE_URL = env.VITE_API_BASE_URL ?? process.env.VITE_API_BASE_URL ?? BACKEND_URL;
+  const WEB_ALLOWED_HOSTS = splitCsvEnv(
+    env.WEB_ALLOWED_HOSTS ?? process.env.WEB_ALLOWED_HOSTS
+  );
   const WEB_PORT = env.WEB_PORT ?? env.FRONTEND_PORT ?? process.env.WEB_PORT ?? process.env.FRONTEND_PORT ?? '';
   const PROD_LIKE_ENVIRONMENTS = new Set(['staging', 'production']);
   const SHOULD_PRECOMPRESS_ASSETS = PROD_LIKE_ENVIRONMENTS.has(RUNTIME_ENV);
@@ -62,6 +67,7 @@ export default defineConfig(({ mode }) => {
   server: {
     host: true,
     port: Number(WEB_PORT),
+    allowedHosts: WEB_ALLOWED_HOSTS.length > 0 ? WEB_ALLOWED_HOSTS : undefined,
     proxy: {
       '/auth': {
         target: BACKEND_TARGET,

@@ -2,8 +2,10 @@ import { defineConfig } from 'vitest/config';
 import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import viteCompression from 'vite-plugin-compression';
+const splitCsvEnv = (value) => value?.split(',').map((entry) => entry.trim()).filter(Boolean) ?? [];
 const BACKEND_TARGET = process.env.BACKEND_TARGET ?? process.env.BACKEND_URL;
 const RUNTIME_ENV = (process.env.JUKE_RUNTIME_ENV ?? 'development').toLowerCase();
+const WEB_ALLOWED_HOSTS = splitCsvEnv(process.env.WEB_ALLOWED_HOSTS);
 const PROD_LIKE_ENVIRONMENTS = new Set(['staging', 'production']);
 const SHOULD_PRECOMPRESS_ASSETS = PROD_LIKE_ENVIRONMENTS.has(RUNTIME_ENV);
 const createCompressionPlugin = viteCompression;
@@ -41,6 +43,7 @@ export default defineConfig({
     server: {
         host: true,
         port: 5173,
+        allowedHosts: WEB_ALLOWED_HOSTS.length > 0 ? WEB_ALLOWED_HOSTS : undefined,
         proxy: {
             '/auth': {
                 target: BACKEND_TARGET,

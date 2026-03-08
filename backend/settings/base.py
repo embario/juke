@@ -36,6 +36,12 @@ def _required_env(name: str) -> str:
     return value
 
 
+def _split_csv_env(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [entry.strip() for entry in value.split(",") if entry.strip()]
+
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = RUNTIME_ENV == "development"
 
@@ -52,9 +58,9 @@ if SPOTIFY_USE_STUB_DATA is None:
 else:
     SPOTIFY_USE_STUB_DATA = SPOTIFY_USE_STUB_DATA.lower() in {'1', 'true', 'yes', 'on'}
 
-allowed_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS")
+allowed_hosts = os.environ.get("BACKEND_ALLOWED_HOSTS")
 if allowed_hosts:
-    ALLOWED_HOSTS = [host.strip() for host in allowed_hosts.split(",") if host.strip()]
+    ALLOWED_HOSTS = _split_csv_env(allowed_hosts)
 else:
     ALLOWED_HOSTS = [
         "localhost",
