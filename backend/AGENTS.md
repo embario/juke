@@ -18,7 +18,7 @@ The Django backend lives at the repo root (files such as `manage.py`, `settings/
 
 - Copy `template.env` → `.env`. Core variables: `DJANGO_SECRET_KEY`, Postgres creds (`POSTGRES_*`), `SOCIAL_AUTH_SPOTIFY_*`, `EMAIL_HOST_*`, `RECOMMENDER_ENGINE_BASE_URL`, and `JUKE_RUNTIME_ENV`.
 - `SPOTIFY_USE_STUB_DATA` defaults to `True` for `manage.py test`; flip via env when needing live Spotify calls.
-- Allowed hosts and CORS/CSRF lists derive from `DJANGO_ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS`. Defaults include localhost, Docker service names, and Android emulator loopback.
+- Allowed hosts and CORS/CSRF lists derive from `BACKEND_ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS`. Defaults include localhost, Docker service names, and Android emulator loopback.
 - `CELERY_VISIBILITY_TIMEOUT` (seconds) controls how long Redis keeps leased Celery tasks hidden before redelivery; keep this aligned with the Celery transport options set in `settings/base.py`.
 
 ## Running Locally
