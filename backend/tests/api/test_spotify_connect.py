@@ -12,6 +12,7 @@ from juke_auth.models import JukeUser
 
 class SpotifyConnectTests(APITestCase):
     endpoint = '/api/v1/auth/connect/spotify/'
+    login_endpoint = '/api/v1/social-auth/login/spotify/'
 
     def setUp(self):
         self.user = JukeUser.objects.create_user(
@@ -27,9 +28,9 @@ class SpotifyConnectTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
         self.assertIn('/login?error=spotify_auth_failed', response['Location'])
 
-    @patch('juke_auth.views.social_views.auth')
-    def test_connect_with_token_query_logs_in_user_and_starts_oauth(self, mock_social_auth):
-        mock_social_auth.return_value = HttpResponseRedirect('https://accounts.spotify.com/authorize')
+    @patch('juke_auth.views.do_auth')
+    def test_connect_with_token_query_logs_in_user_and_starts_oauth(self, mock_do_auth):
+        mock_do_auth.return_value = HttpResponseRedirect('https://accounts.spotify.com/authorize')
         return_to = f"{settings.FRONTEND_URL.rstrip('/')}/"
 
         response = self.client.get(f"{self.endpoint}?token={self.token.key}&return_to={return_to}")
@@ -41,12 +42,45 @@ class SpotifyConnectTests(APITestCase):
         self.assertEqual(response.wsgi_request.session.get('spotify_connect_return_to'), return_to)
 
     @override_settings(SPOTIFY_CONNECT_ALLOWED_RETURN_SCHEMES=['juke', 'shotclock'])
-    @patch('juke_auth.views.social_views.auth')
-    def test_connect_accepts_mobile_return_scheme(self, mock_social_auth):
-        mock_social_auth.return_value = HttpResponseRedirect('https://accounts.spotify.com/authorize')
+    @patch('juke_auth.views.do_auth')
+    def test_connect_accepts_mobile_return_scheme(self, mock_do_auth):
+        mock_do_auth.return_value = HttpResponseRedirect('https://accounts.spotify.com/authorize')
         return_to = 'shotclock://spotify-callback'
 
         response = self.client.get(f"{self.endpoint}?token={self.token.key}&return_to={return_to}")
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
         self.assertEqual(response.wsgi_request.session.get('spotify_connect_return_to'), return_to)
+
+    @override_settings(
+        PUBLIC_BACKEND_URL='http://auth.local:8000',
+        FRONTEND_URL='http://localhost:5173',
+        FRONTEND_ALLOWED_ORIGINS=[
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+            'http://neptune:5173',
+        ],
+    )
+    @patch('juke_auth.views.do_auth')
+    def test_social_login_uses_referer_origin_for_redirect_uri(self, mock_do_auth):
+        mock_do_auth.return_value = HttpResponseRedirect('https://accounts.spotify.com/authorize')
+
+        response = self.client.get(
+            self.login_endpoint,
+            HTTP_REFERER='http://neptune:5173/login',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        backend = mock_do_auth.call_args.args[0]
+        self.assertEqual(
+            backend.redirect_uri,
+            'http://auth.local:8000/api/v1/social-auth/complete/spotify/',
+        )
+        self.assertEqual(
+            response.wsgi_request.session.get('spotify_auth_return_to'),
+            'http://neptune:5173/login',
+        )
+        self.assertEqual(
+            response.wsgi_request.session.get('spotify_frontend_origin'),
+            'http://neptune:5173',
+        )

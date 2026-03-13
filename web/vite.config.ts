@@ -13,6 +13,8 @@ export default defineConfig(({ mode }) => {
   const splitCsvEnv = (value?: string) =>
     value?.split(',').map((entry) => entry.trim()).filter(Boolean) ?? [];
   const BACKEND_URL = env.BACKEND_URL ?? process.env.BACKEND_URL ?? '';
+  const PUBLIC_BACKEND_URL =
+    env.PUBLIC_BACKEND_URL ?? process.env.PUBLIC_BACKEND_URL ?? BACKEND_URL;
   const BACKEND_TARGET = env.BACKEND_TARGET ?? process.env.BACKEND_TARGET ?? BACKEND_URL;
   const RUNTIME_ENV = (env.JUKE_RUNTIME_ENV ?? process.env.JUKE_RUNTIME_ENV ?? 'development').toLowerCase();
   const API_BASE_URL = env.VITE_API_BASE_URL ?? process.env.VITE_API_BASE_URL ?? BACKEND_URL;
@@ -56,6 +58,7 @@ export default defineConfig(({ mode }) => {
       process.env.DISABLE_REGISTRATION ?? ''
     ),
     'import.meta.env.JUKE_RUNTIME_ENV': JSON.stringify(process.env.JUKE_RUNTIME_ENV ?? ''),
+    'import.meta.env.PUBLIC_BACKEND_URL': JSON.stringify(PUBLIC_BACKEND_URL),
     'import.meta.env.VITE_API_BASE_URL': JSON.stringify(API_BASE_URL),
   },
   resolve: {
