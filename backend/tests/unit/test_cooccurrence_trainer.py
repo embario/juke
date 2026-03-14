@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from catalog.models import SearchHistory, SearchHistoryResource
-from mlcore.models import ItemCoOccurrence
+from mlcore.models import ItemCoOccurrence, TrainingRun
 from mlcore.services.cooccurrence import (
     _canonical_pair,
     baskets_from_search_history,
@@ -125,12 +125,17 @@ class TrainCoOccurrenceTests(TestCase):
     def test_writes_rows_to_table(self):
         a, b, c = self._ids(3)
         result = train_cooccurrence(baskets=[[a, b], [a, c]])
+        self.assertIsNotNone(result.training_run_id)
+        run = TrainingRun.objects.get(pk=result.training_run_id)
         self.assertEqual(result.pairs_written, 2)
         self.assertEqual(ItemCoOccurrence.objects.count(), 2)
+        self.assertEqual(ItemCoOccurrence.objects.filter(training_run=run).count(), 2)
 
     def test_idempotent_rerun_updates_not_duplicates(self):
         a, b, c = self._ids(3)
         train_cooccurrence(baskets=[[a, b]])
+        first_run = TrainingRun.objects.order_by('-created_at').first()
+        self.assertIsNotNone(first_run)
         self.assertEqual(ItemCoOccurrence.objects.count(), 1)
         row1 = ItemCoOccurrence.objects.get()
         self.assertEqual(row1.co_count, 1)
@@ -145,6 +150,8 @@ class TrainCoOccurrenceTests(TestCase):
         )
         self.assertEqual(row2.co_count, 2)  # overwritten, not incremented
         self.assertEqual(row2.pk, row1.pk)  # same row
+        self.assertIsNotNone(row2.training_run)
+        self.assertNotEqual(row2.training_run_id, first_run.pk)
 
     def test_canonical_storage_single_row_per_pair(self):
         a, b = self._ids(2)
@@ -154,6 +161,7 @@ class TrainCoOccurrenceTests(TestCase):
         row = ItemCoOccurrence.objects.get()
         self.assertEqual(str(row.item_a_juke_id), str(min(a, b, key=str)))
         self.assertEqual(row.co_count, 2)
+        self.assertIsNotNone(row.training_run_id)
 
     def test_empty_baskets_no_rows(self):
         result = train_cooccurrence(baskets=[])
@@ -246,3 +254,40 @@ class BasketsFromSearchHistoryTests(TestCase):
             item_b_juke_id=max(self.t1.juke_id, self.t2.juke_id, key=str),
         )
         self.assertEqual(pair_12.co_count, 2)
+        self.assertEqual(pair_12.training_run_id, result.training_run_id)
+
+    def test_train_defaults_to_train_split(self):
+        # Create 9 train-pair sessions and one alternate-pair session.
+        # Split logic uses `search_history_id % 10 == 0` for test rows.
+        sessions_train_candidate = [self._mk_session([self.t1, self.t2]) for _ in range(9)]
+        sessions_t23 = self._mk_session([self.t2, self.t3])
+
+        result = train_cooccurrence()
+
+        created_train_sessions = [
+            session for session in sessions_train_candidate
+            if session.id % 10 != 0
+        ]
+        expected_t12_baskets = len(created_train_sessions)
+        expected_pairs = 1 + (sessions_t23.id % 10 != 0)
+
+        self.assertEqual(result.baskets_processed, expected_t12_baskets + (sessions_t23.id % 10 != 0))
+        self.assertEqual(result.pairs_written, expected_pairs)
+        pair_12 = ItemCoOccurrence.objects.get(
+            item_a_juke_id=min(self.t1.juke_id, self.t2.juke_id, key=str),
+            item_b_juke_id=max(self.t1.juke_id, self.t2.juke_id, key=str),
+        )
+        self.assertEqual(pair_12.co_count, expected_t12_baskets)
+        if sessions_t23.id % 10 == 0:
+            self.assertFalse(
+                ItemCoOccurrence.objects.filter(
+                    item_a_juke_id=min(self.t2.juke_id, self.t3.juke_id, key=str),
+                    item_b_juke_id=max(self.t2.juke_id, self.t3.juke_id, key=str),
+                ).exists()
+            )
+        else:
+            pair_23 = ItemCoOccurrence.objects.get(
+                item_a_juke_id=min(self.t2.juke_id, self.t3.juke_id, key=str),
+                item_b_juke_id=max(self.t2.juke_id, self.t3.juke_id, key=str),
+            )
+            self.assertEqual(pair_23.co_count, 1)
