@@ -20,7 +20,7 @@ EXTERNAL_ID_SOURCES = (
 
 class MusicResource(models.Model):
     """ Generic class for all music-related resource models. """
-    juke_id = models.UUIDField(unique=True, null=False, default=uuid.uuid7, editable=False)
+    juke_id = models.UUIDField(unique=True, null=False, default=uuid.uuid4, editable=False)
     spotify_id = models.CharField(max_length=30, blank=False, null=False, unique=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)

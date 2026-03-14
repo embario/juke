@@ -12,6 +12,10 @@ from catalog.services.identity import IdentityResolver
 from tests.utils import create_album, create_artist, create_genre, create_track
 
 
+def _random_juke_id():
+    return uuid.uuid7() if hasattr(uuid, "uuid7") else uuid.uuid4()
+
+
 class IdentityResolverTests(TestCase):
 
     def setUp(self):
@@ -76,7 +80,7 @@ class IdentityResolverTests(TestCase):
     # --- miss cases ---
 
     def test_resolve_artist_miss_juke_id(self):
-        self.assertIsNone(IdentityResolver.resolve_artist(juke_id=uuid.uuid7()))
+        self.assertIsNone(IdentityResolver.resolve_artist(juke_id=_random_juke_id()))
 
     def test_resolve_artist_miss_mbid(self):
         self.assertIsNone(IdentityResolver.resolve_artist(mbid=uuid.uuid4()))
@@ -131,7 +135,7 @@ class IdentityResolverTests(TestCase):
         # Deterministic: if juke_id is supplied and misses, do NOT fall through to mbid/adapter.
         self.artist.mbid = uuid.uuid4()
         self.artist.save()
-        found = IdentityResolver.resolve_artist(juke_id=uuid.uuid7(), mbid=self.artist.mbid)
+        found = IdentityResolver.resolve_artist(juke_id=_random_juke_id(), mbid=self.artist.mbid)
         self.assertIsNone(found)
 
     # --- select_related efficiency ---
