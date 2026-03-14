@@ -43,7 +43,7 @@ class TrainingResult:
     pairs_written: int
     training_hash: str
     source_row_count: int
-    training_run_id: str | None = None
+    training_run_id: UUID | None = None
 
 
 def _canonical_pair(a: UUID, b: UUID) -> tuple[UUID, UUID]:
@@ -206,7 +206,7 @@ def train_cooccurrence(
         pairs_written=result.pairs_written,
         source_row_count=source_row_count,
     )
-    result.training_run_id = str(run.pk)
+    result.training_run_id = run.pk
 
     if not table:
         logger.info(

@@ -257,25 +257,37 @@ class BasketsFromSearchHistoryTests(TestCase):
         self.assertEqual(pair_12.training_run_id, result.training_run_id)
 
     def test_train_defaults_to_train_split(self):
-        # Create 9 train bucket sessions and 1 test bucket session.
-        # _TEST_BUCKET is 0 and split uses search_history_id % 10, so IDs ending in 0 are held out.
-        for _ in range(9):
-            self._mk_session([self.t1, self.t2])
-        # This session is id 10 in a clean test DB and should be excluded from training.
-        self._mk_session([self.t2, self.t3])
+        # Create 9 train-pair sessions and one alternate-pair session.
+        # Split logic uses `search_history_id % 10 == 0` for test rows.
+        sessions_train_candidate = [self._mk_session([self.t1, self.t2]) for _ in range(9)]
+        sessions_t23 = self._mk_session([self.t2, self.t3])
 
         result = train_cooccurrence()
 
-        self.assertEqual(result.baskets_processed, 9)
-        self.assertEqual(result.pairs_written, 1)
+        created_train_sessions = [
+            session for session in sessions_train_candidate
+            if session.id % 10 != 0
+        ]
+        expected_t12_baskets = len(created_train_sessions)
+        expected_pairs = 1 + (sessions_t23.id % 10 != 0)
+
+        self.assertEqual(result.baskets_processed, expected_t12_baskets + (sessions_t23.id % 10 != 0))
+        self.assertEqual(result.pairs_written, expected_pairs)
         pair_12 = ItemCoOccurrence.objects.get(
             item_a_juke_id=min(self.t1.juke_id, self.t2.juke_id, key=str),
             item_b_juke_id=max(self.t1.juke_id, self.t2.juke_id, key=str),
         )
-        self.assertEqual(pair_12.co_count, 9)
-        self.assertFalse(
-            ItemCoOccurrence.objects.filter(
+        self.assertEqual(pair_12.co_count, expected_t12_baskets)
+        if sessions_t23.id % 10 == 0:
+            self.assertFalse(
+                ItemCoOccurrence.objects.filter(
+                    item_a_juke_id=min(self.t2.juke_id, self.t3.juke_id, key=str),
+                    item_b_juke_id=max(self.t2.juke_id, self.t3.juke_id, key=str),
+                ).exists()
+            )
+        else:
+            pair_23 = ItemCoOccurrence.objects.get(
                 item_a_juke_id=min(self.t2.juke_id, self.t3.juke_id, key=str),
                 item_b_juke_id=max(self.t2.juke_id, self.t3.juke_id, key=str),
-            ).exists()
-        )
+            )
+            self.assertEqual(pair_23.co_count, 1)

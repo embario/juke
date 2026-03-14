@@ -1,4 +1,6 @@
 import datetime
+import random
+import time
 import uuid
 
 from django.core.exceptions import ValidationError
@@ -18,9 +20,26 @@ EXTERNAL_ID_SOURCES = (
 )
 
 
+def _generate_juke_id():
+    if hasattr(uuid, "uuid7"):
+        return uuid.uuid7()
+    now_ms = int(time.time() * 1000)
+    raw = random.getrandbits(80)
+    return uuid.UUID(
+        fields=(
+            now_ms & 0xFFFFFFFF,
+            (now_ms >> 32) & 0xFFFF,
+            (now_ms >> 48) & 0x0FFF | 0x7000,
+            (raw >> 72) & 0x3F | 0x80,
+            (raw >> 64) & 0xFF,
+            raw & ((1 << 48) - 1),
+        ),
+    )
+
+
 class MusicResource(models.Model):
     """ Generic class for all music-related resource models. """
-    juke_id = models.UUIDField(unique=True, null=False, default=uuid.uuid4, editable=False)
+    juke_id = models.UUIDField(unique=True, null=False, default=_generate_juke_id, editable=False)
     spotify_id = models.CharField(max_length=30, blank=False, null=False, unique=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)

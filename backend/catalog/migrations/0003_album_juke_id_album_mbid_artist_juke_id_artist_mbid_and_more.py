@@ -4,14 +4,33 @@
 # See https://docs.djangoproject.com/en/6.0/howto/writing-migrations/#migrations-that-add-unique-fields
 
 import uuid
+import random
+import time
 from django.db import migrations, models
+
+
+def _generate_juke_id():
+    if hasattr(uuid, "uuid7"):
+        return uuid.uuid7()
+    now_ms = int(time.time() * 1000)
+    raw = random.getrandbits(80)
+    return uuid.UUID(
+        fields=(
+            now_ms & 0xFFFFFFFF,
+            (now_ms >> 32) & 0xFFFF,
+            ((now_ms >> 48) & 0x0FFF) | 0x7000,
+            (raw >> 72) & 0x3F | 0x80,
+            (raw >> 64) & 0xFF,
+            raw & ((1 << 48) - 1),
+        ),
+    )
 
 
 def _backfill_juke_ids(apps, schema_editor):
     for model_name in ('Genre', 'Artist', 'Album', 'Track'):
         Model = apps.get_model('catalog', model_name)
         for row in Model.objects.filter(juke_id__isnull=True).iterator():
-            row.juke_id = uuid.uuid4()
+            row.juke_id = _generate_juke_id()
             row.save(update_fields=['juke_id'])
 
 
@@ -31,22 +50,22 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='album',
             name='juke_id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, null=True),
+            field=models.UUIDField(default=_generate_juke_id, editable=False, null=True),
         ),
         migrations.AddField(
             model_name='artist',
             name='juke_id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, null=True),
+            field=models.UUIDField(default=_generate_juke_id, editable=False, null=True),
         ),
         migrations.AddField(
             model_name='genre',
             name='juke_id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, null=True),
+            field=models.UUIDField(default=_generate_juke_id, editable=False, null=True),
         ),
         migrations.AddField(
             model_name='track',
             name='juke_id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, null=True),
+            field=models.UUIDField(default=_generate_juke_id, editable=False, null=True),
         ),
         # mbid — nullable, no backfill required.
         migrations.AddField(
@@ -70,21 +89,21 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='album',
             name='juke_id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, unique=True),
+            field=models.UUIDField(default=_generate_juke_id, editable=False, unique=True),
         ),
         migrations.AlterField(
             model_name='artist',
             name='juke_id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, unique=True),
+            field=models.UUIDField(default=_generate_juke_id, editable=False, unique=True),
         ),
         migrations.AlterField(
             model_name='genre',
             name='juke_id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, unique=True),
+            field=models.UUIDField(default=_generate_juke_id, editable=False, unique=True),
         ),
         migrations.AlterField(
             model_name='track',
             name='juke_id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, unique=True),
+            field=models.UUIDField(default=_generate_juke_id, editable=False, unique=True),
         ),
     ]
