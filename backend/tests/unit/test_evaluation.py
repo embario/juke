@@ -9,12 +9,13 @@ Three layers:
 import datetime
 import math
 import uuid
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from catalog.models import SearchHistory, SearchHistoryResource
-from mlcore.models import ItemCoOccurrence, ModelEvaluation
+from mlcore.models import ItemCoOccurrence, ModelEvaluation, TrainingRun
 from mlcore.services.cooccurrence import train_cooccurrence
 from mlcore.services.evaluation import (
     METRIC_COLD_RECALL,
@@ -25,8 +26,10 @@ from mlcore.services.evaluation import (
     Dataset,
     MetadataRanker,
     Trial,
+    DEFAULT_COLD_THRESHOLD,
     build_loo_dataset,
     coverage,
+    EvaluationResult,
     evaluate_ranker,
     ndcg_at_k,
     persist_evaluation,
@@ -376,6 +379,29 @@ class PersistEvaluationTests(TestCase):
         self.assertEqual(row.metric_value, 0.4)
         self.assertIsNone(row.model_id)
 
+    def test_writes_training_run_for_cooccurrence_metrics(self):
+        run = TrainingRun.objects.create(
+            ranker_label='cooccurrence',
+            training_hash='0' * 64,
+            baskets_processed=1,
+            baskets_skipped=0,
+            items_seen=2,
+            pairs_written=1,
+            source_row_count=10,
+        )
+        result = EvaluationResult(
+            candidate_label='cooccurrence',
+            dataset_hash='x' * 64,
+            n_trials=1,
+            n_cold_trials=0,
+            training_run=run,
+            metrics={METRIC_RECALL: 1.0, METRIC_NDCG: 1.0, METRIC_COVERAGE: 0.5, METRIC_COLD_RECALL: 0.0},
+        )
+        persist_evaluation(result)
+
+        row = ModelEvaluation.objects.get(candidate_label='cooccurrence', metric_name=METRIC_RECALL)
+        self.assertEqual(row.training_run, run)
+
 
 class RunOfflineEvaluationTests(TestCase):
     """End-to-end: SearchHistory → baskets → trials → rank → persist."""
@@ -448,3 +474,61 @@ class RunOfflineEvaluationTests(TestCase):
         self._session([self.t1, self.t2])
         with self.assertRaises(ValueError):
             run_offline_evaluation(labels=['nope'], persist=False)
+
+    def test_run_offline_evaluation_forwards_split_args_to_dataset_builder(self):
+        with patch('mlcore.services.evaluation.build_loo_dataset') as mock_build:
+            mock_build.return_value = Dataset(trials=[], dataset_hash='x' * 64)
+
+            results = run_offline_evaluation(
+                labels=['metadata'],
+                split='test',
+                split_buckets=7,
+                persist=False,
+            )
+
+            self.assertEqual(results, [])
+            mock_build.assert_called_once_with(
+                cold_threshold=DEFAULT_COLD_THRESHOLD,
+                split='test',
+                split_buckets=7,
+            )
+
+    def test_run_offline_evaluation_passes_explicit_cooccurrence_run(self):
+        run = TrainingRun.objects.create(
+            ranker_label='cooccurrence',
+            training_hash='0' * 64,
+            baskets_processed=1,
+            baskets_skipped=0,
+            items_seen=2,
+            pairs_written=1,
+            source_row_count=10,
+        )
+        trial = Trial(
+            seeds=(_uid(1),),
+            held_out=_uid(2),
+            is_cold=False,
+        )
+        dataset = Dataset(trials=[trial], dataset_hash='x' * 64)
+
+        with patch('mlcore.services.evaluation.build_loo_dataset', return_value=dataset), \
+                patch('mlcore.services.evaluation.CoOccurrenceRanker') as mock_ranker_cls, \
+                patch('mlcore.services.evaluation.evaluate_ranker') as mock_evaluate:
+            mock_evaluate.return_value = EvaluationResult(
+                candidate_label='cooccurrence',
+                dataset_hash=dataset.dataset_hash,
+                n_trials=1,
+                n_cold_trials=0,
+                training_run=run,
+                metrics={METRIC_RECALL: 0.0, METRIC_NDCG: 0.0, METRIC_COVERAGE: 0.0, METRIC_COLD_RECALL: 0.0},
+            )
+
+            results = run_offline_evaluation(
+                labels=['cooccurrence'],
+                split='test',
+                cooccurrence_training_run=run,
+                persist=False,
+            )
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0].training_run, run)
+            mock_ranker_cls.assert_called_once_with(run)

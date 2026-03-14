@@ -1,7 +1,7 @@
 ---
 id: mlcore-cooccurrence-training-provenance
 title: Co-occurrence training provenance — version the stats table and link eval to training runs
-status: ready
+status: completed
 priority: p2
 owner: unassigned
 area: platform
@@ -12,7 +12,7 @@ labels:
   - backend
   - data-lineage
 complexity: 3
-updated_at: 2026-03-06
+updated_at: 2026-03-14
 ---
 
 ## Goal
@@ -105,10 +105,19 @@ there's no weight file to version, just rows.
 ## Handoff
 
 - Completed:
+  - AC3 implemented: `train_cooccurrence()` defaults to `split='train'` and now excludes `split='test'` buckets by default.
+  - `TrainingRun` model and migration for `mlcore_training_run`.
+  - `ItemCoOccurrence` and `ModelEvaluation` now carry nullable FK links to `TrainingRun`.
+  - `train_cooccurrence()` computes/stores `training_hash` and stamps rows with `training_run`.
+  - `baskets_from_search_history()` and `build_loo_dataset()` support `split` (`train`/`test`/`all`) plus `split_buckets`.
+  - `evaluate_recommenders` warns when `cooccurrence` has no training run or when train hash is stale.
+  - offline evaluation can pass and persist `cooccurrence` training run context.
+  - Added/updated MLCore unit tests for split handling and training lineage fields.
+  - Added `backend/mlcore/migrations/0003_mlcore_trainingrun_lineage.py`.
   - Gap identified and scoped during Phase 1 Stage 4 review.
 - Next:
   - Prioritise against `musicprofile-favorites-resolvable-identity` — both expand
     the eval harness's input surface. Doing this one first means the split logic
     is in place before favorites add a second basket source.
 - Blockers:
-  - None. Can start as soon as Phase 1 ships.
+  - Local commit is blocked by environment hook dependencies (`docker compose` unavailable during pre-commit backend ruff checks). Code is staged and awaiting final hook-pass commit path.

@@ -54,6 +54,31 @@ class CorpusManifest(models.Model):
         return f"{self.source}:{self.track_path}"
 
 
+class TrainingRun(models.Model):
+    """One co-occurrence training invocation and its deterministic signature."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ranker_label = models.CharField(max_length=64)
+    training_hash = models.CharField(max_length=64, db_index=True)
+    baskets_processed = models.IntegerField()
+    baskets_skipped = models.IntegerField()
+    items_seen = models.IntegerField()
+    pairs_written = models.IntegerField()
+    source_row_count = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_training_run'
+        indexes = [
+            models.Index(fields=['ranker_label']),
+            models.Index(fields=['training_hash']),
+            models.Index(fields=['created_at']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.ranker_label}:{self.training_hash[:12]}"
+
+
 class ItemCoOccurrence(models.Model):
     """
     Symmetric pairwise co-occurrence counts + PMI scores for catalog items
@@ -69,6 +94,13 @@ class ItemCoOccurrence(models.Model):
     co_count = models.IntegerField()
     pmi_score = models.FloatField()
     updated_at = models.DateTimeField(auto_now=True)
+    training_run = models.ForeignKey(
+        TrainingRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='cooccurrence_rows',
+    )
 
     class Meta:
         db_table = 'mlcore_item_cooccurrence'
@@ -76,6 +108,7 @@ class ItemCoOccurrence(models.Model):
         indexes = [
             models.Index(fields=['item_a_juke_id']),
             models.Index(fields=['item_b_juke_id']),
+            models.Index(fields=['training_run']),
         ]
 
     def __str__(self):
@@ -93,6 +126,13 @@ class ModelEvaluation(models.Model):
     metric_name = models.CharField(max_length=64)
     metric_value = models.FloatField()
     dataset_hash = models.CharField(max_length=64, db_index=True)
+    training_run = models.ForeignKey(
+        TrainingRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='evaluations',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

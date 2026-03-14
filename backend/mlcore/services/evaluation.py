@@ -26,8 +26,11 @@ from uuid import UUID
 from django.db.models import Q
 
 from catalog.models import Track
-from mlcore.models import ItemCoOccurrence, ModelEvaluation
-from mlcore.services.cooccurrence import baskets_from_search_history
+from mlcore.models import ItemCoOccurrence, ModelEvaluation, TrainingRun
+from mlcore.services.cooccurrence import (
+    _SPLIT_BUCKET_COUNT,
+    baskets_from_search_history,
+)
 from recommender_engine.app.scorers import (
     extract_seed_feature_ids,
     score_cooccurrence,
@@ -102,6 +105,8 @@ class Dataset:
 def build_loo_dataset(
     baskets: list[list[UUID]] | None = None,
     cold_threshold: int = DEFAULT_COLD_THRESHOLD,
+    split: str = "all",
+    split_buckets: int = _SPLIT_BUCKET_COUNT,
 ) -> Dataset:
     """
     Leave-one-out trials from behavioral baskets. For each basket of size n,
@@ -115,7 +120,7 @@ def build_loo_dataset(
     for the planned MusicProfile.favorite_tracks follow-up.
     """
     if baskets is None:
-        baskets = baskets_from_search_history()
+        baskets = baskets_from_search_history(split=split, split_buckets=split_buckets)
 
     # Frequency over baskets (not raw occurrences — baskets are already deduped sets).
     freq: Counter[UUID] = Counter()
@@ -225,6 +230,9 @@ class MetadataRanker:
 class CoOccurrenceRanker:
     label = 'cooccurrence'
 
+    def __init__(self, training_run: TrainingRun | None = None) -> None:
+        self.training_run = training_run
+
     def rank(self, seeds: tuple[UUID, ...], exclude: set[UUID], limit: int) -> list[UUID]:
         seed_list = list(seeds)
         rows_a = (
@@ -263,6 +271,7 @@ class EvaluationResult:
     n_trials: int
     n_cold_trials: int
     metrics: dict[str, float]
+    training_run: TrainingRun | None = None
 
 
 def evaluate_ranker(
@@ -313,6 +322,7 @@ def evaluate_ranker(
         dataset_hash=dataset.dataset_hash,
         n_trials=n,
         n_cold_trials=n_cold,
+        training_run=getattr(ranker, "training_run", None),
         metrics=metrics,
     )
 
@@ -326,6 +336,7 @@ def persist_evaluation(result: EvaluationResult) -> list[ModelEvaluation]:
             metric_name=name,
             metric_value=value,
             dataset_hash=result.dataset_hash,
+            training_run=result.training_run,
         )
         for name, value in result.metrics.items()
     ]
@@ -336,6 +347,9 @@ def run_offline_evaluation(
     labels: Iterable[str] | None = None,
     k: int = DEFAULT_K,
     cold_threshold: int = DEFAULT_COLD_THRESHOLD,
+    split: str = "all",
+    split_buckets: int = _SPLIT_BUCKET_COUNT,
+    cooccurrence_training_run: TrainingRun | None = None,
     persist: bool = True,
 ) -> list[EvaluationResult]:
     """
@@ -345,7 +359,11 @@ def run_offline_evaluation(
     if labels is None:
         labels = list(RANKERS.keys())
 
-    dataset = build_loo_dataset(cold_threshold=cold_threshold)
+    dataset = build_loo_dataset(
+        cold_threshold=cold_threshold,
+        split=split,
+        split_buckets=split_buckets,
+    )
     if not dataset.trials:
         logger.warning('run_offline_evaluation: no trials — need SearchHistory sessions with >=2 tracks')
         return []
@@ -356,7 +374,15 @@ def run_offline_evaluation(
         ranker_cls = RANKERS.get(label)
         if ranker_cls is None:
             raise ValueError(f"unknown ranker label '{label}' (known: {sorted(RANKERS)})")
-        result = evaluate_ranker(ranker_cls(), dataset, k=k, catalog_size=catalog_size)
+        if label == 'cooccurrence':
+            if cooccurrence_training_run is None:
+                cooccurrence_training_run = TrainingRun.objects.filter(
+                    ranker_label='cooccurrence',
+                ).order_by('-created_at').first()
+            ranker = cooccurrence_training_run and CoOccurrenceRanker(cooccurrence_training_run) or CoOccurrenceRanker()
+        else:
+            ranker = ranker_cls()
+        result = evaluate_ranker(ranker, dataset, k=k, catalog_size=catalog_size)
         if persist:
             persist_evaluation(result)
         results.append(result)
