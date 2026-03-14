@@ -23,6 +23,8 @@ services:
       - db
       - redis
     env_file: .env
+    environment:
+      - BACKEND_ALLOWED_HOSTS=${BACKEND_ALLOWED_HOSTS:-localhost,127.0.0.1,10.0.2.2,web},backend
 
   worker:
     build:
@@ -76,6 +78,7 @@ services:
       context: ./web
       args:
         VITE_API_BASE_URL: ${BACKEND_URL:?Set BACKEND_URL in .env}
+        PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-${BACKEND_URL:?Set BACKEND_URL in .env}}
         WEB_PORT: ${WEB_PORT:?Set WEB_PORT}
     ports:
       - "${WEB_PORT:?Set WEB_PORT}:${WEB_PORT:?Set WEB_PORT}"
@@ -87,6 +90,8 @@ services:
     env_file: .env
     environment:
       - VITE_API_BASE_URL=${BACKEND_URL:?Set BACKEND_URL in .env}
+      - PUBLIC_BACKEND_URL=${PUBLIC_BACKEND_URL:-${BACKEND_URL:?Set BACKEND_URL in .env}}
+      - BACKEND_TARGET=http://backend:${BACKEND_PORT:?Set BACKEND_PORT}
 
 networks:
   default:

@@ -95,6 +95,35 @@ class TestRegistration(APITestCase):
         self.assertEqual("Welcome to Juke! Please verify your Account", outbox[0].subject)
         self.assertIn("Welcome to Juke! Let's get listening.", outbox[0].body)
 
+    @override_settings(
+        FRONTEND_URL='http://localhost:5173',
+        FRONTEND_ALLOWED_ORIGINS=[
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+            'http://neptune:5173',
+        ],
+    )
+    def test_register_email_uses_request_origin_for_verification_url(self):
+        from django.core.mail import outbox
+
+        data = {
+            'username': 'test-request-origin',
+            'password': 'testpassword',
+            'password_confirm': 'testpassword',
+            'email': 'test-request-origin@test.com',
+        }
+
+        response = self.client.post(
+            self.register_url,
+            data,
+            format='json',
+            HTTP_ORIGIN='http://neptune:5173',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(len(outbox), 1)
+        self.assertIn('http://neptune:5173/verify-user/', outbox[0].body)
+
     @override_settings(DISABLE_REGISTRATION=True)
     def test_register_disabled(self):
         data = {

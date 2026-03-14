@@ -16,8 +16,15 @@ export class ApiError extends Error {
 }
 
 const nodeEnv = typeof process !== 'undefined' ? process.env : undefined;
+const browserOrigin =
+  typeof window !== 'undefined' && typeof window.location?.origin === 'string'
+    ? window.location.origin
+    : undefined;
 
 const runtimeApiBase =
+  // Prefer same-origin requests in the browser so the Vite/NGINX proxy handles
+  // backend routing without depending on host-specific absolute URLs.
+  browserOrigin ??
   import.meta.env.BACKEND_URL ??
   import.meta.env.VITE_API_BASE_URL ??
   nodeEnv?.BACKEND_URL ??

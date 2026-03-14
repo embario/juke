@@ -15,6 +15,7 @@ router.registry.extend(catalog_router.registry)
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/auth/', include('juke_auth.urls')),
+    path('api/v1/social-auth/login/spotify/', auth_views.spotify_login, name='spotify_login'),
     path('api/v1/social-auth/complete/spotify/', auth_views.spotify_complete, name='spotify_complete'),
     path('api/v1/social-auth/', include('social_django.urls', namespace='social')),
     path('api/v1/', include(router.urls)),

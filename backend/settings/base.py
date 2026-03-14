@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from urllib.parse import urljoin
 
+from juke_auth.frontend_origins import build_frontend_verification_url
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -46,6 +48,7 @@ def _split_csv_env(value: str | None) -> list[str]:
 DEBUG = RUNTIME_ENV == "development"
 
 BACKEND_URL = _required_env("BACKEND_URL").rstrip('/')
+PUBLIC_BACKEND_URL = os.environ.get("PUBLIC_BACKEND_URL", BACKEND_URL).rstrip('/')
 FRONTEND_URL = _required_env("FRONTEND_URL").rstrip('/')
 LOGIN_REDIRECT_URL = FRONTEND_URL
 LOGOUT_REDIRECT_URL = FRONTEND_URL
@@ -117,7 +120,8 @@ REST_REGISTRATION = {
         'subject': 'juke_auth/register/subject.txt',
         'text_body': 'juke_auth/register/body.txt',
         'html_body': 'juke_auth/register/body.html',
-    }
+    },
+    'VERIFICATION_URL_BUILDER': build_frontend_verification_url,
 }
 
 
@@ -191,7 +195,7 @@ _spotify_scope = os.environ.get(
 )
 SOCIAL_AUTH_SPOTIFY_SCOPE = [entry.strip() for entry in _spotify_scope.replace(",", " ").split() if entry.strip()]
 SPOTIFY_REDIRECT_PATH = '/api/v1/social-auth/complete/spotify/'
-SOCIAL_AUTH_SPOTIFY_REDIRECT_URI = urljoin(f"{BACKEND_URL}/", SPOTIFY_REDIRECT_PATH.lstrip('/'))
+SOCIAL_AUTH_SPOTIFY_REDIRECT_URI = urljoin(f"{PUBLIC_BACKEND_URL}/", SPOTIFY_REDIRECT_PATH.lstrip('/'))
 # Allowed custom return URI schemes for spotify connect flow (mobile deep links).
 _spotify_return_schemes = os.environ.get('SPOTIFY_CONNECT_ALLOWED_RETURN_SCHEMES', 'juke,shotclock')
 SPOTIFY_CONNECT_ALLOWED_RETURN_SCHEMES = [
@@ -394,3 +398,15 @@ CORS_ALLOW_CREDENTIALS = True
 
 default_csrf = [origin.rstrip('/') for origin in CORS_ALLOWED_ORIGINS]
 CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(default_csrf))
+
+frontend_allowed_origins = os.environ.get("FRONTEND_ALLOWED_ORIGINS")
+if frontend_allowed_origins:
+    FRONTEND_ALLOWED_ORIGINS = [
+        origin.strip().rstrip('/')
+        for origin in frontend_allowed_origins.split(",")
+        if origin.strip()
+    ]
+else:
+    FRONTEND_ALLOWED_ORIGINS = list(
+        dict.fromkeys([FRONTEND_URL.rstrip('/'), *CORS_ALLOWED_ORIGINS])
+    )

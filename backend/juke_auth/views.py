@@ -1,8 +1,9 @@
 import logging
+from urllib.parse import urljoin
 from urllib.parse import urlparse
 
 from django.conf import settings
-from django.contrib.auth import login, logout
+from django.contrib.auth import REDIRECT_FIELD_NAME, login, logout
 from django.http import HttpResponseRedirect, JsonResponse
 from django.db.models import Q
 from django.utils import timezone
@@ -27,6 +28,7 @@ except ImportError:  # pragma: no cover - fallback for older rest_registration l
     from rest_registration.api.views.register import VerifyRegistrationView
 
 from social_django.utils import load_backend, load_strategy
+from social_core.actions import do_auth, do_complete
 from social_core.exceptions import AuthConnectionError
 from social_django import views as social_views
 from social_django.models import UserSocialAuth
@@ -42,6 +44,12 @@ from juke_auth.spotify_credentials import (
     SpotifyCredentialBroker,
     SpotifyCredentialError,
 )
+from juke_auth.frontend_origins import (
+    append_query_params,
+    build_frontend_url,
+    get_frontend_origin,
+    is_allowed_frontend_url,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -53,18 +61,24 @@ def _social_auth_error_response(request, error_code: str, detail: str, status_co
     accept = request.META.get('HTTP_ACCEPT', '')
     if 'application/json' in accept:
         return JsonResponse({'detail': detail, 'error': error_code}, status=status_code)
-    error_url = f"{settings.FRONTEND_URL.rstrip('/')}/login?error={error_code}"
+    session_frontend_origin = request.session.get('spotify_frontend_origin') if hasattr(request, 'session') else None
+    error_url = build_frontend_url(
+        '/login',
+        request=request,
+        fallback=session_frontend_origin,
+    )
+    error_url = append_query_params(error_url, {'error': error_code})
     return HttpResponseRedirect(error_url)
 
 
-def _validated_return_to(candidate: str | None) -> str:
-    fallback = settings.FRONTEND_URL.rstrip('/')
+def _validated_return_to(candidate: str | None, request=None, fallback: str | None = None) -> str:
+    fallback_target = build_frontend_url('/', request=request, fallback=fallback).rstrip('/')
     if not candidate:
-        return fallback
+        return fallback_target
 
     parsed = urlparse(candidate)
     if not parsed.scheme:
-        return fallback
+        return fallback_target
 
     allowed_schemes_raw = getattr(
         settings,
@@ -79,16 +93,59 @@ def _validated_return_to(candidate: str | None) -> str:
     if parsed.scheme.lower() in allowed_schemes:
         return candidate
 
-    allowed_hosts = {urlparse(settings.FRONTEND_URL).netloc}
-    for origin in getattr(settings, 'CORS_ALLOWED_ORIGINS', []):
-        parsed_origin = urlparse(origin)
-        if parsed_origin.netloc:
-            allowed_hosts.add(parsed_origin.netloc)
-
-    if parsed.netloc not in allowed_hosts:
-        return fallback
+    if not is_allowed_frontend_url(candidate):
+        return fallback_target
 
     return candidate
+
+
+def _store_spotify_frontend_origin(request) -> str | None:
+    frontend_origin = get_frontend_origin(request=request)
+    if frontend_origin and hasattr(request, 'session'):
+        request.session['spotify_frontend_origin'] = frontend_origin
+    return frontend_origin
+
+
+def _spotify_redirect_uri(request) -> str:
+    return urljoin(f"{settings.PUBLIC_BACKEND_URL.rstrip('/')}/", settings.SPOTIFY_REDIRECT_PATH.lstrip('/'))
+
+
+def _start_spotify_auth(request, *args, **kwargs):
+    strategy = load_strategy(request)
+    backend = load_backend(strategy, SOCIAL_AUTH_PROVIDER, _spotify_redirect_uri(request))
+    request.social_auth_backend = backend
+    request.strategy = strategy
+    request.backend = backend
+    return do_auth(backend, redirect_name=REDIRECT_FIELD_NAME)
+
+
+def spotify_login(request, *args, **kwargs):
+    _store_spotify_frontend_origin(request)
+    if hasattr(request, 'session'):
+        request.session['spotify_auth_return_to'] = _validated_return_to(
+            request.META.get('HTTP_REFERER'),
+            request=request,
+            fallback=request.session.get('spotify_frontend_origin'),
+        )
+
+    try:
+        return _start_spotify_auth(request, *args, **kwargs)
+    except AuthConnectionError as exc:
+        logger.warning('Spotify auth connection error', exc_info=exc)
+        return _social_auth_error_response(
+            request,
+            error_code='spotify_unavailable',
+            detail='Spotify authentication is temporarily unavailable. Please try again.',
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    except Exception as exc:
+        logger.exception('Spotify auth failed', exc_info=exc)
+        return _social_auth_error_response(
+            request,
+            error_code='spotify_auth_failed',
+            detail='Spotify authentication failed. Please try again.',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class SpotifyTokenIssueThrottle(UserRateThrottle):
@@ -97,7 +154,12 @@ class SpotifyTokenIssueThrottle(UserRateThrottle):
 
 def spotify_connect(request, *args, **kwargs):
     token_key = (request.GET.get('token') or '').strip()
-    return_to = _validated_return_to(request.GET.get('return_to'))
+    session_frontend_origin = _store_spotify_frontend_origin(request)
+    return_to = _validated_return_to(
+        request.GET.get('return_to'),
+        request=request,
+        fallback=session_frontend_origin,
+    )
 
     if not request.user.is_authenticated and token_key:
         token = Token.objects.filter(key=token_key).select_related('user').first()
@@ -116,7 +178,7 @@ def spotify_connect(request, *args, **kwargs):
     request.session['spotify_connect_return_to'] = return_to
 
     try:
-        return social_views.auth(request, backend=SOCIAL_AUTH_PROVIDER, *args, **kwargs)
+        return _start_spotify_auth(request, *args, **kwargs)
     except AuthConnectionError as exc:
         logger.warning('Spotify auth connection error', exc_info=exc)
         return _social_auth_error_response(
@@ -137,7 +199,21 @@ def spotify_connect(request, *args, **kwargs):
 
 def spotify_complete(request, *args, **kwargs):
     try:
-        response = social_views.complete(request, backend=SOCIAL_AUTH_PROVIDER, *args, **kwargs)
+        strategy = load_strategy(request)
+        backend = load_backend(strategy, SOCIAL_AUTH_PROVIDER, _spotify_redirect_uri(request))
+        request.social_auth_backend = backend
+        request.social_strategy = strategy
+        request.strategy = strategy
+        request.backend = backend
+        response = do_complete(
+            backend,
+            social_views._do_login,
+            user=request.user,
+            redirect_name=REDIRECT_FIELD_NAME,
+            request=request,
+            *args,
+            **kwargs,
+        )
     except AuthConnectionError as exc:
         logger.warning('Spotify auth connection error', exc_info=exc)
         return _social_auth_error_response(
@@ -156,7 +232,13 @@ def spotify_complete(request, *args, **kwargs):
         )
 
     connect_user_id = request.session.pop('spotify_connect_user_id', None)
-    return_to = _validated_return_to(request.session.pop('spotify_connect_return_to', None))
+    session_frontend_origin = request.session.get('spotify_frontend_origin')
+    return_to = _validated_return_to(
+        request.session.pop('spotify_connect_return_to', None)
+        or request.session.pop('spotify_auth_return_to', None),
+        request=request,
+        fallback=session_frontend_origin,
+    )
 
     if connect_user_id:
         target_user = JukeUser.objects.filter(pk=connect_user_id).first()
@@ -179,6 +261,8 @@ def spotify_complete(request, *args, **kwargs):
 
     if isinstance(response, HttpResponseRedirect):
         response['Location'] = return_to
+    if hasattr(request, 'session'):
+        request.session.pop('spotify_frontend_origin', None)
     return response
 
 
