@@ -30,9 +30,9 @@ class Migration(migrations.Migration):
                 'db_table': 'mlcore_training_run',
                 'ordering': ['-created_at'],
                 'indexes': [
-                    models.Index(fields=['ranker_label'], name='mlcore_trun_ranker_idx'),
-                    models.Index(fields=['training_hash'], name='mlcore_trun_hash_idx'),
-                    models.Index(fields=['created_at'], name='mlcore_trun_created_idx'),
+                    models.Index(fields=['ranker_label']),
+                    models.Index(fields=['training_hash']),
+                    models.Index(fields=['created_at']),
                 ],
             },
         ),
@@ -49,7 +49,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='itemcooccurrence',
-            index=models.Index(fields=['training_run'], name='mlcore_item_train_idx'),
+            index=models.Index(fields=['training_run']),
         ),
         migrations.AddField(
             model_name='modelevaluation',
