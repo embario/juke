@@ -1,64 +1,83 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath, URL } from 'node:url';
+import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import viteCompression from 'vite-plugin-compression';
-const splitCsvEnv = (value) => value?.split(',').map((entry) => entry.trim()).filter(Boolean) ?? [];
-const BACKEND_TARGET = process.env.BACKEND_TARGET ?? process.env.BACKEND_URL;
-const RUNTIME_ENV = (process.env.JUKE_RUNTIME_ENV ?? 'development').toLowerCase();
-const WEB_ALLOWED_HOSTS = splitCsvEnv(process.env.WEB_ALLOWED_HOSTS);
-const PROD_LIKE_ENVIRONMENTS = new Set(['staging', 'production']);
-const SHOULD_PRECOMPRESS_ASSETS = PROD_LIKE_ENVIRONMENTS.has(RUNTIME_ENV);
-const createCompressionPlugin = viteCompression;
-if (!BACKEND_TARGET) {
-    throw new Error('BACKEND_URL must be defined for the frontend dev server.');
-}
-export default defineConfig({
-    envPrefix: ['VITE_', 'DISABLE_'],
-    plugins: [
-        react(),
-        ...(SHOULD_PRECOMPRESS_ASSETS
-            ? [
-                createCompressionPlugin({
-                    algorithm: 'brotliCompress',
-                    ext: '.br',
-                    deleteOriginFile: false,
-                }),
-                createCompressionPlugin({
-                    algorithm: 'gzip',
-                    ext: '.gz',
-                    deleteOriginFile: false,
-                }),
-            ]
-            : []),
-    ],
-    define: {
-        __JUKE_RUNTIME_ENV__: JSON.stringify(RUNTIME_ENV),
-    },
-    resolve: {
-        alias: {
-            '@shared': fileURLToPath(new URL('./src/shared', import.meta.url)),
-            '@uikit': fileURLToPath(new URL('./src/uikit', import.meta.url)),
+import { loadEnv } from 'vite';
+export default defineConfig(({ mode }) => {
+    const repoRoot = resolve(process.cwd(), '..');
+    const rootEnv = loadEnv(mode, repoRoot, '');
+    const localEnv = loadEnv(mode, process.cwd(), '');
+    const env = { ...rootEnv, ...localEnv };
+    const splitCsvEnv = (value) => value?.split(',').map((entry) => entry.trim()).filter(Boolean) ?? [];
+    const BACKEND_URL = env.BACKEND_URL ?? process.env.BACKEND_URL ?? '';
+    const PUBLIC_BACKEND_URL = env.PUBLIC_BACKEND_URL ?? process.env.PUBLIC_BACKEND_URL ?? BACKEND_URL;
+    const BACKEND_TARGET = env.BACKEND_TARGET ?? process.env.BACKEND_TARGET ?? BACKEND_URL;
+    const RUNTIME_ENV = (env.JUKE_RUNTIME_ENV ?? process.env.JUKE_RUNTIME_ENV ?? 'development').toLowerCase();
+    const API_BASE_URL = env.VITE_API_BASE_URL ?? process.env.VITE_API_BASE_URL ?? BACKEND_URL;
+    const WEB_ALLOWED_HOSTS = splitCsvEnv(env.WEB_ALLOWED_HOSTS ?? process.env.WEB_ALLOWED_HOSTS);
+    const WEB_PORT = env.WEB_PORT ?? env.FRONTEND_PORT ?? process.env.WEB_PORT ?? process.env.FRONTEND_PORT ?? '';
+    const PROD_LIKE_ENVIRONMENTS = new Set(['staging', 'production']);
+    const SHOULD_PRECOMPRESS_ASSETS = PROD_LIKE_ENVIRONMENTS.has(RUNTIME_ENV);
+    const createCompressionPlugin = viteCompression;
+    if (!BACKEND_TARGET) {
+        throw new Error('BACKEND_URL must be defined for the frontend dev server.');
+    }
+    if (!WEB_PORT || Number.isNaN(Number(WEB_PORT))) {
+        throw new Error('WEB_PORT must be defined for the frontend dev server.');
+    }
+    return {
+        plugins: [
+            react(),
+            ...(SHOULD_PRECOMPRESS_ASSETS
+                ? [
+                    createCompressionPlugin({
+                        algorithm: 'brotliCompress',
+                        ext: '.br',
+                        deleteOriginFile: false,
+                    }),
+                    createCompressionPlugin({
+                        algorithm: 'gzip',
+                        ext: '.gz',
+                        deleteOriginFile: false,
+                    }),
+                ]
+                : []),
+        ],
+        define: {
+            __JUKE_RUNTIME_ENV__: JSON.stringify(RUNTIME_ENV),
+            'import.meta.env.BACKEND_URL': JSON.stringify(BACKEND_URL),
+            'import.meta.env.DISABLE_REGISTRATION': JSON.stringify(process.env.DISABLE_REGISTRATION ?? ''),
+            'import.meta.env.JUKE_RUNTIME_ENV': JSON.stringify(process.env.JUKE_RUNTIME_ENV ?? ''),
+            'import.meta.env.PUBLIC_BACKEND_URL': JSON.stringify(PUBLIC_BACKEND_URL),
+            'import.meta.env.VITE_API_BASE_URL': JSON.stringify(API_BASE_URL),
         },
-    },
-    server: {
-        host: true,
-        port: 5173,
-        allowedHosts: WEB_ALLOWED_HOSTS.length > 0 ? WEB_ALLOWED_HOSTS : undefined,
-        proxy: {
-            '/auth': {
-                target: BACKEND_TARGET,
-                changeOrigin: true,
-            },
-            '/api': {
-                target: BACKEND_TARGET,
-                changeOrigin: true,
+        resolve: {
+            alias: {
+                '@shared': fileURLToPath(new URL('./src/shared', import.meta.url)),
+                '@uikit': fileURLToPath(new URL('./src/uikit', import.meta.url)),
             },
         },
-    },
-    test: {
-        globals: true,
-        environment: 'jsdom',
-        setupFiles: './src/setupTests.ts',
-        css: true,
-    },
+        server: {
+            host: true,
+            port: Number(WEB_PORT),
+            allowedHosts: WEB_ALLOWED_HOSTS.length > 0 ? WEB_ALLOWED_HOSTS : undefined,
+            proxy: {
+                '/auth': {
+                    target: BACKEND_TARGET,
+                    changeOrigin: true,
+                },
+                '/api': {
+                    target: BACKEND_TARGET,
+                    changeOrigin: true,
+                },
+            },
+        },
+        test: {
+            globals: true,
+            environment: 'jsdom',
+            setupFiles: './src/setupTests.ts',
+            css: true,
+        },
+    };
 });

@@ -3,7 +3,7 @@ from urllib.parse import urljoin
 from urllib.parse import urlparse
 
 from django.conf import settings
-from django.contrib.auth import REDIRECT_FIELD_NAME, login, logout
+from django.contrib.auth import REDIRECT_FIELD_NAME, authenticate, login, logout
 from django.http import HttpResponseRedirect, JsonResponse
 from django.db.models import Q
 from django.utils import timezone
@@ -17,7 +17,6 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.authtoken.serializers import AuthTokenSerializer
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import UserRateThrottle
@@ -333,7 +332,8 @@ def _send_register_verification_email(user, request=None):
 def _login_user(request, user):
     auth_backends = getattr(settings, 'AUTHENTICATION_BACKENDS', []) or []
     backend = auth_backends[0] if auth_backends else 'django.contrib.auth.backends.ModelBackend'
-    login(request, user, backend=backend)
+    raw_request = getattr(request, '_request', request)
+    login(raw_request, user, backend=backend)
 
 
 class JukeUserViewSet(viewsets.ModelViewSet):
@@ -474,9 +474,11 @@ class TokenLoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
-        serializer = AuthTokenSerializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']
+        username = request.data.get('username')
+        password = request.data.get('password')
+        user = authenticate(request=getattr(request, '_request', request), username=username, password=password)
+        if user is None:
+            raise ValidationError({'non_field_errors': ['Unable to log in with provided credentials.']})
         token, _ = Token.objects.get_or_create(user=user)
         _login_user(request, user)
         return Response({'token': token.key}, status=status.HTTP_200_OK)

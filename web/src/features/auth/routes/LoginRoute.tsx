@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { ApiError } from '@shared/api/apiClient';
+import { formatFieldErrors } from '@shared/utils/errorFormatters';
 import LoginForm from '../components/LoginForm';
 import { useAuth } from '../hooks/useAuth';
 import type { LoginPayload } from '../types';
@@ -48,7 +50,12 @@ const LoginRoute = () => {
       await login(payload);
       navigate(redirectTo, { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to authenticate.');
+      if (err instanceof ApiError) {
+        const fieldMessage = formatFieldErrors(err.payload);
+        setError(fieldMessage ?? err.message);
+      } else {
+        setError(err instanceof Error ? err.message : 'Unable to authenticate.');
+      }
     } finally {
       setIsSubmitting(false);
     }

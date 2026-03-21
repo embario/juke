@@ -9,6 +9,7 @@ import NotFoundRoute from './features/app/routes/NotFoundRoute';
 import JukeWorldRoute from './features/world/routes/JukeWorldRoute';
 import OnboardingVisualizations from './features/auth/components/onboarding/visualizations';
 import OnboardingRoute from './features/auth/routes/OnboardingRoute';
+import MessageDesignLabRoute from './features/messages/routes/MessageDesignLabRoute';
 
 const router = createBrowserRouter(
   [
@@ -39,6 +40,10 @@ const router = createBrowserRouter(
         {
           path: 'profiles/:username',
           element: <MusicProfileRoute />,
+        },
+        {
+          path: 'messages-lab',
+          element: <MessageDesignLabRoute />,
         },
       ],
     },

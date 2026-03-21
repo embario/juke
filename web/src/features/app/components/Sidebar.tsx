@@ -49,6 +49,9 @@ const Sidebar = ({ isOpen, onClose }: Props) => {
         <NavLink to="/world" className={linkClass} onClick={handleNavClick}>
           Juke World
         </NavLink>
+        <NavLink to="/messages-lab" className={linkClass} onClick={handleNavClick}>
+          Message Lab
+        </NavLink>
         {!isAuthenticated ? (
           <>
             <NavLink to="/login" className={linkClass} onClick={handleNavClick}>
