@@ -12,6 +12,7 @@ from juke_auth.models import JukeUser
 
 class LoginTests(APITestCase):
     social_login_url = '/api/v1/auth/social-login/'
+    token_login_url = '/api/v1/auth/api-auth-token/'
 
     @patch.object(SpotifyOAuth2, 'do_auth')
     def test_social_login_create_user(self, mock_auth):
@@ -97,3 +98,37 @@ class LoginTests(APITestCase):
         self.assertEqual(resp.status_code, status.HTTP_409_CONFLICT)
         self.assertIn('/api/v1/auth/connect/spotify/', resp.data['detail'])
         mock_auth.assert_not_called()
+
+    def test_token_login_returns_auth_token_for_valid_credentials(self):
+        user = JukeUser.objects.create_user(
+            username='token-user',
+            email='token-user@example.com',
+            password='pass1234',
+        )
+
+        resp = self.client.post(self.token_login_url, data={
+            'username': 'token-user',
+            'password': 'pass1234',
+        }, format='json')
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertTrue(Token.objects.filter(key=resp.data['token'], user=user).exists())
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(user.id))
+
+    def test_token_login_rejects_invalid_credentials(self):
+        JukeUser.objects.create_user(
+            username='token-user',
+            email='token-user@example.com',
+            password='pass1234',
+        )
+
+        resp = self.client.post(self.token_login_url, data={
+            'username': 'token-user',
+            'password': 'wrong-pass',
+        }, format='json')
+
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            resp.data['non_field_errors'],
+            ['Unable to log in with provided credentials.'],
+        )
