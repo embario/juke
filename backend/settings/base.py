@@ -325,6 +325,8 @@ CELERY_TASK_ROUTES = {
     'catalog.tasks.crawl_catalog': {'queue': 'catalog'},
     'recommender.tasks.ingest_training_data': {'queue': 'recommender'},
     'mlcore.tasks.train_cooccurrence': {'queue': 'mlcore'},
+    'mlcore.tasks.import_listenbrainz_full': {'queue': 'mlcore'},
+    'mlcore.tasks.replay_listenbrainz_incremental': {'queue': 'mlcore'},
 }
 CELERY_BEAT_SCHEDULE = {
     'sync-spotify-genres-daily': {
@@ -334,6 +336,14 @@ CELERY_BEAT_SCHEDULE = {
     'refresh-featured-genres-daily': {
         'task': 'catalog.tasks.refresh_featured_genres',
         'schedule': 60 * 60 * 24,  # 24 hours
+    },
+    'mlcore-listenbrainz-full-import': {
+        'task': 'mlcore.tasks.import_listenbrainz_full',
+        'schedule': int(os.environ.get('MLCORE_LISTENBRAINZ_FULL_IMPORT_SCHEDULE_SECONDS', str(60 * 60 * 24 * 7))),
+    },
+    'mlcore-listenbrainz-incremental-replay': {
+        'task': 'mlcore.tasks.replay_listenbrainz_incremental',
+        'schedule': int(os.environ.get('MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_SCHEDULE_SECONDS', str(60 * 60 * 24))),
     },
 }
 # Keep Redis-queued tasks invisible long enough for workers to finish after fetching.
@@ -358,6 +368,15 @@ JUKE_ALLOWED_LICENSES = os.environ.get('JUKE_ALLOWED_LICENSES', 'production')
 # Setting False downgrades unknowns to 'research_only' — only meaningful in research mode,
 # since production mode whitelists against production_approved regardless.
 JUKE_LICENSE_FAIL_CLOSED = _env_flag('JUKE_LICENSE_FAIL_CLOSED', True)
+MLCORE_LISTENBRAINZ_FULL_IMPORT_PATH = os.environ.get('MLCORE_LISTENBRAINZ_FULL_IMPORT_PATH', '')
+MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_PATH = os.environ.get('MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_PATH', '')
+MLCORE_LISTENBRAINZ_FULL_SOURCE_VERSION = os.environ.get('MLCORE_LISTENBRAINZ_FULL_SOURCE_VERSION', '')
+MLCORE_LISTENBRAINZ_INCREMENTAL_SOURCE_VERSION = os.environ.get('MLCORE_LISTENBRAINZ_INCREMENTAL_SOURCE_VERSION', '')
+MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS = int(os.environ.get('MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS', '0'))
+MLCORE_LISTENBRAINZ_USER_HASH_SALT = os.environ.get('MLCORE_LISTENBRAINZ_USER_HASH_SALT', 'listenbrainz')
+MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS = int(
+    os.environ.get('MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS', str(30 * 60))
+)
 
 # ML Core — recommender defaults (arch §2 decision 14)
 JUKE_RECOMMENDER_DEFAULT_LIMIT = int(os.environ.get('JUKE_RECOMMENDER_DEFAULT_LIMIT', '10'))

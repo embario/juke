@@ -1,6 +1,13 @@
 from django.contrib import admin, messages
 
-from mlcore.models import CorpusManifest, ModelEvaluation, ModelPromotion
+from mlcore.models import (
+    CorpusManifest,
+    ListenBrainzRawListen,
+    ModelEvaluation,
+    ModelPromotion,
+    NormalizedInteraction,
+    SourceIngestionRun,
+)
 from mlcore.services.corpus import LicensePolicy
 from mlcore.services.promotion import PromotionError, approve_promotion, reject_promotion
 
@@ -19,6 +26,64 @@ class CorpusManifestAdmin(admin.ModelAdmin):
 
     def policy_reason(self, obj):
         return self._policy.evaluate(obj).reason
+
+
+@admin.register(SourceIngestionRun)
+class SourceIngestionRunAdmin(admin.ModelAdmin):
+    list_display = (
+        'source', 'import_mode', 'source_version', 'status', 'source_row_count',
+        'imported_row_count', 'duplicate_row_count', 'malformed_row_count', 'started_at',
+    )
+    list_filter = ('source', 'import_mode', 'status', 'policy_classification')
+    search_fields = ('source_version', 'raw_path', 'checksum')
+    readonly_fields = (
+        'id', 'source', 'import_mode', 'source_version', 'raw_path', 'checksum', 'status',
+        'source_row_count', 'imported_row_count', 'duplicate_row_count', 'canonicalized_row_count',
+        'unresolved_row_count', 'malformed_row_count', 'policy_classification', 'metadata',
+        'last_error', 'started_at', 'completed_at',
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ListenBrainzRawListen)
+class ListenBrainzRawListenAdmin(admin.ModelAdmin):
+    list_display = ('source_user_id', 'played_at', 'track_name', 'artist_name', 'recording_mbid')
+    list_filter = ('import_run__source',)
+    search_fields = ('source_event_signature', 'track_name', 'artist_name', 'recording_msid')
+    readonly_fields = (
+        'id', 'import_run', 'source_event_signature', 'source_user_id', 'played_at',
+        'recording_mbid', 'release_mbid', 'recording_msid', 'release_msid', 'track_name',
+        'artist_name', 'release_name', 'track_identifier_candidates', 'payload', 'ingested_at',
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(NormalizedInteraction)
+class NormalizedInteractionAdmin(admin.ModelAdmin):
+    list_display = ('source_id', 'source_version', 'source_user_id', 'played_at', 'track', 'session_hint')
+    list_filter = ('source_id', 'source_version')
+    search_fields = ('source_event_signature', 'source_user_id', 'session_hint')
+    readonly_fields = (
+        'id', 'import_run', 'raw_listen', 'track', 'source_id', 'source_version',
+        'source_event_signature', 'source_user_id', 'played_at', 'session_hint',
+        'track_identifier_candidates', 'metadata', 'created_at',
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(ModelEvaluation)

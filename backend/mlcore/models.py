@@ -16,6 +16,19 @@ PROMOTION_STATUS_CHOICES = (
     ('blocked', 'Blocked'),
 )
 
+INGESTION_STATUS_CHOICES = (
+    ('pending', 'Pending'),
+    ('running', 'Running'),
+    ('succeeded', 'Succeeded'),
+    ('failed', 'Failed'),
+    ('skipped', 'Skipped'),
+)
+
+INGESTION_MODE_CHOICES = (
+    ('full', 'Full'),
+    ('incremental', 'Incremental'),
+)
+
 
 class CorpusManifest(models.Model):
     """
@@ -52,6 +65,126 @@ class CorpusManifest(models.Model):
 
     def __str__(self):
         return f"{self.source}:{self.track_path}"
+
+
+class SourceIngestionRun(models.Model):
+    """Versioned execution record for external dataset imports."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source = models.CharField(max_length=64)
+    import_mode = models.CharField(max_length=16, choices=INGESTION_MODE_CHOICES)
+    source_version = models.CharField(max_length=255)
+    raw_path = models.CharField(max_length=1024)
+    checksum = models.CharField(max_length=128)
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    source_row_count = models.IntegerField(default=0)
+    imported_row_count = models.IntegerField(default=0)
+    duplicate_row_count = models.IntegerField(default=0)
+    canonicalized_row_count = models.IntegerField(default=0)
+    unresolved_row_count = models.IntegerField(default=0)
+    malformed_row_count = models.IntegerField(default=0)
+    policy_classification = models.CharField(max_length=32, blank=True, default='')
+    metadata = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mlcore_source_ingestion_run'
+        indexes = [
+            models.Index(fields=['source', 'import_mode'], name='mlcore_src_source_6e8952_idx'),
+            models.Index(fields=['source', 'source_version'], name='mlcore_src_source_b153c1_idx'),
+            models.Index(fields=['status'], name='mlcore_src_status_932106_idx'),
+            models.Index(fields=['started_at'], name='mlcore_src_started_7c3252_idx'),
+        ]
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f"{self.source}:{self.import_mode}:{self.source_version}"
+
+
+class ListenBrainzRawListen(models.Model):
+    """Immutable raw staging row for ListenBrainz listen events."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    import_run = models.ForeignKey(
+        SourceIngestionRun,
+        on_delete=models.CASCADE,
+        related_name='listenbrainz_raw_rows',
+    )
+    source_event_signature = models.CharField(max_length=64, unique=True)
+    source_user_id = models.CharField(max_length=64, db_index=True)
+    played_at = models.DateTimeField(db_index=True)
+    recording_mbid = models.UUIDField(null=True, blank=True, db_index=True)
+    release_mbid = models.UUIDField(null=True, blank=True)
+    recording_msid = models.CharField(max_length=255, blank=True, default='')
+    release_msid = models.CharField(max_length=255, blank=True, default='')
+    track_name = models.CharField(max_length=1024, blank=True, default='')
+    artist_name = models.CharField(max_length=1024, blank=True, default='')
+    release_name = models.CharField(max_length=1024, blank=True, default='')
+    track_identifier_candidates = models.JSONField(default=dict, blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    ingested_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_listenbrainz_raw_listen'
+        indexes = [
+            models.Index(fields=['import_run'], name='mlcore_lis_import__6c1e6e_idx'),
+            models.Index(fields=['source_user_id', 'played_at'], name='mlcore_lis_source__5069fc_idx'),
+            models.Index(fields=['recording_mbid'], name='mlcore_lis_recordi_534bf5_idx'),
+        ]
+        ordering = ['played_at', 'id']
+
+    def __str__(self):
+        return f"{self.source_user_id}:{self.played_at.isoformat()}"
+
+
+class NormalizedInteraction(models.Model):
+    """Canonicalized interaction row for downstream ML training/evaluation."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    import_run = models.ForeignKey(
+        SourceIngestionRun,
+        on_delete=models.CASCADE,
+        related_name='normalized_interactions',
+    )
+    raw_listen = models.OneToOneField(
+        ListenBrainzRawListen,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='normalized_interaction',
+    )
+    track = models.ForeignKey(
+        'catalog.Track',
+        to_field='juke_id',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='normalized_interactions',
+    )
+    source_id = models.CharField(max_length=64, db_index=True)
+    source_version = models.CharField(max_length=255, db_index=True)
+    source_event_signature = models.CharField(max_length=64, unique=True)
+    source_user_id = models.CharField(max_length=64, db_index=True)
+    played_at = models.DateTimeField(db_index=True)
+    session_hint = models.CharField(max_length=128, db_index=True)
+    track_identifier_candidates = models.JSONField(default=dict, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_normalized_interaction'
+        indexes = [
+            models.Index(fields=['source_id', 'source_version'], name='mlcore_nor_source__54a8d9_idx'),
+            models.Index(fields=['source_user_id', 'played_at'], name='mlcore_nor_source__09767c_idx'),
+            models.Index(fields=['track'], name='mlcore_nor_track_i_2555db_idx'),
+            models.Index(fields=['import_run'], name='mlcore_nor_import__0fa0e0_idx'),
+        ]
+        ordering = ['played_at', 'id']
+
+    def __str__(self):
+        return f"{self.source_id}:{self.source_user_id}:{self.played_at.isoformat()}"
 
 
 class TrainingRun(models.Model):

@@ -85,3 +85,6 @@ htmlcov/
 **/.derived-data/
 celerybeat-schedule
 backend/celerybeat-schedule
+
+celerybeat-schedule-shm
+celerybeat-schedule-wal

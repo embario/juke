@@ -5,7 +5,8 @@ Computes Recall@K, nDCG@K, catalog coverage, and a cold-start slice over a
 leave-one-out dataset built from behavioral baskets. Persists one
 ModelEvaluation row per (candidate_label, metric_name, dataset_hash).
 
-Phase 1 data source is SearchHistoryResource only — see
+Phase 1 defaults to blended behavioral sources: SearchHistoryResource plus
+NormalizedInteraction sources such as ListenBrainz. See
 tasks/musicprofile-favorites-resolvable-identity.md for the follow-up to
 mix MusicProfile.favorite_tracks in once those become resolvable to juke_ids.
 
@@ -29,7 +30,7 @@ from catalog.models import Track
 from mlcore.models import ItemCoOccurrence, ModelEvaluation, TrainingRun
 from mlcore.services.cooccurrence import (
     _SPLIT_BUCKET_COUNT,
-    baskets_from_search_history,
+    baskets_from_behavioral_sources,
 )
 from recommender_engine.app.scorers import (
     extract_seed_feature_ids,
@@ -107,6 +108,7 @@ def build_loo_dataset(
     cold_threshold: int = DEFAULT_COLD_THRESHOLD,
     split: str = "all",
     split_buckets: int = _SPLIT_BUCKET_COUNT,
+    sources: Iterable[str] | None = None,
 ) -> Dataset:
     """
     Leave-one-out trials from behavioral baskets. For each basket of size n,
@@ -116,11 +118,16 @@ def build_loo_dataset(
     basket inputs always produce the same hash regardless of dict iteration
     order inside baskets_from_search_history().
 
-    Phase 1: baskets come from SearchHistoryResource. See module docstring
-    for the planned MusicProfile.favorite_tracks follow-up.
+    Phase 1 defaults to blended SearchHistoryResource plus external
+    NormalizedInteraction sources. See module docstring for the planned
+    MusicProfile.favorite_tracks follow-up.
     """
     if baskets is None:
-        baskets = baskets_from_search_history(split=split, split_buckets=split_buckets)
+        baskets = baskets_from_behavioral_sources(
+            split=split,
+            split_buckets=split_buckets,
+            sources=sources,
+        )
 
     # Frequency over baskets (not raw occurrences — baskets are already deduped sets).
     freq: Counter[UUID] = Counter()
@@ -349,6 +356,7 @@ def run_offline_evaluation(
     cold_threshold: int = DEFAULT_COLD_THRESHOLD,
     split: str = "all",
     split_buckets: int = _SPLIT_BUCKET_COUNT,
+    sources: Iterable[str] | None = None,
     cooccurrence_training_run: TrainingRun | None = None,
     persist: bool = True,
 ) -> list[EvaluationResult]:
@@ -359,13 +367,17 @@ def run_offline_evaluation(
     if labels is None:
         labels = list(RANKERS.keys())
 
-    dataset = build_loo_dataset(
-        cold_threshold=cold_threshold,
-        split=split,
-        split_buckets=split_buckets,
-    )
+    dataset_kwargs = {
+        'cold_threshold': cold_threshold,
+        'split': split,
+        'split_buckets': split_buckets,
+    }
+    if sources is not None:
+        dataset_kwargs['sources'] = sources
+
+    dataset = build_loo_dataset(**dataset_kwargs)
     if not dataset.trials:
-        logger.warning('run_offline_evaluation: no trials — need SearchHistory sessions with >=2 tracks')
+        logger.warning('run_offline_evaluation: no trials — need behavioral sessions with >=2 tracks')
         return []
 
     catalog_size = Track.objects.count()

@@ -15,8 +15,8 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from catalog.models import SearchHistory, SearchHistoryResource
-from mlcore.models import ItemCoOccurrence, ModelEvaluation, TrainingRun
-from mlcore.services.cooccurrence import train_cooccurrence
+from mlcore.models import ItemCoOccurrence, ModelEvaluation, NormalizedInteraction, SourceIngestionRun, TrainingRun
+from mlcore.services.cooccurrence import BEHAVIOR_SOURCE_LISTENBRAINZ, train_cooccurrence
 from mlcore.services.evaluation import (
     METRIC_COLD_RECALL,
     METRIC_COVERAGE,
@@ -217,6 +217,54 @@ class BuildLOODatasetTests(SimpleTestCase):
         ds = build_loo_dataset(baskets=[])
         self.assertEqual(ds.trials, [])
         self.assertEqual(len(ds.dataset_hash), 64)  # hash of empty still well-defined
+
+
+class BuildLOODatasetFromBehaviorSourcesTests(TestCase):
+
+    def setUp(self):
+        album = create_album(name='LB Album', total_tracks=2, release_date=datetime.date(2025, 1, 1))
+        self.t1 = create_track(name='LB T1', album=album, track_number=1, duration_ms=1000)
+        self.t2 = create_track(name='LB T2', album=album, track_number=2, duration_ms=1000)
+        self.run = SourceIngestionRun.objects.create(
+            source='listenbrainz',
+            import_mode='full',
+            source_version='2026-03-22',
+            raw_path='/tmp/lb.tar.gz',
+            checksum='lb-checksum',
+            status='succeeded',
+        )
+
+    def _mk_interaction(self, session_hint, track, signature):
+        return NormalizedInteraction.objects.create(
+            import_run=self.run,
+            track=track,
+            source_id='listenbrainz',
+            source_version='2026-03-22',
+            source_event_signature=signature,
+            source_user_id='lb-user',
+            played_at=datetime.datetime(2026, 3, 22, 12, 0, tzinfo=datetime.UTC),
+            session_hint=session_hint,
+            track_identifier_candidates={},
+            metadata={},
+        )
+
+    def test_builds_trials_from_listenbrainz_source(self):
+        self._mk_interaction('lb-session-1', self.t1, 'sig-1')
+        self._mk_interaction('lb-session-1', self.t2, 'sig-2')
+
+        ds = build_loo_dataset(sources=[BEHAVIOR_SOURCE_LISTENBRAINZ], split='all')
+
+        self.assertEqual(len(ds.trials), 2)
+        self.assertEqual({trial.held_out for trial in ds.trials}, {self.t1.juke_id, self.t2.juke_id})
+
+    def test_default_dataset_builder_includes_listenbrainz_rows(self):
+        self._mk_interaction('lb-session-default', self.t1, 'sig-default-1')
+        self._mk_interaction('lb-session-default', self.t2, 'sig-default-2')
+
+        ds = build_loo_dataset(split='all')
+
+        self.assertEqual(len(ds.trials), 2)
+        self.assertEqual({trial.held_out for trial in ds.trials}, {self.t1.juke_id, self.t2.juke_id})
 
 
 # --- evaluation driver with fake ranker (no DB) ---

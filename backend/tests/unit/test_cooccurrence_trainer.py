@@ -6,9 +6,12 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from catalog.models import SearchHistory, SearchHistoryResource
-from mlcore.models import ItemCoOccurrence, TrainingRun
+from mlcore.models import ItemCoOccurrence, NormalizedInteraction, SourceIngestionRun, TrainingRun
 from mlcore.services.cooccurrence import (
+    BEHAVIOR_SOURCE_LISTENBRAINZ,
+    BEHAVIOR_SOURCE_SEARCH_HISTORY,
     _canonical_pair,
+    baskets_from_behavioral_sources,
     baskets_from_search_history,
     compute_pmi_table,
     train_cooccurrence,
@@ -190,6 +193,30 @@ class BasketsFromSearchHistoryTests(TestCase):
             )
         return sh
 
+    def _mk_listenbrainz_run(self):
+        return SourceIngestionRun.objects.create(
+            source='listenbrainz',
+            import_mode='full',
+            source_version='2026-03-22',
+            raw_path='/tmp/listenbrainz.tar.gz',
+            checksum='abc123',
+            status='succeeded',
+        )
+
+    def _mk_normalized_interaction(self, run, *, session_hint, track):
+        return NormalizedInteraction.objects.create(
+            import_run=run,
+            track=track,
+            source_id='listenbrainz',
+            source_version='2026-03-22',
+            source_event_signature=f'{session_hint}:{track.juke_id}',
+            source_user_id='hashed-user',
+            played_at=datetime.datetime(2026, 3, 22, 12, 0, tzinfo=datetime.UTC),
+            session_hint=session_hint,
+            track_identifier_candidates={'recording_mbid': str(track.mbid or '')},
+            metadata={},
+        )
+
     def test_extracts_baskets_grouped_by_session(self):
         self._mk_session([self.t1, self.t2])
         self._mk_session([self.t2, self.t3])
@@ -241,6 +268,54 @@ class BasketsFromSearchHistoryTests(TestCase):
 
     def test_empty_history(self):
         self.assertEqual(baskets_from_search_history(), [])
+
+    def test_extracts_baskets_from_listenbrainz_normalized_interactions(self):
+        run = self._mk_listenbrainz_run()
+        self._mk_normalized_interaction(run, session_hint='lb:one', track=self.t1)
+        self._mk_normalized_interaction(run, session_hint='lb:one', track=self.t2)
+        self._mk_normalized_interaction(run, session_hint='lb:two', track=self.t3)
+
+        baskets = baskets_from_behavioral_sources(sources=[BEHAVIOR_SOURCE_LISTENBRAINZ])
+
+        self.assertEqual(baskets, [[self.t1.juke_id, self.t2.juke_id]])
+
+    def test_blended_sources_include_internal_and_external_sessions(self):
+        self._mk_session([self.t1, self.t2])
+        run = self._mk_listenbrainz_run()
+        self._mk_normalized_interaction(run, session_hint='lb:blend', track=self.t2)
+        self._mk_normalized_interaction(run, session_hint='lb:blend', track=self.t3)
+
+        baskets = baskets_from_behavioral_sources(
+            sources=[BEHAVIOR_SOURCE_SEARCH_HISTORY, BEHAVIOR_SOURCE_LISTENBRAINZ],
+        )
+
+        self.assertEqual(len(baskets), 2)
+        self.assertIn([self.t1.juke_id, self.t2.juke_id], baskets)
+        self.assertIn([self.t2.juke_id, self.t3.juke_id], baskets)
+
+    def test_default_behavior_sources_are_blended(self):
+        self._mk_session([self.t1, self.t2])
+        run = self._mk_listenbrainz_run()
+        self._mk_normalized_interaction(run, session_hint='lb:default', track=self.t2)
+        self._mk_normalized_interaction(run, session_hint='lb:default', track=self.t3)
+
+        baskets = baskets_from_behavioral_sources(split='all')
+
+        self.assertEqual(len(baskets), 2)
+        self.assertIn([self.t1.juke_id, self.t2.juke_id], baskets)
+        self.assertIn([self.t2.juke_id, self.t3.juke_id], baskets)
+
+    def test_train_from_listenbrainz_source_only(self):
+        run = self._mk_listenbrainz_run()
+        self._mk_normalized_interaction(run, session_hint='lb:train', track=self.t1)
+        self._mk_normalized_interaction(run, session_hint='lb:train', track=self.t2)
+
+        result = train_cooccurrence(sources=[BEHAVIOR_SOURCE_LISTENBRAINZ], split='all')
+
+        self.assertEqual(result.baskets_processed, 1)
+        self.assertEqual(result.source_row_count, 2)
+        self.assertEqual(result.pairs_written, 1)
+        self.assertEqual(ItemCoOccurrence.objects.count(), 1)
 
     def test_end_to_end_train_from_history(self):
         self._mk_session([self.t1, self.t2])

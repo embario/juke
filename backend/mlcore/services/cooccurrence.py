@@ -24,7 +24,7 @@ from typing import Iterable
 from uuid import UUID
 
 from catalog.models import SearchHistoryResource, Track
-from mlcore.models import ItemCoOccurrence, TrainingRun
+from mlcore.models import ItemCoOccurrence, NormalizedInteraction, TrainingRun
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,16 @@ _SPLIT_BUCKET_COUNT = 10
 _TEST_BUCKET = 0
 WRITE_BATCH_SIZE = 1000
 DEFAULT_RESOURCE_TYPE = "track"
+BEHAVIOR_SOURCE_SEARCH_HISTORY = 'search_history'
+BEHAVIOR_SOURCE_LISTENBRAINZ = 'listenbrainz'
+SUPPORTED_BEHAVIOR_SOURCES = (
+    BEHAVIOR_SOURCE_SEARCH_HISTORY,
+    BEHAVIOR_SOURCE_LISTENBRAINZ,
+)
+DEFAULT_BEHAVIOR_SOURCES = (
+    BEHAVIOR_SOURCE_SEARCH_HISTORY,
+    BEHAVIOR_SOURCE_LISTENBRAINZ,
+)
 
 
 @dataclass
@@ -51,13 +61,22 @@ def _canonical_pair(a: UUID, b: UUID) -> tuple[UUID, UUID]:
     return (a, b) if str(a) < str(b) else (b, a)
 
 
-def _is_in_split(session_id: int, split: str, bucket_count: int) -> bool:
+def _split_bucket(session_key: int | str, bucket_count: int) -> int:
+    if isinstance(session_key, int):
+        return session_key % bucket_count
+
+    digest = hashlib.sha256(str(session_key).encode('utf-8')).hexdigest()
+    return int(digest[:16], 16) % bucket_count
+
+
+def _is_in_split(session_key: int | str, split: str, bucket_count: int) -> bool:
+    bucket = _split_bucket(session_key, bucket_count)
     if split == "all":
         return True
     if split == "train":
-        return session_id % bucket_count != _TEST_BUCKET
+        return bucket != _TEST_BUCKET
     if split == "test":
-        return session_id % bucket_count == _TEST_BUCKET
+        return bucket == _TEST_BUCKET
     raise ValueError(f"Unknown split '{split}'; expected 'train', 'test', or 'all'")
 
 
@@ -89,12 +108,57 @@ def baskets_from_search_history_with_count(
     split: str = "all",
     split_buckets: int = _SPLIT_BUCKET_COUNT,
 ) -> tuple[list[list[UUID]], int]:
+    return baskets_from_behavioral_sources_with_count(
+        resource_type=resource_type,
+        split=split,
+        split_buckets=split_buckets,
+        sources=[BEHAVIOR_SOURCE_SEARCH_HISTORY],
+    )
+
+
+def baskets_from_behavioral_sources(
+    resource_type: str = DEFAULT_RESOURCE_TYPE,
+    split: str = "all",
+    split_buckets: int = _SPLIT_BUCKET_COUNT,
+    sources: Iterable[str] | None = None,
+) -> list[list[UUID]]:
+    baskets, _ = baskets_from_behavioral_sources_with_count(
+        resource_type=resource_type,
+        split=split,
+        split_buckets=split_buckets,
+        sources=sources,
+    )
+    return baskets
+
+
+def _normalized_sources(sources: Iterable[str] | None) -> tuple[str, ...]:
+    if sources is None:
+        return DEFAULT_BEHAVIOR_SOURCES
+
+    normalized: list[str] = []
+    for source in sources:
+        if source not in SUPPORTED_BEHAVIOR_SOURCES:
+            raise ValueError(
+                f"Unknown behavior source '{source}'; expected one of {sorted(SUPPORTED_BEHAVIOR_SOURCES)}"
+            )
+        if source not in normalized:
+            normalized.append(source)
+    return tuple(normalized)
+
+
+def _append_search_history_baskets(
+    *,
+    resource_type: str,
+    split: str,
+    split_buckets: int,
+    session_to_jukes: dict[tuple[str, str], set[UUID]],
+) -> int:
     rows = SearchHistoryResource.objects.filter(resource_type=resource_type).values_list(
         "search_history_id", "resource_id"
     )
 
     if not rows:
-        return [], 0
+        return 0
 
     # Resolve PK → juke_id in one query. Phase 1 is track-centric.
     if resource_type != DEFAULT_RESOURCE_TYPE:
@@ -112,15 +176,77 @@ def baskets_from_search_history_with_count(
         all_pks.update(pks)
 
     if not all_pks:
-        return [], source_row_count
+        return source_row_count
 
     pk_to_juke: dict[int, UUID] = dict(
         Track.objects.filter(pk__in=all_pks).values_list("pk", "juke_id")
     )
 
+    for session_id, pks in session_to_pks.items():
+        session_to_jukes[(BEHAVIOR_SOURCE_SEARCH_HISTORY, str(session_id))].update(
+            pk_to_juke[pk] for pk in pks if pk in pk_to_juke
+        )
+
+    return source_row_count
+
+
+def _append_normalized_interaction_baskets(
+    *,
+    source_ids: Iterable[str],
+    split: str,
+    split_buckets: int,
+    session_to_jukes: dict[tuple[str, str], set[UUID]],
+) -> int:
+    rows = (
+        NormalizedInteraction.objects
+        .filter(source_id__in=list(source_ids))
+        .exclude(track_id__isnull=True)
+        .values_list('source_id', 'session_hint', 'track_id')
+    )
+    source_row_count = 0
+    for source_id, session_hint, track_juke_id in rows:
+        split_key = f'{source_id}:{session_hint}'
+        if not _is_in_split(split_key, split, split_buckets):
+            continue
+        session_to_jukes[(source_id, session_hint)].add(track_juke_id)
+        source_row_count += 1
+
+    return source_row_count
+
+
+def baskets_from_behavioral_sources_with_count(
+    resource_type: str = DEFAULT_RESOURCE_TYPE,
+    split: str = "all",
+    split_buckets: int = _SPLIT_BUCKET_COUNT,
+    sources: Iterable[str] | None = None,
+) -> tuple[list[list[UUID]], int]:
+    normalized_sources = _normalized_sources(sources)
+    session_to_jukes: dict[tuple[str, str], set[UUID]] = defaultdict(set)
+    source_row_count = 0
+
+    if BEHAVIOR_SOURCE_SEARCH_HISTORY in normalized_sources:
+        source_row_count += _append_search_history_baskets(
+            resource_type=resource_type,
+            split=split,
+            split_buckets=split_buckets,
+            session_to_jukes=session_to_jukes,
+        )
+
+    external_sources = [
+        source for source in normalized_sources
+        if source != BEHAVIOR_SOURCE_SEARCH_HISTORY
+    ]
+    if external_sources:
+        source_row_count += _append_normalized_interaction_baskets(
+            source_ids=external_sources,
+            split=split,
+            split_buckets=split_buckets,
+            session_to_jukes=session_to_jukes,
+        )
+
     baskets: list[list[UUID]] = []
-    for pks in session_to_pks.values():
-        juke_ids = [pk_to_juke[pk] for pk in pks if pk in pk_to_juke]
+    for session_key in sorted(session_to_jukes.keys()):
+        juke_ids = sorted(session_to_jukes[session_key], key=str)
         if len(juke_ids) >= MIN_BASKET_SIZE:
             baskets.append(juke_ids)
 
@@ -178,6 +304,7 @@ def train_cooccurrence(
     baskets: Iterable[list[UUID]] | None = None,
     split: str = "train",
     split_buckets: int = _SPLIT_BUCKET_COUNT,
+    sources: Iterable[str] | None = None,
 ) -> TrainingResult:
     """
     Full pipeline: extract baskets (or use supplied ones), compute PMI,
@@ -187,7 +314,11 @@ def train_cooccurrence(
     (update_conflicts overwrites co_count + pmi_score on collision).
     """
     if baskets is None:
-        baskets, source_row_count = baskets_from_search_history_with_count(split=split, split_buckets=split_buckets)
+        baskets, source_row_count = baskets_from_behavioral_sources_with_count(
+            split=split,
+            split_buckets=split_buckets,
+            sources=sources,
+        )
     else:
         baskets = list(baskets)
         source_row_count = len(baskets)
