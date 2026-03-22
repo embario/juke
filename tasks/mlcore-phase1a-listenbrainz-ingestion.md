@@ -1,9 +1,9 @@
 ---
 id: mlcore-phase1a-listenbrainz-ingestion
 title: ML Core Phase 1a - ListenBrainz dataset ingestion and interaction normalization
-status: ready
+status: in_progress
 priority: p1
-owner: unassigned
+owner: codex
 area: platform
 label: BACKEND/ML
 labels:
@@ -12,7 +12,7 @@ labels:
   - backend
   - data-ingestion
 complexity: 5
-updated_at: 2026-03-19
+updated_at: 2026-03-22
 ---
 
 ## Goal
@@ -81,7 +81,36 @@ Build a production-safe ingest pipeline for ListenBrainz full + incremental dump
 
 ## Handoff
 
-- Next: hook normalized output into `mlcore/services/cooccurrence.py` and evaluator/training split selectors.
+- Completed:
+  - Added `SourceIngestionRun`, `ListenBrainzRawListen`, and `NormalizedInteraction` models plus migration `backend/mlcore/migrations/0004_mlcore_listenbrainz_ingestion.py`.
+  - Implemented file-based ListenBrainz import service at `backend/mlcore/ingestion/listenbrainz.py` with:
+    - tar.gz / gz JSON-line parsing
+    - deterministic file checksuming
+    - stable event-signature dedupe
+    - hashed source user IDs
+    - session hints
+    - canonical track resolution via MBID / Spotify fallback
+    - fail-fast malformed-row handling with transactional rollback
+  - Added Celery entrypoints `import_listenbrainz_full_task` and `replay_listenbrainz_incremental_task`, queue routing, and beat schedule/config hooks in `backend/settings/base.py`.
+  - Added read-only admin visibility for source runs, raw listens, and normalized interactions.
+  - Added blended behavioral source selection in MLCore basket builders so training/evaluation defaults now include both `listenbrainz` normalized interactions and internal `search_history` baskets.
+  - Wired the new source selector through:
+    - `backend/mlcore/services/cooccurrence.py`
+    - `backend/mlcore/services/evaluation.py`
+    - `backend/mlcore/management/commands/evaluate_recommenders.py`
+  - Added operational training entrypoints for explicit source selection:
+    - `backend/mlcore/management/commands/train_cooccurrence.py`
+    - `backend/mlcore/tasks.py` now accepts `split`, `split_buckets`, and `sources`
+  - Added unit coverage in `backend/tests/unit/test_listenbrainz_ingest.py`; verified with:
+    - `docker compose exec backend python manage.py test tests.unit.test_listenbrainz_ingest tests.unit.test_license_policy tests.unit.test_mlcore_admin tests.unit.test_identity_resolver`
+    - `docker compose exec backend python manage.py makemigrations --check --dry-run mlcore`
+    - `docker compose exec backend python manage.py test tests.unit.test_cooccurrence_trainer tests.unit.test_evaluation`
+    - `docker compose exec backend python manage.py test tests.unit.test_mlcore_pipeline tests.unit.test_mlcore_coverage_gaps`
+- Remaining:
+  - Decide whether ListenBrainz should remain `research_only` or move to `production_approved` after the dataset-viability/legal pass.
+  - Add production deployment wiring for configured dump paths/source versions.
+- Next:
+  - Decide whether Phase 1a is now complete enough to move to Phase 1b, or if we also want environment/docs polish around real dump operations first.
 - Blocker: none.
 
 ## Dependencies

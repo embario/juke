@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # Initial policy: MusicBrainz-only for production (per task spec).
 SOURCE_CLASSIFICATION: dict[str, str] = {
     'musicbrainz': 'production_approved',
+    'listenbrainz': 'research_only',
 }
 
 

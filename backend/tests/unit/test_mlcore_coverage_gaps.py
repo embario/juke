@@ -19,8 +19,13 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 
 from catalog.models import SearchHistory, SearchHistoryResource
-from mlcore.models import ItemCoOccurrence, ModelEvaluation, ModelPromotion
-from mlcore.services.cooccurrence import baskets_from_search_history, train_cooccurrence
+from mlcore.models import ItemCoOccurrence, ModelEvaluation, ModelPromotion, NormalizedInteraction, SourceIngestionRun
+from mlcore.services.cooccurrence import (
+    BEHAVIOR_SOURCE_LISTENBRAINZ,
+    BEHAVIOR_SOURCE_SEARCH_HISTORY,
+    baskets_from_search_history,
+    train_cooccurrence,
+)
 from mlcore.services.evaluation import (
     METRIC_RECALL,
     MetadataRanker,
@@ -69,10 +74,14 @@ class CeleryTaskTests(TestCase):
         # .apply() runs synchronously in-process, no broker needed.
         # Empty DB → no baskets → pairs_written=0, but task still returns the shape.
         result = train_cooccurrence_task.apply().get()
-        self.assertEqual(result, {
-            'pairs_written': 0, 'baskets_processed': 0,
-            'baskets_skipped': 0, 'items_seen': 0,
-        })
+        self.assertEqual(result['split'], 'train')
+        self.assertEqual(result['split_buckets'], 10)
+        self.assertEqual(result['sources'], [BEHAVIOR_SOURCE_SEARCH_HISTORY, BEHAVIOR_SOURCE_LISTENBRAINZ])
+        self.assertEqual(result['pairs_written'], 0)
+        self.assertEqual(result['baskets_processed'], 0)
+        self.assertEqual(result['baskets_skipped'], 0)
+        self.assertEqual(result['items_seen'], 0)
+        self.assertEqual(result['source_row_count'], 0)
 
     def test_task_with_real_baskets(self):
         user = User.objects.create_user(username='u', email='u@x.com', password='p')
@@ -89,6 +98,82 @@ class CeleryTaskTests(TestCase):
         self.assertEqual(result['pairs_written'], 1)
         self.assertEqual(result['baskets_processed'], 1)
         self.assertEqual(ItemCoOccurrence.objects.count(), 1)
+
+    def test_task_accepts_explicit_sources(self):
+        album = _mk_album()
+        t1 = create_track(name='LT1', album=album, track_number=1, duration_ms=1000)
+        t2 = create_track(name='LT2', album=album, track_number=2, duration_ms=1000)
+        run = SourceIngestionRun.objects.create(
+            source='listenbrainz',
+            import_mode='full',
+            source_version='2026-03-22',
+            raw_path='/tmp/listenbrainz.tar.gz',
+            checksum='listenbrainz',
+            status='succeeded',
+        )
+        for idx, track in enumerate((t1, t2), start=1):
+            NormalizedInteraction.objects.create(
+                import_run=run,
+                track=track,
+                source_id='listenbrainz',
+                source_version='2026-03-22',
+                source_event_signature=f'sig-{idx}',
+                source_user_id='lb-user',
+                played_at=datetime.datetime(2026, 3, 22, 12, idx, tzinfo=datetime.UTC),
+                session_hint='lb-session',
+                track_identifier_candidates={},
+                metadata={},
+            )
+
+        result = train_cooccurrence_task.apply(kwargs={'split': 'all', 'sources': [BEHAVIOR_SOURCE_LISTENBRAINZ]}).get()
+
+        self.assertEqual(result['split'], 'all')
+        self.assertEqual(result['sources'], [BEHAVIOR_SOURCE_LISTENBRAINZ])
+        self.assertEqual(result['pairs_written'], 1)
+        self.assertEqual(result['source_row_count'], 2)
+
+    def test_task_defaults_to_blended_sources(self):
+        user = User.objects.create_user(username='blend', email='blend@x.com', password='p')
+        album = _mk_album('Blend')
+        t1 = create_track(name='BT1', album=album, track_number=1, duration_ms=1000)
+        t2 = create_track(name='BT2', album=album, track_number=2, duration_ms=1000)
+        t3 = create_track(name='BT3', album=album, track_number=3, duration_ms=1000)
+
+        sh = SearchHistory.objects.create(user=user, search_query='blend')
+        for track in (t1, t2):
+            SearchHistoryResource.objects.create(
+                search_history=sh, resource_type='track',
+                resource_id=track.pk, resource_name=track.name,
+            )
+
+        run = SourceIngestionRun.objects.create(
+            source='listenbrainz',
+            import_mode='full',
+            source_version='2026-03-22',
+            raw_path='/tmp/listenbrainz.tar.gz',
+            checksum='listenbrainz-blend',
+            status='succeeded',
+        )
+        for idx, track in enumerate((t2, t3), start=1):
+            NormalizedInteraction.objects.create(
+                import_run=run,
+                track=track,
+                source_id='listenbrainz',
+                source_version='2026-03-22',
+                source_event_signature=f'blend-sig-{idx}',
+                source_user_id='lb-user',
+                played_at=datetime.datetime(2026, 3, 22, 14, idx, tzinfo=datetime.UTC),
+                session_hint='lb-default-blend',
+                track_identifier_candidates={},
+                metadata={},
+            )
+
+        result = train_cooccurrence_task.apply(kwargs={'split': 'all'}).get()
+
+        self.assertEqual(result['sources'], [BEHAVIOR_SOURCE_SEARCH_HISTORY, BEHAVIOR_SOURCE_LISTENBRAINZ])
+        self.assertEqual(result['baskets_processed'], 2)
+        self.assertEqual(result['pairs_written'], 2)
+        self.assertEqual(result['source_row_count'], 4)
 
 
 # --- evaluate_ranker auto catalog_size ---
@@ -231,12 +316,13 @@ class EvaluateRecommendersCommandTests(TestCase):
         album.artists.add(artist)
         t1 = create_track(name='T1', album=album, track_number=1, duration_ms=1000)
         t2 = create_track(name='T2', album=album, track_number=2, duration_ms=1000)
-        sh = SearchHistory.objects.create(user=user, search_query='q')
-        for t in (t1, t2):
-            SearchHistoryResource.objects.create(
-                search_history=sh, resource_type='track',
-                resource_id=t.pk, resource_name=t.name,
-            )
+        for _ in range(10):
+            sh = SearchHistory.objects.create(user=user, search_query='q')
+            for t in (t1, t2):
+                SearchHistoryResource.objects.create(
+                    search_history=sh, resource_type='track',
+                    resource_id=t.pk, resource_name=t.name,
+                )
 
         out = StringIO()
         call_command('evaluate_recommenders', '--ranker', 'metadata', stdout=out)
@@ -245,6 +331,91 @@ class EvaluateRecommendersCommandTests(TestCase):
         self.assertIn('trials=2', output)
         self.assertIn('recall@10', output)
         self.assertEqual(ModelEvaluation.objects.filter(candidate_label='metadata').count(), 4)
+
+
+class TrainCooccurrenceCommandTests(TestCase):
+
+    def test_rejects_invalid_split_bucket_count(self):
+        with self.assertRaises(CommandError) as ctx:
+            call_command('train_cooccurrence', '--split-buckets', '0')
+        self.assertIn('--split-buckets must be > 0', str(ctx.exception))
+
+    def test_trains_from_listenbrainz_source(self):
+        album = _mk_album()
+        t1 = create_track(name='LT1', album=album, track_number=1, duration_ms=1000)
+        t2 = create_track(name='LT2', album=album, track_number=2, duration_ms=1000)
+        run = SourceIngestionRun.objects.create(
+            source='listenbrainz',
+            import_mode='full',
+            source_version='2026-03-22',
+            raw_path='/tmp/listenbrainz.tar.gz',
+            checksum='listenbrainz',
+            status='succeeded',
+        )
+        for idx, track in enumerate((t1, t2), start=1):
+            NormalizedInteraction.objects.create(
+                import_run=run,
+                track=track,
+                source_id='listenbrainz',
+                source_version='2026-03-22',
+                source_event_signature=f'cmd-sig-{idx}',
+                source_user_id='lb-user',
+                played_at=datetime.datetime(2026, 3, 22, 13, idx, tzinfo=datetime.UTC),
+                session_hint='lb-command-session',
+                track_identifier_candidates={},
+                metadata={},
+            )
+
+        out = StringIO()
+        call_command('train_cooccurrence', '--split', 'all', '--source', 'listenbrainz', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('cooccurrence trained:', output)
+        self.assertIn('sources=listenbrainz', output)
+        self.assertEqual(ItemCoOccurrence.objects.count(), 1)
+
+    def test_default_command_uses_blended_sources(self):
+        user = User.objects.create_user(username='blend-cmd', email='blend-cmd@x.com', password='p')
+        album = _mk_album('Blend Command')
+        t1 = create_track(name='CT1', album=album, track_number=1, duration_ms=1000)
+        t2 = create_track(name='CT2', album=album, track_number=2, duration_ms=1000)
+        t3 = create_track(name='CT3', album=album, track_number=3, duration_ms=1000)
+
+        sh = SearchHistory.objects.create(user=user, search_query='blend')
+        for track in (t1, t2):
+            SearchHistoryResource.objects.create(
+                search_history=sh, resource_type='track',
+                resource_id=track.pk, resource_name=track.name,
+            )
+
+        run = SourceIngestionRun.objects.create(
+            source='listenbrainz',
+            import_mode='full',
+            source_version='2026-03-22',
+            raw_path='/tmp/listenbrainz.tar.gz',
+            checksum='listenbrainz-command-blend',
+            status='succeeded',
+        )
+        for idx, track in enumerate((t2, t3), start=1):
+            NormalizedInteraction.objects.create(
+                import_run=run,
+                track=track,
+                source_id='listenbrainz',
+                source_version='2026-03-22',
+                source_event_signature=f'cmd-blend-sig-{idx}',
+                source_user_id='lb-user',
+                played_at=datetime.datetime(2026, 3, 22, 15, idx, tzinfo=datetime.UTC),
+                session_hint='lb-command-default',
+                track_identifier_candidates={},
+                metadata={},
+            )
+
+        out = StringIO()
+        call_command('train_cooccurrence', '--split', 'all', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('sources=search_history,listenbrainz', output)
+        self.assertEqual(ItemCoOccurrence.objects.count(), 2)
 
 
 @override_settings(

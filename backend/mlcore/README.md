@@ -29,7 +29,10 @@ ML engineers should use MLCore for:
 
 ## Behavioral input: baskets
 
-Phase 1 reads track baskets from `SearchHistoryResource`.
+Phase 1 reads track baskets from blended behavioral sources by default:
+
+- internal `SearchHistoryResource`
+- external `NormalizedInteraction` rows such as `listenbrainz`
 
 - Default resource type: `track`
 - Minimum basket size: `2`
@@ -38,9 +41,12 @@ Phase 1 reads track baskets from `SearchHistoryResource`.
   - `test`: `session_id % 10 == 0`
   - `all`: no split filter
 
+For external normalized sources, split selection is deterministic via a hash of
+`source_id:session_hint`, so train/test bucket assignment remains stable as rows grow.
+
 ## Train co-occurrence
 
-### Train from search history (default)
+### Train from blended behavioral sources (default)
 
 ```python
 from mlcore.services.cooccurrence import train_cooccurrence
@@ -48,6 +54,25 @@ from mlcore.services.cooccurrence import train_cooccurrence
 result = train_cooccurrence()  # defaults: split='train', split_buckets=10
 print(result.training_run_id)
 print(result.pairs_written, result.baskets_processed)
+```
+
+### Train from the command line
+
+```bash
+# default: blended search_history + listenbrainz, train split
+docker compose -f docker-compose.yml exec backend python manage.py train_cooccurrence
+
+# train from all blended baskets
+docker compose -f docker-compose.yml exec backend python manage.py train_cooccurrence --split all
+
+# force a single source
+docker compose -f docker-compose.yml exec backend python manage.py train_cooccurrence --split all --source listenbrainz
+docker compose -f docker-compose.yml exec backend python manage.py train_cooccurrence --split all --source search_history
+
+# explicit blended invocation
+docker compose -f docker-compose.yml exec backend python manage.py train_cooccurrence \
+  --source search_history \
+  --source listenbrainz
 ```
 
 ### Train from explicit baskets
@@ -74,19 +99,28 @@ result = train_cooccurrence(baskets=baskets, split='all')
 A task wrapper is available for orchestration:
 
 - `mlcore.tasks.train_cooccurrence_task`
+- `mlcore.tasks.import_listenbrainz_full_task`
+- `mlcore.tasks.replay_listenbrainz_incremental_task`
 
-It calls `train_cooccurrence()` and returns a dict with `pairs_written`, `baskets_processed`, `baskets_skipped`, `items_seen`.
+`train_cooccurrence_task` accepts `split`, `split_buckets`, and `sources`.
+By default it trains from blended `search_history` + `listenbrainz` sources.
 
 ## Offline evaluation
 
 Run from the Django command line:
 
 ```bash
-# all rankers (metadata + cooccurrence)
+# all rankers (metadata + cooccurrence), blended behavioral sources by default
 docker compose -f docker-compose.yml exec backend python manage.py evaluate_recommenders
 
 # only cooccurrence, k=20
 docker compose -f docker-compose.yml exec backend python manage.py evaluate_recommenders --ranker cooccurrence --k 20
+
+# evaluate only listenbrainz-backed trials
+docker compose -f docker-compose.yml exec backend python manage.py evaluate_recommenders \
+  --ranker cooccurrence \
+  --source listenbrainz \
+  --no-persist
 ```
 
 This command:
@@ -94,6 +128,56 @@ This command:
 - Builds leave-one-out trials from baskets.
 - Computes recall@K, nDCG@K, coverage, cold-start recall.
 - Persists results in `mlcore_model_evaluation` unless `--no-persist` is passed.
+
+## ListenBrainz operations
+
+ListenBrainz import is file-based today. MLCore does not download dumps for you;
+operators place dump files on disk and point the backend at them with env vars.
+
+### Environment knobs
+
+- `MLCORE_LISTENBRAINZ_FULL_IMPORT_PATH`
+- `MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_PATH`
+- `MLCORE_LISTENBRAINZ_FULL_SOURCE_VERSION`
+- `MLCORE_LISTENBRAINZ_INCREMENTAL_SOURCE_VERSION`
+- `MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS`
+- `MLCORE_LISTENBRAINZ_USER_HASH_SALT`
+- `MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS`
+
+### Example `.env` values
+
+```env
+MLCORE_LISTENBRAINZ_FULL_IMPORT_PATH=/srv/juke-data/listenbrainz/fullexport-2026-03-22.tar.gz
+MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_PATH=/srv/juke-data/listenbrainz/incremental-2026-03-23.tar.gz
+MLCORE_LISTENBRAINZ_FULL_SOURCE_VERSION=2026-03-22
+MLCORE_LISTENBRAINZ_INCREMENTAL_SOURCE_VERSION=2026-03-23
+MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS=0
+MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS=1800
+```
+
+### Import commands
+
+```bash
+# run the full import task against configured env paths
+docker compose -f docker-compose.yml exec backend python manage.py shell -c \
+  "from mlcore.tasks import import_listenbrainz_full_task; print(import_listenbrainz_full_task.apply().get())"
+
+# run the incremental replay task against configured env paths
+docker compose -f docker-compose.yml exec backend python manage.py shell -c \
+  "from mlcore.tasks import replay_listenbrainz_incremental_task; print(replay_listenbrainz_incremental_task.apply().get())"
+
+# run a one-off import against an explicit file path
+docker compose -f docker-compose.yml exec backend python manage.py shell -c \
+  "from mlcore.ingestion.listenbrainz import import_listenbrainz_dump; \
+print(import_listenbrainz_dump('/data/listenbrainz/sample.tar.gz', source_version='sample-2026-03-22', import_mode='full'))"
+```
+
+### Operator notes
+
+- ListenBrainz is currently classified `research_only` in `LicensePolicy`, so it is valid for research/eval workflows but not for production promotion without a policy decision.
+- Raw rows are immutable in `ListenBrainzRawListen`; rerunning the same dump creates a new `SourceIngestionRun` but suppresses duplicate event signatures.
+- `NormalizedInteraction.track` may be null when MBID/Spotify fallback resolution fails. Those rows remain valuable for audit metrics but do not form baskets until resolved.
+- For real-data validation, import first, then train/evaluate. There is no fetch step hidden inside MLCore today.
 
 ## Serving interfaces (integration)
 
@@ -122,6 +206,8 @@ Always record all four artifacts when promoting a candidate.
 
 - [`backend/mlcore/services/cooccurrence.py`](/Users/embario/Documents/juke/backend/mlcore/services/cooccurrence.py)
 - [`backend/mlcore/services/evaluation.py`](/Users/embario/Documents/juke/backend/mlcore/services/evaluation.py)
+- [`backend/mlcore/ingestion/listenbrainz.py`](/Users/embario/Documents/juke/backend/mlcore/ingestion/listenbrainz.py)
+- [`backend/mlcore/management/commands/train_cooccurrence.py`](/Users/embario/Documents/juke/backend/mlcore/management/commands/train_cooccurrence.py)
 - [`backend/mlcore/management/commands/evaluate_recommenders.py`](/Users/embario/Documents/juke/backend/mlcore/management/commands/evaluate_recommenders.py)
 - [`backend/mlcore/models.py`](/Users/embario/Documents/juke/backend/mlcore/models.py)
 - [`backend/mlcore/tasks.py`](/Users/embario/Documents/juke/backend/mlcore/tasks.py)
