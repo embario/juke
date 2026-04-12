@@ -1,6 +1,9 @@
 services:
   db:
     image: postgres:17-alpine
+    volumes:
+      - ${MLCORE_PG_HOT_TABLESPACE_HOST_PATH}:/var/lib/postgresql/tablespaces/juke_mlcore_hot
+      - ${MLCORE_PG_COLD_TABLESPACE_HOST_PATH}:/var/lib/postgresql/tablespaces/juke_mlcore_cold
     env_file:
       - .env
     environment:
