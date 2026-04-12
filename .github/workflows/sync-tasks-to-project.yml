@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      repository-projects: write
 
     steps:
       - name: Checkout repository
@@ -30,4 +31,5 @@ jobs:
       - name: Sync task files to issues and project
         env:
           JUKE_GH_PAT: ${{ secrets.JUKE_GH_PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/sync_tasks_to_project.py
