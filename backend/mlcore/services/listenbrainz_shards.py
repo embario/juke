@@ -88,7 +88,7 @@ def materialize_listenbrainz_shards(
     total_uncompressed_bytes = 0
     with tarfile.open(path, 'r:*') as archive:
         for member in archive:
-            relative_path = _listen_shard_relative_path(member.name)
+            relative_path = listenbrainz_shard_relative_path(member.name)
             if relative_path is None:
                 continue
 
@@ -266,7 +266,7 @@ def _scheduled_shards_from_manifest(
     return shards[:max_shards_per_run]
 
 
-def _listen_shard_relative_path(member_name: str) -> Path | None:
+def listenbrainz_shard_relative_path(member_name: str) -> Path | None:
     parts = PurePosixPath(member_name).parts
     if 'listens' not in parts:
         return None

@@ -13,9 +13,11 @@ from github_project_utils import (
     GitHubError,
     add_issue_to_project,
     available_options,
+    candidate_tokens_from_env,
     canonicalize,
     fetch_project_issue_item_map,
     find_project_id,
+    is_auth_error,
     load_project_fields,
     pick_option_id,
     update_single_select_field,
@@ -101,17 +103,13 @@ def is_task_issue(issue: dict[str, Any]) -> bool:
 
 
 def main() -> int:
-    token = (
-        os.environ.get("JUKE_GH_PAT", "").strip()
-        or os.environ.get("GH_PAT", "").strip()
-        or os.environ.get("GITHUB_TOKEN", "").strip()
-    )
+    token_candidates = candidate_tokens_from_env("JUKE_GH_PAT", "GH_PAT", "GITHUB_TOKEN")
     target_status = os.environ.get("TARGET_STATUS", "").strip()
     pr_number_raw = os.environ.get("PR_NUMBER", "").strip()
     project_title = os.environ.get("GH_PROJECT_TITLE", DEFAULT_PROJECT_TITLE).strip()
     repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
 
-    if not token:
+    if not token_candidates:
         print("ERROR: JUKE_GH_PAT, GH_PAT, or GITHUB_TOKEN is required.", file=sys.stderr)
         return 1
     if not target_status:
@@ -131,86 +129,101 @@ def main() -> int:
         return 1
 
     owner, repo = repository.split("/", 1)
-    client = GitHubClient(token, user_agent="juke-pr-task-status-sync")
+    last_auth_error: Exception | None = None
+    for token_env, token in token_candidates:
+        client = GitHubClient(token, user_agent="juke-pr-task-status-sync")
+        try:
+            project_id = find_project_id(client, owner, project_title)
+            fields = load_project_fields(client, project_id)
+            status_field = fields.get(canonicalize("Status"))
+            if not status_field:
+                raise GitHubError(f"Project field 'Status' not found in '{project_title}'.")
 
-    try:
-        project_id = find_project_id(client, owner, project_title)
-        fields = load_project_fields(client, project_id)
-        status_field = fields.get(canonicalize("Status"))
-        if not status_field:
-            raise GitHubError(f"Project field 'Status' not found in '{project_title}'.")
+            option_id, resolved_name = pick_option_id(status_field, target_status)
+            if not option_id:
+                raise GitHubError(
+                    f"Status option '{target_status}' not found. Available: "
+                    f"{available_options(status_field)}"
+                )
 
-        option_id, resolved_name = pick_option_id(status_field, target_status)
-        if not option_id:
-            raise GitHubError(
-                f"Status option '{target_status}' not found. Available: "
-                f"{available_options(status_field)}"
-            )
+            issues = fetch_pr_closing_issues(client, owner, repo, pr_number)
+            task_issues = [issue for issue in issues if is_task_issue(issue)]
+            unique_task_issues: dict[str, dict[str, Any]] = {}
+            for issue in task_issues:
+                issue_id = issue.get("id")
+                if isinstance(issue_id, str):
+                    unique_task_issues[issue_id] = issue
 
-        issues = fetch_pr_closing_issues(client, owner, repo, pr_number)
-        task_issues = [issue for issue in issues if is_task_issue(issue)]
-        unique_task_issues: dict[str, dict[str, Any]] = {}
-        for issue in task_issues:
-            issue_id = issue.get("id")
-            if isinstance(issue_id, str):
-                unique_task_issues[issue_id] = issue
+            if not task_issues:
+                print(
+                    f"No linked task issues found for PR #{pr_number}. "
+                    "Use 'Closes #<task-issue-number>' in the PR body."
+                )
+                return 0
+            if not unique_task_issues:
+                print(f"No valid linked task issue node IDs found for PR #{pr_number}.")
+                return 0
 
-        if not task_issues:
-            print(
-                f"No linked task issues found for PR #{pr_number}. "
-                "Use 'Closes #<task-issue-number>' in the PR body."
-            )
-            return 0
-        if not unique_task_issues:
-            print(f"No valid linked task issue node IDs found for PR #{pr_number}.")
-            return 0
+            project_item_map = fetch_project_issue_item_map(client, project_id)
+            updated = 0
+            added_to_project = 0
 
-        project_item_map = fetch_project_issue_item_map(client, project_id)
-        updated = 0
-        added_to_project = 0
+            for issue in unique_task_issues.values():
+                issue_id = issue.get("id")
+                issue_number = issue.get("number")
+                if not isinstance(issue_id, str):
+                    continue
 
-        for issue in unique_task_issues.values():
-            issue_id = issue.get("id")
-            issue_number = issue.get("number")
-            if not isinstance(issue_id, str):
-                continue
-
-            item_id = project_item_map.get(issue_id)
-            if not item_id:
-                added_now = False
-                try:
-                    item_id = add_issue_to_project(client, project_id, issue_id)
-                    added_now = True
-                except GitHubError as exc:
-                    if "already exists" in str(exc).lower():
-                        project_item_map = fetch_project_issue_item_map(client, project_id)
-                        item_id = project_item_map.get(issue_id)
-                    else:
-                        raise
+                item_id = project_item_map.get(issue_id)
                 if not item_id:
-                    raise GitHubError("Issue is in project but item id was not found.")
-                project_item_map[issue_id] = item_id
-                if added_now:
-                    added_to_project += 1
+                    added_now = False
+                    try:
+                        item_id = add_issue_to_project(client, project_id, issue_id)
+                        added_now = True
+                    except GitHubError as exc:
+                        if "already exists" in str(exc).lower():
+                            project_item_map = fetch_project_issue_item_map(client, project_id)
+                            item_id = project_item_map.get(issue_id)
+                        else:
+                            raise
+                    if not item_id:
+                        raise GitHubError("Issue is in project but item id was not found.")
+                    project_item_map[issue_id] = item_id
+                    if added_now:
+                        added_to_project += 1
 
-            update_single_select_field(
-                client=client,
-                project_id=project_id,
-                item_id=item_id,
-                field_id=status_field.field_id,
-                option_id=option_id,
+                update_single_select_field(
+                    client=client,
+                    project_id=project_id,
+                    item_id=item_id,
+                    field_id=status_field.field_id,
+                    option_id=option_id,
+                )
+                updated += 1
+                print(f"Updated issue #{issue_number} -> Status '{resolved_name}'.")
+
+            print(
+                f"Done. PR #{pr_number}: updated={updated}, "
+                f"added_to_project={added_to_project}, target_status='{resolved_name}'."
             )
-            updated += 1
-            print(f"Updated issue #{issue_number} -> Status '{resolved_name}'.")
+            return 0
+        except Exception as exc:  # noqa: BLE001
+            if is_auth_error(exc):
+                last_auth_error = exc
+                print(
+                    f"WARNING: {token_env} was rejected by GitHub; trying the next token.",
+                    file=sys.stderr,
+                )
+                continue
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
 
-        print(
-            f"Done. PR #{pr_number}: updated={updated}, "
-            f"added_to_project={added_to_project}, target_status='{resolved_name}'."
-        )
-        return 0
-    except Exception as exc:  # noqa: BLE001
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 1
+    detail = f" Last error: {last_auth_error}" if last_auth_error else ""
+    print(
+        "ERROR: no usable GitHub token was accepted for PR task status sync." + detail,
+        file=sys.stderr,
+    )
+    return 1
 
 
 if __name__ == "__main__":

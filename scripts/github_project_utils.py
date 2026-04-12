@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -15,6 +16,23 @@ DEFAULT_PROJECT_TITLE = "Juke Project"
 
 class GitHubError(RuntimeError):
     """Raised when a GitHub API call fails."""
+
+
+def is_auth_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "401" in message or "bad credentials" in message
+
+
+def candidate_tokens_from_env(*env_names: str) -> list[tuple[str, str]]:
+    candidates: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for env_name in env_names:
+        token = os.environ.get(env_name, "").strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        candidates.append((env_name, token))
+    return candidates
 
 
 @dataclass

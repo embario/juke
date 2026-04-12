@@ -296,6 +296,18 @@ def infer_source_version_from_path(dump_path: str | Path) -> str:
     return name
 
 
+def iter_listenbrainz_json_payloads(
+    handle: io.TextIOBase,
+    *,
+    origin: str,
+) -> Iterator[tuple[dict[str, Any] | None, str | None, str, int, int]]:
+    yield from _iter_json_line_payloads(handle, origin=origin)
+
+
+def parse_listenbrainz_payload(payload: dict[str, Any]) -> ParsedListen:
+    return _parse_listen(payload)
+
+
 def _ingest_dump(
     dump_path: Path,
     run: SourceIngestionRun,

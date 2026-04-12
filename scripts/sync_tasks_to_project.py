@@ -19,10 +19,12 @@ from github_project_utils import (
     GitHubError,
     ProjectField,
     add_issue_to_project,
+    candidate_tokens_from_env,
     available_options,
     canonicalize,
     fetch_project_issue_item_map,
     find_project_id,
+    is_auth_error,
     load_project_fields,
     pick_option_id,
     update_single_select_field,
@@ -298,9 +300,7 @@ def task_files() -> list[Path]:
 
 
 def main() -> int:
-    gh_pat = os.environ.get("JUKE_GH_PAT", "").strip()
-    if not gh_pat:
-        gh_pat = os.environ.get("GH_PAT", "").strip()
+    token_candidates = candidate_tokens_from_env("JUKE_GH_PAT", "GH_PAT", "GITHUB_TOKEN")
     gh_project_title = DEFAULT_PROJECT_TITLE
     gh_repo = DEFAULT_REPO
 
@@ -312,8 +312,11 @@ def main() -> int:
     if not gh_owner:
         gh_owner = os.environ.get("GH_OWNER", "").strip()
 
-    if not gh_pat:
-        print("ERROR: JUKE_GH_PAT (or GH_PAT) is required.", file=sys.stderr)
+    if not token_candidates:
+        print(
+            "ERROR: JUKE_GH_PAT, GH_PAT, or GITHUB_TOKEN is required.",
+            file=sys.stderr,
+        )
         return 1
     if not gh_owner:
         print(
@@ -323,12 +326,50 @@ def main() -> int:
         )
         return 1
 
-    client = GitHubClient(gh_pat, user_agent="juke-task-sync")
-    project_id, project_fields = load_project(client, gh_owner, gh_project_title)
-    project_item_map = fetch_project_issue_item_map(client, project_id)
-    existing_issues_by_path, existing_issues_by_stable_key = index_existing_task_issues(
-        client, gh_owner, gh_repo
-    )
+    client: GitHubClient | None = None
+    project_id = ""
+    project_fields: dict[str, ProjectField] = {}
+    project_item_map: dict[str, str] = {}
+    existing_issues_by_path: dict[str, dict[str, Any]] = {}
+    existing_issues_by_stable_key: dict[str, dict[str, Any]] = {}
+    last_auth_error: GitHubError | None = None
+
+    for token_env, token in token_candidates:
+        candidate_client = GitHubClient(token, user_agent="juke-task-sync")
+        try:
+            candidate_project_id, candidate_project_fields = load_project(
+                candidate_client, gh_owner, gh_project_title
+            )
+            candidate_project_item_map = fetch_project_issue_item_map(
+                candidate_client, candidate_project_id
+            )
+            candidate_existing_issues = index_existing_task_issues(
+                candidate_client, gh_owner, gh_repo
+            )
+        except GitHubError as exc:
+            if not is_auth_error(exc):
+                raise
+            last_auth_error = exc
+            print(
+                f"WARNING: {token_env} was rejected by GitHub; trying the next token.",
+                file=sys.stderr,
+            )
+            continue
+
+        client = candidate_client
+        project_id = candidate_project_id
+        project_fields = candidate_project_fields
+        project_item_map = candidate_project_item_map
+        existing_issues_by_path, existing_issues_by_stable_key = candidate_existing_issues
+        break
+
+    if client is None:
+        detail = f" Last error: {last_auth_error}" if last_auth_error else ""
+        print(
+            "ERROR: no usable GitHub token was accepted for task sync." + detail,
+            file=sys.stderr,
+        )
+        return 1
 
     tasks = task_files()
     print(f"Discovered {len(tasks)} task markdown file(s).")
