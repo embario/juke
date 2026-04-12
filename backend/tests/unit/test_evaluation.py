@@ -7,6 +7,7 @@ Three layers:
   3. DB-integrated rankers + full evaluate/persist pipeline
 """
 import datetime
+import hashlib
 import math
 import uuid
 from unittest.mock import patch
@@ -15,7 +16,13 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from catalog.models import SearchHistory, SearchHistoryResource
-from mlcore.models import ItemCoOccurrence, ModelEvaluation, NormalizedInteraction, SourceIngestionRun, TrainingRun
+from mlcore.models import (
+    ItemCoOccurrence,
+    ListenBrainzSessionTrack,
+    ModelEvaluation,
+    SourceIngestionRun,
+    TrainingRun,
+)
 from mlcore.services.cooccurrence import BEHAVIOR_SOURCE_LISTENBRAINZ, train_cooccurrence
 from mlcore.services.evaluation import (
     METRIC_COLD_RECALL,
@@ -234,23 +241,21 @@ class BuildLOODatasetFromBehaviorSourcesTests(TestCase):
             status='succeeded',
         )
 
-    def _mk_interaction(self, session_hint, track, signature):
-        return NormalizedInteraction.objects.create(
+    def _mk_session_track(self, session_hint, track):
+        session_key = hashlib.sha256(session_hint.encode('utf-8')).digest()
+        played_at = datetime.datetime(2026, 3, 22, 12, 0, tzinfo=datetime.UTC)
+        return ListenBrainzSessionTrack.objects.create(
             import_run=self.run,
             track=track,
-            source_id='listenbrainz',
-            source_version='2026-03-22',
-            source_event_signature=signature,
-            source_user_id='lb-user',
-            played_at=datetime.datetime(2026, 3, 22, 12, 0, tzinfo=datetime.UTC),
-            session_hint=session_hint,
-            track_identifier_candidates={},
-            metadata={},
+            session_key=session_key,
+            first_played_at=played_at,
+            last_played_at=played_at,
+            play_count=1,
         )
 
     def test_builds_trials_from_listenbrainz_source(self):
-        self._mk_interaction('lb-session-1', self.t1, 'sig-1')
-        self._mk_interaction('lb-session-1', self.t2, 'sig-2')
+        self._mk_session_track('lb-session-1', self.t1)
+        self._mk_session_track('lb-session-1', self.t2)
 
         ds = build_loo_dataset(sources=[BEHAVIOR_SOURCE_LISTENBRAINZ], split='all')
 
@@ -258,8 +263,8 @@ class BuildLOODatasetFromBehaviorSourcesTests(TestCase):
         self.assertEqual({trial.held_out for trial in ds.trials}, {self.t1.juke_id, self.t2.juke_id})
 
     def test_default_dataset_builder_includes_listenbrainz_rows(self):
-        self._mk_interaction('lb-session-default', self.t1, 'sig-default-1')
-        self._mk_interaction('lb-session-default', self.t2, 'sig-default-2')
+        self._mk_session_track('lb-session-default', self.t1)
+        self._mk_session_track('lb-session-default', self.t2)
 
         ds = build_loo_dataset(split='all')
 

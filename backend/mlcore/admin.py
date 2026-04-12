@@ -2,7 +2,9 @@ from django.contrib import admin, messages
 
 from mlcore.models import (
     CorpusManifest,
+    ListenBrainzEventLedger,
     ListenBrainzRawListen,
+    ListenBrainzSessionTrack,
     ModelEvaluation,
     ModelPromotion,
     NormalizedInteraction,
@@ -35,9 +37,9 @@ class SourceIngestionRunAdmin(admin.ModelAdmin):
         'imported_row_count', 'duplicate_row_count', 'malformed_row_count', 'started_at',
     )
     list_filter = ('source', 'import_mode', 'status', 'policy_classification')
-    search_fields = ('source_version', 'raw_path', 'checksum')
+    search_fields = ('source_version', 'raw_path', 'checksum', 'fingerprint')
     readonly_fields = (
-        'id', 'source', 'import_mode', 'source_version', 'raw_path', 'checksum', 'status',
+        'id', 'source', 'import_mode', 'source_version', 'raw_path', 'checksum', 'fingerprint', 'status',
         'source_row_count', 'imported_row_count', 'duplicate_row_count', 'canonicalized_row_count',
         'unresolved_row_count', 'malformed_row_count', 'policy_classification', 'metadata',
         'last_error', 'started_at', 'completed_at',
@@ -60,6 +62,47 @@ class ListenBrainzRawListenAdmin(admin.ModelAdmin):
         'recording_mbid', 'release_mbid', 'recording_msid', 'release_msid', 'track_name',
         'artist_name', 'release_name', 'track_identifier_candidates', 'payload', 'ingested_at',
     )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ListenBrainzEventLedger)
+class ListenBrainzEventLedgerAdmin(admin.ModelAdmin):
+    list_display = ('played_at', 'track', 'resolution_state', 'short_event_signature', 'short_session_key')
+    list_filter = ('resolution_state', 'import_run__source_version')
+    readonly_fields = (
+        'id', 'import_run', 'played_at', 'track', 'resolution_state', 'cold_ref',
+        'event_signature_hex', 'session_key_hex', 'created_at',
+    )
+
+    def short_event_signature(self, obj):
+        return obj.event_signature_hex[:12]
+
+    def short_session_key(self, obj):
+        return obj.session_key_hex[:12]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ListenBrainzSessionTrack)
+class ListenBrainzSessionTrackAdmin(admin.ModelAdmin):
+    list_display = ('track', 'play_count', 'first_played_at', 'last_played_at', 'short_session_key')
+    list_filter = ('import_run__source_version',)
+    readonly_fields = (
+        'id', 'import_run', 'track', 'play_count', 'first_played_at',
+        'last_played_at', 'session_key_hex', 'created_at',
+    )
+
+    def short_session_key(self, obj):
+        return obj.session_key_hex[:12]
 
     def has_add_permission(self, request):
         return False

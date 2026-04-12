@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import math
 import uuid
 
@@ -6,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from catalog.models import SearchHistory, SearchHistoryResource
-from mlcore.models import ItemCoOccurrence, NormalizedInteraction, SourceIngestionRun, TrainingRun
+from mlcore.models import ItemCoOccurrence, ListenBrainzSessionTrack, SourceIngestionRun, TrainingRun
 from mlcore.services.cooccurrence import (
     BEHAVIOR_SOURCE_LISTENBRAINZ,
     BEHAVIOR_SOURCE_SEARCH_HISTORY,
@@ -203,18 +204,16 @@ class BasketsFromSearchHistoryTests(TestCase):
             status='succeeded',
         )
 
-    def _mk_normalized_interaction(self, run, *, session_hint, track):
-        return NormalizedInteraction.objects.create(
+    def _mk_session_track(self, run, *, session_hint, track):
+        session_key = hashlib.sha256(session_hint.encode('utf-8')).digest()
+        played_at = datetime.datetime(2026, 3, 22, 12, 0, tzinfo=datetime.UTC)
+        return ListenBrainzSessionTrack.objects.create(
             import_run=run,
             track=track,
-            source_id='listenbrainz',
-            source_version='2026-03-22',
-            source_event_signature=f'{session_hint}:{track.juke_id}',
-            source_user_id='hashed-user',
-            played_at=datetime.datetime(2026, 3, 22, 12, 0, tzinfo=datetime.UTC),
-            session_hint=session_hint,
-            track_identifier_candidates={'recording_mbid': str(track.mbid or '')},
-            metadata={},
+            session_key=session_key,
+            first_played_at=played_at,
+            last_played_at=played_at,
+            play_count=1,
         )
 
     def test_extracts_baskets_grouped_by_session(self):
@@ -269,11 +268,11 @@ class BasketsFromSearchHistoryTests(TestCase):
     def test_empty_history(self):
         self.assertEqual(baskets_from_search_history(), [])
 
-    def test_extracts_baskets_from_listenbrainz_normalized_interactions(self):
+    def test_extracts_baskets_from_listenbrainz_session_tracks(self):
         run = self._mk_listenbrainz_run()
-        self._mk_normalized_interaction(run, session_hint='lb:one', track=self.t1)
-        self._mk_normalized_interaction(run, session_hint='lb:one', track=self.t2)
-        self._mk_normalized_interaction(run, session_hint='lb:two', track=self.t3)
+        self._mk_session_track(run, session_hint='lb:one', track=self.t1)
+        self._mk_session_track(run, session_hint='lb:one', track=self.t2)
+        self._mk_session_track(run, session_hint='lb:two', track=self.t3)
 
         baskets = baskets_from_behavioral_sources(sources=[BEHAVIOR_SOURCE_LISTENBRAINZ])
 
@@ -282,8 +281,8 @@ class BasketsFromSearchHistoryTests(TestCase):
     def test_blended_sources_include_internal_and_external_sessions(self):
         self._mk_session([self.t1, self.t2])
         run = self._mk_listenbrainz_run()
-        self._mk_normalized_interaction(run, session_hint='lb:blend', track=self.t2)
-        self._mk_normalized_interaction(run, session_hint='lb:blend', track=self.t3)
+        self._mk_session_track(run, session_hint='lb:blend', track=self.t2)
+        self._mk_session_track(run, session_hint='lb:blend', track=self.t3)
 
         baskets = baskets_from_behavioral_sources(
             sources=[BEHAVIOR_SOURCE_SEARCH_HISTORY, BEHAVIOR_SOURCE_LISTENBRAINZ],
@@ -296,8 +295,8 @@ class BasketsFromSearchHistoryTests(TestCase):
     def test_default_behavior_sources_are_blended(self):
         self._mk_session([self.t1, self.t2])
         run = self._mk_listenbrainz_run()
-        self._mk_normalized_interaction(run, session_hint='lb:default', track=self.t2)
-        self._mk_normalized_interaction(run, session_hint='lb:default', track=self.t3)
+        self._mk_session_track(run, session_hint='lb:default', track=self.t2)
+        self._mk_session_track(run, session_hint='lb:default', track=self.t3)
 
         baskets = baskets_from_behavioral_sources(split='all')
 
@@ -307,8 +306,8 @@ class BasketsFromSearchHistoryTests(TestCase):
 
     def test_train_from_listenbrainz_source_only(self):
         run = self._mk_listenbrainz_run()
-        self._mk_normalized_interaction(run, session_hint='lb:train', track=self.t1)
-        self._mk_normalized_interaction(run, session_hint='lb:train', track=self.t2)
+        self._mk_session_track(run, session_hint='lb:train', track=self.t1)
+        self._mk_session_track(run, session_hint='lb:train', track=self.t2)
 
         result = train_cooccurrence(sources=[BEHAVIOR_SOURCE_LISTENBRAINZ], split='all')
 

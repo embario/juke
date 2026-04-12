@@ -31,6 +31,7 @@ docker compose up -d backend db redis
 - **`archives/HANDOFF_INSTRUCTIONS.md`** - Agent handoff with immediate next steps
 - **`CATALOG_REDESIGN_ARCHITECTURE.md`** - Complete technical architecture (19 KB)
 - **`INDEPENDENT_ML_CORE_ARCHITECTURE.md`** - Spotify-independent ML core migration plan (MBID-first, corpus governance, hybrid ranking)
+- **`MLCORE_DATASET_VIABILITY_ASSESSMENT.md`** - Dataset licensing matrix and commercial-use determinations for MLCore sources
 - **`CATALOG_UX_DESIGNS.md`** - Three UI/UX design options with mockups (38 KB)
 - **`REDESIGN_SUMMARY.md`** - Executive summary with KPIs
 

@@ -12,7 +12,7 @@ labels:
   - backend
   - ranking
 complexity: 5
-updated_at: 2026-02-11
+updated_at: 2026-03-23
 ---
 
 ## Goal
@@ -24,6 +24,7 @@ Implement production hybrid ranking that blends content, metadata, and cooccurre
 - Add `POST /engine/recommend` hybrid endpoint.
 - Implement weighted blend from active `mlcore_ranking_weight_config` (DB only).
 - Implement MMR diversification with configurable lambda.
+- Ensure the hybrid serving path is rooted in MLCore / engine endpoints rather than extending the legacy `backend/recommender` API surface.
 - Return explainability fields per item:
 - `content_score`
 - `metadata_score`
@@ -43,19 +44,21 @@ Implement production hybrid ranking that blends content, metadata, and cooccurre
 - Cold-start results improve vs cooccurrence-only baseline.
 - API contract includes explainability fields for every recommendation item.
 - Per-request weight overrides are rejected/ignored by design.
+- The implementation does not introduce new dependencies on legacy `backend/recommender` views/serializers/services; any required serving/orchestration code is MLCore-owned or engine-owned and ready for Phase 4 removal of the old recommender surface.
 
 ## Execution Notes
 
 - Key files:
 - `backend/recommender_engine/app/main.py`
-- `backend/recommender/serializers.py`
-- `backend/recommender/views.py`
+- `backend/settings/urls.py`
 - `backend/mlcore/models.py`
+- `backend/mlcore/services/evaluation.py`
 - Commands:
 - `docker compose exec backend python manage.py evaluate_recommenders`
 - `docker compose exec backend python manage.py test`
 - Risks:
 - Weight miscalibration can collapse diversity or overfit one signal.
+- Accidental reuse of legacy `backend/recommender` API code would make Phase 4 cutover materially harder.
 
 ## Handoff
 

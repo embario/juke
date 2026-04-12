@@ -6,7 +6,7 @@ leave-one-out dataset built from behavioral baskets. Persists one
 ModelEvaluation row per (candidate_label, metric_name, dataset_hash).
 
 Phase 1 defaults to blended behavioral sources: SearchHistoryResource plus
-NormalizedInteraction sources such as ListenBrainz. See
+compact ListenBrainzSessionTrack behavioral facts. See
 tasks/musicprofile-favorites-resolvable-identity.md for the follow-up to
 mix MusicProfile.favorite_tracks in once those become resolvable to juke_ids.
 
@@ -119,7 +119,7 @@ def build_loo_dataset(
     order inside baskets_from_search_history().
 
     Phase 1 defaults to blended SearchHistoryResource plus external
-    NormalizedInteraction sources. See module docstring for the planned
+    ListenBrainz session-track facts. See module docstring for the planned
     MusicProfile.favorite_tracks follow-up.
     """
     if baskets is None:

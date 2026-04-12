@@ -29,6 +29,19 @@ INGESTION_MODE_CHOICES = (
     ('incremental', 'Incremental'),
 )
 
+LISTENBRAINZ_RESOLUTION_STATE_CHOICES = (
+    (0, 'Unresolved'),
+    (1, 'Resolved'),
+)
+
+
+def _binary_to_hex(value):
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if value in (None, b''):
+        return ''
+    return bytes(value).hex()
+
 
 class CorpusManifest(models.Model):
     """
@@ -76,6 +89,7 @@ class SourceIngestionRun(models.Model):
     source_version = models.CharField(max_length=255)
     raw_path = models.CharField(max_length=1024)
     checksum = models.CharField(max_length=128)
+    fingerprint = models.CharField(max_length=128, blank=True, default='')
     status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
     source_row_count = models.IntegerField(default=0)
     imported_row_count = models.IntegerField(default=0)
@@ -103,8 +117,187 @@ class SourceIngestionRun(models.Model):
         return f"{self.source}:{self.import_mode}:{self.source_version}"
 
 
+class DatasetOrchestrationRun(models.Model):
+    """Top-level execution record for one orchestrated dataset shard run."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=64)
+    import_mode = models.CharField(max_length=16, choices=INGESTION_MODE_CHOICES, default='full')
+    source_version = models.CharField(max_length=255)
+    manifest_path = models.CharField(max_length=1024)
+    orchestration_path = models.CharField(max_length=1024)
+    output_root = models.CharField(max_length=1024)
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    shard_parallelism = models.IntegerField(default=1)
+    max_shards_per_run = models.IntegerField(null=True, blank=True)
+    shard_count = models.IntegerField(default=0)
+    scheduled_shard_count = models.IntegerField(default=0)
+    completed_shard_count = models.IntegerField(default=0)
+    failed_shard_count = models.IntegerField(default=0)
+    source_row_count = models.IntegerField(default=0)
+    imported_row_count = models.IntegerField(default=0)
+    duplicate_row_count = models.IntegerField(default=0)
+    canonicalized_row_count = models.IntegerField(default=0)
+    unresolved_row_count = models.IntegerField(default=0)
+    malformed_row_count = models.IntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mlcore_dataset_orchestration_run'
+        unique_together = ('provider', 'source_version', 'orchestration_path')
+        indexes = [
+            models.Index(fields=['provider', 'source_version'], name='mlcore_dor_provider_821c5f_idx'),
+            models.Index(fields=['status'], name='mlcore_dor_status_6798d7_idx'),
+            models.Index(fields=['started_at'], name='mlcore_dor_started_9dfd6a_idx'),
+        ]
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f"{self.provider}:{self.source_version}:{self.status}"
+
+
+class DatasetShardIngestionRun(models.Model):
+    """Persistent shard-level execution record for orchestrated dataset imports."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    orchestration_run = models.ForeignKey(
+        DatasetOrchestrationRun,
+        on_delete=models.CASCADE,
+        related_name='shard_runs',
+    )
+    provider = models.CharField(max_length=64)
+    import_mode = models.CharField(max_length=16, choices=INGESTION_MODE_CHOICES, default='full')
+    source_version = models.CharField(max_length=255)
+    shard_key = models.CharField(max_length=255)
+    shard_path = models.CharField(max_length=1024)
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    task_id = models.CharField(max_length=255, blank=True, default='')
+    source_ingestion_run = models.ForeignKey(
+        SourceIngestionRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='dataset_shard_runs',
+    )
+    source_row_count = models.IntegerField(default=0)
+    imported_row_count = models.IntegerField(default=0)
+    duplicate_row_count = models.IntegerField(default=0)
+    canonicalized_row_count = models.IntegerField(default=0)
+    unresolved_row_count = models.IntegerField(default=0)
+    malformed_row_count = models.IntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mlcore_dataset_shard_ingestion_run'
+        unique_together = ('orchestration_run', 'shard_key')
+        indexes = [
+            models.Index(fields=['orchestration_run', 'status'], name='mlcore_dsi_orchest_0f7624_idx'),
+            models.Index(fields=['provider', 'source_version'], name='mlcore_dsi_provider_6dc0a4_idx'),
+            models.Index(fields=['status'], name='mlcore_dsi_status_d073af_idx'),
+        ]
+        ordering = ['shard_key', 'started_at']
+
+    def __str__(self):
+        return f"{self.provider}:{self.source_version}:{self.shard_key}:{self.status}"
+
+
+class ListenBrainzEventLedger(models.Model):
+    """Compact event-level ledger for ListenBrainz replay, dedupe, and audit."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    import_run = models.ForeignKey(
+        SourceIngestionRun,
+        on_delete=models.CASCADE,
+        related_name='listenbrainz_event_ledgers',
+    )
+    event_signature = models.BinaryField(max_length=32, unique=True)
+    played_at = models.DateTimeField(db_index=True)
+    session_key = models.BinaryField(max_length=32, db_index=True)
+    track = models.ForeignKey(
+        'catalog.Track',
+        to_field='juke_id',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='listenbrainz_event_ledgers',
+    )
+    resolution_state = models.PositiveSmallIntegerField(
+        choices=LISTENBRAINZ_RESOLUTION_STATE_CHOICES,
+        default=0,
+    )
+    cold_ref = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_listenbrainz_event_ledger'
+        indexes = [
+            models.Index(fields=['import_run'], name='mlcore_lbe_import__e9179a_idx'),
+            models.Index(fields=['track'], name='mlcore_lbe_track_i_4c8647_idx'),
+            models.Index(fields=['resolution_state'], name='mlcore_lbe_resolut_8e2ae0_idx'),
+        ]
+        ordering = ['played_at', 'id']
+
+    @property
+    def event_signature_hex(self):
+        return _binary_to_hex(self.event_signature)
+
+    @property
+    def session_key_hex(self):
+        return _binary_to_hex(self.session_key)
+
+    def __str__(self):
+        return f"{self.played_at.isoformat()}:{self.event_signature_hex[:12]}"
+
+
+class ListenBrainzSessionTrack(models.Model):
+    """Compact hot-path training facts keyed by ListenBrainz session and track."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    import_run = models.ForeignKey(
+        SourceIngestionRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='listenbrainz_session_tracks',
+    )
+    session_key = models.BinaryField(max_length=32, db_index=True)
+    track = models.ForeignKey(
+        'catalog.Track',
+        to_field='juke_id',
+        on_delete=models.CASCADE,
+        related_name='listenbrainz_session_tracks',
+    )
+    first_played_at = models.DateTimeField()
+    last_played_at = models.DateTimeField()
+    play_count = models.IntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_listenbrainz_session_track'
+        unique_together = ('session_key', 'track')
+        indexes = [
+            models.Index(fields=['track'], name='mlcore_lst_track_i_5d5e20_idx'),
+            models.Index(fields=['import_run'], name='mlcore_lst_import__6d7bf6_idx'),
+            models.Index(fields=['last_played_at'], name='mlcore_lst_last_pl_4a4ec9_idx'),
+        ]
+        ordering = ['first_played_at', 'id']
+
+    @property
+    def session_key_hex(self):
+        return _binary_to_hex(self.session_key)
+
+    def __str__(self):
+        return f"{self.session_key_hex[:12]}:{self.track_id}"
+
+
 class ListenBrainzRawListen(models.Model):
-    """Immutable raw staging row for ListenBrainz listen events."""
+    """Deprecated wide raw staging row retained only for legacy transition work."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     import_run = models.ForeignKey(
@@ -117,11 +310,11 @@ class ListenBrainzRawListen(models.Model):
     played_at = models.DateTimeField(db_index=True)
     recording_mbid = models.UUIDField(null=True, blank=True, db_index=True)
     release_mbid = models.UUIDField(null=True, blank=True)
-    recording_msid = models.CharField(max_length=255, blank=True, default='')
-    release_msid = models.CharField(max_length=255, blank=True, default='')
-    track_name = models.CharField(max_length=1024, blank=True, default='')
-    artist_name = models.CharField(max_length=1024, blank=True, default='')
-    release_name = models.CharField(max_length=1024, blank=True, default='')
+    recording_msid = models.TextField(blank=True, default='')
+    release_msid = models.TextField(blank=True, default='')
+    track_name = models.TextField(blank=True, default='')
+    artist_name = models.TextField(blank=True, default='')
+    release_name = models.TextField(blank=True, default='')
     track_identifier_candidates = models.JSONField(default=dict, blank=True)
     payload = models.JSONField(default=dict, blank=True)
     ingested_at = models.DateTimeField(auto_now_add=True)
@@ -140,7 +333,7 @@ class ListenBrainzRawListen(models.Model):
 
 
 class NormalizedInteraction(models.Model):
-    """Canonicalized interaction row for downstream ML training/evaluation."""
+    """Deprecated wide training row retained only for legacy transition work."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     import_run = models.ForeignKey(

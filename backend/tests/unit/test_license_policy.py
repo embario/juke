@@ -27,6 +27,9 @@ class LicensePolicyProductionModeTests(TestCase):
     def test_classify_known_production_source(self):
         self.assertEqual(self.policy.classify_source('musicbrainz'), 'production_approved')
 
+    def test_classify_listenbrainz_as_known_production_source(self):
+        self.assertEqual(self.policy.classify_source('listenbrainz'), 'production_approved')
+
     def test_classify_unknown_source_fail_closed(self):
         self.assertEqual(self.policy.classify_source('random_dataset'), 'blocked')
 
@@ -46,6 +49,12 @@ class LicensePolicyProductionModeTests(TestCase):
     def test_compliant_musicbrainz_both_row(self):
         row = _mk(allowed_envs='both', checksum='sha256:both')
         self.assertTrue(self.policy.evaluate(row).allowed)
+
+    def test_compliant_listenbrainz_production_row(self):
+        row = _mk(source='listenbrainz', checksum='sha256:lb')
+        decision = self.policy.evaluate(row)
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.classification, 'production_approved')
 
     # --- evaluate: reject branches ---
 

@@ -52,8 +52,19 @@ jobs:
       - name: Prepare env file
         run: |
           cp template.env .env
+          tablespace_root="$(mktemp -d /tmp/juke-tablespaces.XXXXXX)"
+          echo "MLCORE_PG_HOT_TABLESPACE_HOST_PATH=${tablespace_root}/juke_mlcore_hot" >> .env
+          echo "MLCORE_PG_COLD_TABLESPACE_HOST_PATH=${tablespace_root}/juke_mlcore_cold" >> .env
           echo "SOCIAL_AUTH_SPOTIFY_KEY=${SOCIAL_AUTH_SPOTIFY_KEY}" >> .env
           echo "SOCIAL_AUTH_SPOTIFY_SECRET=${SOCIAL_AUTH_SPOTIFY_SECRET}" >> .env
+
+      - name: Prepare tablespace directories
+        run: |
+          source .env
+          mkdir -p "${MLCORE_PG_HOT_TABLESPACE_HOST_PATH}" "${MLCORE_PG_COLD_TABLESPACE_HOST_PATH}"
+          find "${MLCORE_PG_HOT_TABLESPACE_HOST_PATH}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          find "${MLCORE_PG_COLD_TABLESPACE_HOST_PATH}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          chmod 0777 "${MLCORE_PG_HOT_TABLESPACE_HOST_PATH}" "${MLCORE_PG_COLD_TABLESPACE_HOST_PATH}"
 
       - name: Pull application images
         run: docker compose -f docker-compose.ci.yml pull
@@ -63,6 +74,14 @@ jobs:
 
       - name: Start services
         run: docker compose -f docker-compose.ci.yml up -d
+
+      - name: Fix tablespace directory ownership
+        run: |
+          docker compose -f docker-compose.ci.yml exec -T -u root db sh -lc '
+            mkdir -p /var/lib/postgresql/tablespaces/juke_mlcore_hot /var/lib/postgresql/tablespaces/juke_mlcore_cold
+            chown postgres:postgres /var/lib/postgresql/tablespaces/juke_mlcore_hot /var/lib/postgresql/tablespaces/juke_mlcore_cold
+            chmod 700 /var/lib/postgresql/tablespaces/juke_mlcore_hot /var/lib/postgresql/tablespaces/juke_mlcore_cold
+          '
 
       - name: List containers
         run: docker ps

@@ -83,5 +83,6 @@ Ingest MusicBrainz canonical dumps, MusicBrainz PostgreSQL/JSON metadata, and Di
 ## Dependencies
 
 - Prerequisite: `mlcore-phase0-catalog-identity-adapters` for external ID tables and canonical resolution.
+- Prerequisite: `mlcore-phase0b-provider-dataset-policy-operationalization` for provider/source partitioning and rights-boundary definitions before MusicBrainz/Discogs ingest work.
 - Can run in parallel with `mlcore-phase1a-listenbrainz-ingestion` if storage is separated.
 - Prerequisite to: `mlcore-phase1c-hybrid-training-data-corpus`.
