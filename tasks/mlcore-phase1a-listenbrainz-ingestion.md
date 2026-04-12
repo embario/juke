@@ -12,7 +12,7 @@ labels:
   - backend
   - data-ingestion
 complexity: 5
-updated_at: 2026-03-22
+updated_at: 2026-03-28
 ---
 
 ## Goal
@@ -107,10 +107,47 @@ Build a production-safe ingest pipeline for ListenBrainz full + incremental dump
     - `docker compose exec backend python manage.py test tests.unit.test_cooccurrence_trainer tests.unit.test_evaluation`
     - `docker compose exec backend python manage.py test tests.unit.test_mlcore_pipeline tests.unit.test_mlcore_coverage_gaps`
 - Remaining:
-  - Decide whether ListenBrainz should remain `research_only` or move to `production_approved` after the dataset-viability/legal pass.
-  - Add production deployment wiring for configured dump paths/source versions.
+  - Run an end-to-end remote sync against the live FTP source in this environment and tune retention / operational limits after the first real backfill.
 - Next:
-  - Decide whether Phase 1a is now complete enough to move to Phase 1b, or if we also want environment/docs polish around real dump operations first.
+  - Stage the latest upstream full dump `listenbrainz-dump-2461-20260315-000003-full` locally, then trigger `sync_listenbrainz_remote` (or the equivalent full import) and tune retention / operational limits after the first real backfill.
+- Additional completed on 2026-03-23:
+  - Fixed real full-dump compatibility in `backend/mlcore/ingestion/listenbrainz.py`:
+    - `.listens` member discovery
+    - streaming tar iteration for large `.tar.zst` archives
+    - support for `timestamp` rows and MBIDs stored under `track_metadata.additional_info`
+  - Added scheduled remote dump sync scaffolding:
+    - new discovery/download/import service `backend/mlcore/services/listenbrainz_source.py`
+    - new management command `backend/mlcore/management/commands/sync_listenbrainz_remote.py`
+    - new Celery task `mlcore.tasks.sync_listenbrainz_remote`
+    - beat schedule/env knobs for remote sync in `backend/settings/base.py` and `template.env`
+    - compose mount change so backend/worker can stage downloaded dumps under `/srv/data/listenbrainz`
+  - Added regression tests in:
+    - `backend/tests/unit/test_listenbrainz_ingest.py`
+    - `backend/tests/unit/test_listenbrainz_source_sync.py`
+- Additional completed on 2026-03-28:
+  - Normalized file-derived ListenBrainz `source_version` values so manual/file-based imports now strip archive suffixes and convert artifact filenames like `listenbrainz-listens-dump-*.tar.zst` into the same canonical release IDs used by remote sync (`listenbrainz-dump-*`).
+  - Updated remote-sync artifact staging to reuse already-downloaded dumps stored directly under `MLCORE_LISTENBRAINZ_DOWNLOAD_DIR`, avoiding unnecessary re-downloads when older/manual artifacts are present in the legacy layout.
+  - Changed the nightly remote-sync policy to prefer the existing local/imported full baseline and only fetch/apply newer incremental dumps after that baseline; the job now falls back to downloading a remote full baseline only when no usable local/imported full baseline exists.
+  - Hardened source-version matching for existing ingestion runs so older rows that stored artifact filenames instead of canonical release IDs are still recognized as the same baseline/incremental releases by the scheduler.
+  - If a local full-baseline import is already in flight, the nightly sync now returns `noop` instead of downloading a newer remote full in parallel.
+  - Recreated the `backend` and `worker` containers so `/srv/data/listenbrainz` is now mounted read-write and the worker is subscribed to the `mlcore` queue.
+  - Verified the ListenBrainz-focused backend suites still pass:
+    - `docker compose exec backend python manage.py test tests.unit.test_listenbrainz_ingest tests.unit.test_listenbrainz_source_sync`
+  - Checked the live upstream release index:
+    - latest full dump as of 2026-03-28: `listenbrainz-dump-2461-20260315-000003-full`
+    - latest incrementals observed: through `listenbrainz-dump-2474-20260328-000003-incremental`
+  - Operational note:
+    - the host currently only has the older full artifact `listenbrainz-listens-dump-2446-20260301-000003-full.tar.zst`, so a real remote sync today would need to download the newer `2461` full baseline before replaying later incrementals.
+- Additional completed on 2026-03-29:
+  - Completed the dataset-viability/legal pass for ListenBrainz against project docs plus MetaBrainz primary-source policy pages.
+  - Determination: ListenBrainz full + incremental dumps can move from `research_only` to `production_approved` for Juke commercialization.
+  - Basis:
+    - MetaBrainz datasets page lists ListenBrainz dumps as `Commercial use: Allowed` and licensed under `Creative Commons Zero (CC0)`.
+    - MetaBrainz GDPR statement says ListenBrainz listens are public, included in public dumps, and explicitly used to build recommendation engines.
+  - Required operating constraints remain unchanged:
+    - keep `source_user_id` hashed/pseudonymous,
+    - do not ingest or train on user-facing profile fields,
+    - preserve periodic full rebuilds because incrementals do not encode deletions.
 - Blocker: none.
 
 ## Dependencies

@@ -54,7 +54,7 @@ Implement strict corpus governance so production ML uses only license-compliant 
 - `docker compose exec backend python manage.py test`
 - Risks:
 - Ambiguous license metadata across datasets can reduce usable corpus.
-- MusicBrainz-only phase may reduce coverage until additional sources are approved.
+- Conservative source approvals may reduce coverage until additional sources are reviewed and added.
 - Policy misconfiguration could silently starve model training.
 
 ## Handoff
@@ -63,13 +63,16 @@ Implement strict corpus governance so production ML uses only license-compliant 
   - New `mlcore` app scaffolded and registered in `INSTALLED_APPS`.
   - `CorpusManifest` model (`mlcore/models.py`) with `mlcore_corpus_manifest` table: per-file provenance rows keyed on `(source, track_path, checksum)`. FK to `catalog.Track.juke_id` (nullable, `SET_NULL`) so manifest rows survive catalog deletion for audit. Indexed on `source` + `allowed_envs`. Migration `mlcore/migrations/0001_initial.py`.
   - `LicensePolicy` service (`mlcore/services/corpus.py`):
-    - `classify_source()` — `SOURCE_CLASSIFICATION` registry, currently MusicBrainz-only as `production_approved`; unknown sources → `blocked` under fail-closed.
+    - `classify_source()` — `SOURCE_CLASSIFICATION` registry; unknown sources → `blocked` under fail-closed.
     - `evaluate(row)` — per-row `PolicyDecision(allowed, reason, classification)`. Fail-closed on missing license/allowed_envs.
     - `eligible_queryset()` — pipeline entry point; filters by mode (`production`/`research`/`both`).
     - `is_model_promotable(qs)` — deployment-time guard; rejects + WARNING-logs any model trained on non-production_approved or research-only rows.
   - Settings: `JUKE_ALLOWED_LICENSES` (default `production`), `JUKE_LICENSE_FAIL_CLOSED` (default `True`) in `settings/base.py` + `template.env`.
   - Admin (`mlcore/admin.py`): `CorpusManifestAdmin` surfaces per-row `policy_status` / `policy_reason` columns.
-  - Tests: `tests/unit/test_corpus_manifest.py` (8), `tests/unit/test_license_policy.py` (22), `tests/unit/test_mlcore_admin.py` (5). Full suite: 214 tests pass. `ruff check .` clean (added `per-file-ignores` for generated migrations E501).
+  - Tests: `tests/unit/test_corpus_manifest.py` (8), `tests/unit/test_license_policy.py` (24), `tests/unit/test_mlcore_admin.py` (5). Full suite previously passed at 214 tests; targeted license-policy suite now passes with 24 tests after adding ListenBrainz production coverage. `ruff check .` clean (added `per-file-ignores` for generated migrations E501).
+  - 2026-03-29 policy update:
+    - `listenbrainz` promoted to `production_approved` after dataset licensing review.
+    - canonical licensing matrix added at `docs/arch/MLCORE_DATASET_VIABILITY_ASSESSMENT.md`.
 - Next:
   - Phase 1 embedding/training jobs must call `LicensePolicy().eligible_queryset()` as their sole corpus input path.
   - Populate `SOURCE_CLASSIFICATION` as new datasets pass review (additive change, no migration).

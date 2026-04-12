@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import ctypes
+import gc
+import functools
 import gzip
 import hashlib
 import io
 import json
 import logging
 import tarfile
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 from uuid import UUID
 
 from django.conf import settings
@@ -26,7 +30,12 @@ logger = logging.getLogger(__name__)
 LISTENBRAINZ_SOURCE_ID = 'listenbrainz'
 DEFAULT_BATCH_SIZE = 500
 DEFAULT_SESSION_WINDOW_SECONDS = 30 * 60
-SUPPORTED_JSON_LINE_SUFFIXES = ('.jsonl', '.ndjson', '.json')
+DEFAULT_RESOLUTION_CACHE_MAX_SIZE = 50_000
+DEFAULT_MEMORY_TRIM_EVERY_ROWS = 100_000
+PROGRESS_REPORT_EVERY_ROWS = 100_000
+PROGRESS_REPORT_EVERY_SECONDS = 30
+SUPPORTED_JSON_LINE_SUFFIXES = ('.jsonl', '.ndjson', '.json', '.listens')
+SOURCE_VERSION_SUFFIXES = ('.tar.zst', '.tar.gz', '.tgz', '.tar', '.gz')
 SPOTIFY_ID_KEYS = (
     'spotify_id',
     'spotify_track_id',
@@ -66,18 +75,38 @@ class ImportResult:
     checksum: str
 
 
+@dataclass(frozen=True)
+class ResumeCheckpoint:
+    origin: str
+    line_number: int
+    entry_index: int
+    source_row_count: int
+    imported_row_count: int
+    duplicate_row_count: int
+    canonicalized_row_count: int
+    unresolved_row_count: int
+    malformed_row_count: int
+
+
+@dataclass(frozen=True)
+class ResumeCandidate:
+    run: SourceIngestionRun
+    checkpoint: ResumeCheckpoint
+
+
 def import_listenbrainz_dump(
     dump_path: str | Path,
     *,
     source_version: str,
     import_mode: str = 'full',
     batch_size: int = DEFAULT_BATCH_SIZE,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    resume: bool = True,
 ) -> ImportResult:
     path = Path(dump_path)
     if not path.exists():
         raise FileNotFoundError(f'ListenBrainz dump not found: {path}')
 
-    checksum = _sha256_file(path)
     policy = LicensePolicy()
     classification = policy.classify_source(LISTENBRAINZ_SOURCE_ID)
     if classification == 'blocked':
@@ -88,14 +117,75 @@ def import_listenbrainz_dump(
         import_mode=import_mode,
         source_version=source_version,
         raw_path=str(path),
-        checksum=checksum,
+        checksum='',
         status='running',
         policy_classification=classification,
+        metadata={
+            'stage': 'checksum',
+            'batch_size': batch_size,
+            'session_window_seconds': getattr(
+                settings,
+                'MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS',
+                DEFAULT_SESSION_WINDOW_SECONDS,
+            ),
+            'resume_enabled': resume,
+        },
     )
 
     try:
-        with transaction.atomic():
-            counts = _ingest_dump(path, run, source_version=source_version, batch_size=batch_size)
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    'run_id': str(run.pk),
+                    'status': 'running',
+                    'source': LISTENBRAINZ_SOURCE_ID,
+                    'import_mode': import_mode,
+                    'source_version': source_version,
+                    'raw_path': str(path),
+                    'phase': 'checksum',
+                    'source_row_count': 0,
+                    'imported_row_count': 0,
+                    'duplicate_row_count': 0,
+                    'canonicalized_row_count': 0,
+                    'unresolved_row_count': 0,
+                    'malformed_row_count': 0,
+                }
+            )
+
+        checksum = _dump_fingerprint(path, source_version=source_version)
+        resume_candidate = _find_resume_candidate(
+            path,
+            checksum=checksum,
+            import_mode=import_mode,
+            exclude_run_id=run.pk,
+        ) if resume else None
+
+        run.checksum = checksum
+        run.metadata = {
+            **run.metadata,
+            'stage': 'importing',
+            'checksum_mode': 'stat_fingerprint',
+            'resumed_from_run_id': (
+                str(resume_candidate.run.pk)
+                if resume_candidate is not None
+                else ''
+            ),
+            'resume_start_checkpoint': (
+                _checkpoint_to_metadata(resume_candidate.checkpoint)
+                if resume_candidate is not None
+                else {}
+            ),
+        }
+        run.save(update_fields=['checksum', 'metadata'])
+
+        counts = _ingest_dump(
+            path,
+            run,
+            source_version=source_version,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
+            resume_checkpoint=resume_candidate.checkpoint if resume_candidate is not None else None,
+        )
         run.status = 'succeeded'
         run.source_row_count = counts['source_row_count']
         run.imported_row_count = counts['imported_row_count']
@@ -106,25 +196,30 @@ def import_listenbrainz_dump(
         run.completed_at = timezone.now()
         run.metadata = {
             **run.metadata,
-            'batch_size': batch_size,
-            'session_window_seconds': getattr(
-                settings,
-                'MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS',
-                DEFAULT_SESSION_WINDOW_SECONDS,
-            ),
+            'stage': 'completed',
         }
         run.save(
             update_fields=[
-                'status', 'source_row_count', 'imported_row_count', 'duplicate_row_count',
-                'canonicalized_row_count', 'unresolved_row_count', 'malformed_row_count',
-                'completed_at', 'metadata',
+                'status',
+                'source_row_count',
+                'imported_row_count',
+                'duplicate_row_count',
+                'canonicalized_row_count',
+                'unresolved_row_count',
+                'malformed_row_count',
+                'completed_at',
+                'metadata',
             ]
         )
     except Exception as exc:
         run.status = 'failed'
         run.completed_at = timezone.now()
         run.last_error = str(exc)
-        run.save(update_fields=['status', 'completed_at', 'last_error'])
+        run.metadata = {
+            **run.metadata,
+            'stage': 'failed',
+        }
+        run.save(update_fields=['status', 'completed_at', 'last_error', 'metadata'])
         raise
 
     logger.info(
@@ -168,7 +263,20 @@ def configured_source_version(import_mode: str, dump_path: str | Path) -> str:
     if configured:
         return configured
 
-    return Path(dump_path).name
+    return infer_source_version_from_path(dump_path)
+
+
+def infer_source_version_from_path(dump_path: str | Path) -> str:
+    name = Path(dump_path).name
+    lower_name = name.lower()
+    for suffix in SOURCE_VERSION_SUFFIXES:
+        if lower_name.endswith(suffix):
+            candidate = name[: -len(suffix)]
+            if candidate:
+                if candidate.startswith('listenbrainz-listens-dump-'):
+                    return candidate.replace('listenbrainz-listens-dump-', 'listenbrainz-dump-', 1)
+                return candidate
+    return name
 
 
 def _ingest_dump(
@@ -177,25 +285,66 @@ def _ingest_dump(
     *,
     source_version: str,
     batch_size: int,
+    progress_callback: Callable[[dict[str, Any]], None] | None,
+    resume_checkpoint: ResumeCheckpoint | None,
 ) -> dict[str, int]:
-    resolution_cache: dict[tuple[str, str], UUID | None] = {}
-    counts = {
-        'source_row_count': 0,
-        'imported_row_count': 0,
-        'duplicate_row_count': 0,
-        'canonicalized_row_count': 0,
-        'unresolved_row_count': 0,
-        'malformed_row_count': 0,
-    }
+    resolve_track_juke_id = _build_track_resolver(
+        maxsize=getattr(
+            settings,
+            'MLCORE_LISTENBRAINZ_RESOLUTION_CACHE_MAX_SIZE',
+            DEFAULT_RESOLUTION_CACHE_MAX_SIZE,
+        )
+    )
+    counts = _counts_from_resume_checkpoint(resume_checkpoint)
     max_malformed = getattr(settings, 'MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS', 0)
     parsed_batch: list[ParsedListen] = []
     seen_in_batch: set[str] = set()
+    last_origin = dump_path.name
+    last_line_number = 0
+    last_entry_index = 0
+    last_reported_source_rows = counts['source_row_count']
+    last_reported_at = time.monotonic()
+    last_trimmed_source_rows = counts['source_row_count']
 
-    for payload, error in _iter_listen_payloads(dump_path):
+    if resume_checkpoint is not None:
+        logger.info(
+            'listenbrainz import resuming run=%s from %s:%d:%d source_rows=%d imported=%d duplicates=%d unresolved=%d malformed=%d',
+            run.pk,
+            resume_checkpoint.origin,
+            resume_checkpoint.line_number,
+            resume_checkpoint.entry_index,
+            resume_checkpoint.source_row_count,
+            resume_checkpoint.imported_row_count,
+            resume_checkpoint.duplicate_row_count,
+            resume_checkpoint.unresolved_row_count,
+            resume_checkpoint.malformed_row_count,
+        )
+        last_origin = resume_checkpoint.origin
+        last_line_number = resume_checkpoint.line_number
+        last_entry_index = resume_checkpoint.entry_index
+
+    for payload, error, origin, line_number, entry_index in _iter_listen_payloads(
+        dump_path,
+        resume_after=resume_checkpoint,
+    ):
+        last_origin = origin
+        last_line_number = line_number
+        last_entry_index = entry_index
         if error:
             counts['malformed_row_count'] += 1
             if counts['malformed_row_count'] > max_malformed:
                 raise ValueError(error)
+            last_reported_source_rows, last_reported_at = _maybe_report_progress(
+                run,
+                counts=counts,
+                batch_size=batch_size,
+                last_origin=last_origin,
+                last_line_number=last_line_number,
+                last_entry_index=last_entry_index,
+                progress_callback=progress_callback,
+                last_reported_source_rows=last_reported_source_rows,
+                last_reported_at=last_reported_at,
+            )
             continue
 
         counts['source_row_count'] += 1
@@ -209,6 +358,17 @@ def _ingest_dump(
 
         if parsed.source_event_signature in seen_in_batch:
             counts['duplicate_row_count'] += 1
+            last_reported_source_rows, last_reported_at = _maybe_report_progress(
+                run,
+                counts=counts,
+                batch_size=batch_size,
+                last_origin=last_origin,
+                last_line_number=last_line_number,
+                last_entry_index=last_entry_index,
+                progress_callback=progress_callback,
+                last_reported_source_rows=last_reported_source_rows,
+                last_reported_at=last_reported_at,
+            )
             continue
 
         seen_in_batch.add(parsed.source_event_signature)
@@ -219,10 +379,28 @@ def _ingest_dump(
                 source_version=source_version,
                 parsed_batch=parsed_batch,
                 counts=counts,
-                resolution_cache=resolution_cache,
+                resolve_track_juke_id=resolve_track_juke_id,
+                batch_end_origin=last_origin,
+                batch_end_line_number=last_line_number,
+                batch_end_entry_index=last_entry_index,
             )
             parsed_batch.clear()
             seen_in_batch.clear()
+            last_trimmed_source_rows = _maybe_release_memory(
+                counts=counts,
+                last_trimmed_source_rows=last_trimmed_source_rows,
+            )
+            last_reported_source_rows, last_reported_at = _maybe_report_progress(
+                run,
+                counts=counts,
+                batch_size=batch_size,
+                last_origin=last_origin,
+                last_line_number=last_line_number,
+                last_entry_index=last_entry_index,
+                progress_callback=progress_callback,
+                last_reported_source_rows=last_reported_source_rows,
+                last_reported_at=last_reported_at,
+            )
 
     if parsed_batch:
         _flush_batch(
@@ -230,10 +408,30 @@ def _ingest_dump(
             source_version=source_version,
             parsed_batch=parsed_batch,
             counts=counts,
-            resolution_cache=resolution_cache,
+            resolve_track_juke_id=resolve_track_juke_id,
+            batch_end_origin=last_origin,
+            batch_end_line_number=last_line_number,
+            batch_end_entry_index=last_entry_index,
+        )
+        last_trimmed_source_rows = _maybe_release_memory(
+            counts=counts,
+            last_trimmed_source_rows=last_trimmed_source_rows,
+            force=True,
+        )
+        last_reported_source_rows, last_reported_at = _maybe_report_progress(
+            run,
+            counts=counts,
+            batch_size=batch_size,
+            last_origin=last_origin,
+            last_line_number=last_line_number,
+            last_entry_index=last_entry_index,
+            progress_callback=progress_callback,
+            last_reported_source_rows=last_reported_source_rows,
+            last_reported_at=last_reported_at,
+            force=True,
         )
 
-    if counts['source_row_count'] == 0:
+    if counts['source_row_count'] == 0 and resume_checkpoint is None:
         raise ValueError(f'No listen events found in {dump_path}')
 
     return counts
@@ -245,92 +443,293 @@ def _flush_batch(
     source_version: str,
     parsed_batch: list[ParsedListen],
     counts: dict[str, int],
-    resolution_cache: dict[tuple[str, str], UUID | None],
+    resolve_track_juke_id: Callable[[dict[str, Any]], UUID | None],
+    batch_end_origin: str,
+    batch_end_line_number: int,
+    batch_end_entry_index: int,
 ) -> None:
-    signatures = [parsed.source_event_signature for parsed in parsed_batch]
-    existing_signatures = set(
-        ListenBrainzRawListen.objects.filter(source_event_signature__in=signatures).values_list(
-            'source_event_signature',
-            flat=True,
-        )
-    )
-
-    new_listens = [parsed for parsed in parsed_batch if parsed.source_event_signature not in existing_signatures]
-    counts['duplicate_row_count'] += len(parsed_batch) - len(new_listens)
-    if not new_listens:
-        return
-
-    raw_rows = [
-        ListenBrainzRawListen(
-            import_run=run,
-            source_event_signature=parsed.source_event_signature,
-            source_user_id=parsed.source_user_id,
-            played_at=parsed.played_at,
-            recording_mbid=parsed.recording_mbid,
-            release_mbid=parsed.release_mbid,
-            recording_msid=parsed.recording_msid,
-            release_msid=parsed.release_msid,
-            track_name=parsed.track_name,
-            artist_name=parsed.artist_name,
-            release_name=parsed.release_name,
-            track_identifier_candidates=parsed.track_identifier_candidates,
-            payload=parsed.payload,
-        )
-        for parsed in new_listens
-    ]
-    created_rows = ListenBrainzRawListen.objects.bulk_create(raw_rows)
-    raw_by_signature = {row.source_event_signature: row for row in created_rows}
-
-    normalized_rows: list[NormalizedInteraction] = []
-    unresolved = 0
-    for parsed in new_listens:
-        track_juke_id = _resolve_track_juke_id(parsed.track_identifier_candidates, resolution_cache)
-        if track_juke_id is None:
-            unresolved += 1
-        normalized_rows.append(
-            NormalizedInteraction(
-                import_run=run,
-                raw_listen=raw_by_signature[parsed.source_event_signature],
-                track_id=track_juke_id,
-                source_id=LISTENBRAINZ_SOURCE_ID,
-                source_version=source_version,
-                source_event_signature=parsed.source_event_signature,
-                source_user_id=parsed.source_user_id,
-                played_at=parsed.played_at,
-                session_hint=parsed.session_hint,
-                track_identifier_candidates=parsed.track_identifier_candidates,
-                metadata=parsed.metadata,
+    with transaction.atomic():
+        signatures = [parsed.source_event_signature for parsed in parsed_batch]
+        existing_signatures = set(
+            ListenBrainzRawListen.objects.filter(source_event_signature__in=signatures).values_list(
+                'source_event_signature',
+                flat=True,
             )
         )
 
-    NormalizedInteraction.objects.bulk_create(normalized_rows)
+        new_listens = [parsed for parsed in parsed_batch if parsed.source_event_signature not in existing_signatures]
+        counts['duplicate_row_count'] += len(parsed_batch) - len(new_listens)
+        if new_listens:
+            raw_rows = [
+                ListenBrainzRawListen(
+                    import_run=run,
+                    source_event_signature=parsed.source_event_signature,
+                    source_user_id=parsed.source_user_id,
+                    played_at=parsed.played_at,
+                    recording_mbid=parsed.recording_mbid,
+                    release_mbid=parsed.release_mbid,
+                    recording_msid=parsed.recording_msid,
+                    release_msid=parsed.release_msid,
+                    track_name=parsed.track_name,
+                    artist_name=parsed.artist_name,
+                    release_name=parsed.release_name,
+                    track_identifier_candidates=parsed.track_identifier_candidates,
+                    payload=parsed.payload,
+                )
+                for parsed in new_listens
+            ]
+            ListenBrainzRawListen.objects.bulk_create(raw_rows)
+            raw_by_signature = {row.source_event_signature: row for row in raw_rows}
 
-    counts['imported_row_count'] += len(created_rows)
-    counts['canonicalized_row_count'] += len(normalized_rows)
-    counts['unresolved_row_count'] += unresolved
+            normalized_rows: list[NormalizedInteraction] = []
+            unresolved = 0
+            for parsed in new_listens:
+                track_juke_id = resolve_track_juke_id(parsed.track_identifier_candidates)
+                if track_juke_id is None:
+                    unresolved += 1
+                normalized_rows.append(
+                    NormalizedInteraction(
+                        import_run=run,
+                        raw_listen=raw_by_signature[parsed.source_event_signature],
+                        track_id=track_juke_id,
+                        source_id=LISTENBRAINZ_SOURCE_ID,
+                        source_version=source_version,
+                        source_event_signature=parsed.source_event_signature,
+                        source_user_id=parsed.source_user_id,
+                        played_at=parsed.played_at,
+                        session_hint=parsed.session_hint,
+                        track_identifier_candidates=parsed.track_identifier_candidates,
+                        metadata=parsed.metadata,
+                    )
+                )
+
+            NormalizedInteraction.objects.bulk_create(normalized_rows)
+
+            counts['imported_row_count'] += len(raw_rows)
+            counts['canonicalized_row_count'] += len(normalized_rows)
+            counts['unresolved_row_count'] += unresolved
+            del normalized_rows
+            del raw_by_signature
+            del raw_rows
+        del new_listens
+        del existing_signatures
+        del signatures
+
+        _persist_run_progress(
+            run,
+            counts=counts,
+            last_origin=batch_end_origin,
+            last_line_number=batch_end_line_number,
+            last_entry_index=batch_end_entry_index,
+        )
 
 
-def _resolve_track_juke_id(
-    candidates: dict[str, Any],
-    resolution_cache: dict[tuple[str, str], UUID | None],
-) -> UUID | None:
-    recording_mbid = str(candidates.get('recording_mbid') or '').strip()
-    if recording_mbid:
-        cache_key = ('mbid', recording_mbid)
-        if cache_key not in resolution_cache:
-            track = IdentityResolver.resolve_track(mbid=_maybe_uuid(recording_mbid))
-            resolution_cache[cache_key] = track.juke_id if track else None
-        return resolution_cache[cache_key]
+def _build_track_resolver(maxsize: int) -> Callable[[dict[str, Any]], UUID | None]:
+    if maxsize > 0:
+        resolve_track_by_mbid = functools.lru_cache(maxsize=maxsize)(_resolve_track_by_mbid_uncached)
+        resolve_track_by_spotify = functools.lru_cache(maxsize=maxsize)(_resolve_track_by_spotify_uncached)
+    else:
+        resolve_track_by_mbid = _resolve_track_by_mbid_uncached
+        resolve_track_by_spotify = _resolve_track_by_spotify_uncached
 
-    spotify_id = str(candidates.get('spotify_id') or '').strip()
-    if spotify_id:
-        cache_key = ('spotify', spotify_id)
-        if cache_key not in resolution_cache:
-            track = IdentityResolver.resolve_track(source='spotify', external_id=spotify_id)
-            if track is None:
-                track = Track.objects.filter(spotify_id=spotify_id).first()
-            resolution_cache[cache_key] = track.juke_id if track else None
-        return resolution_cache[cache_key]
+    def _resolve(candidates: dict[str, Any]) -> UUID | None:
+        recording_mbid = str(candidates.get('recording_mbid') or '').strip()
+        if recording_mbid:
+            return resolve_track_by_mbid(recording_mbid)
+
+        spotify_id = str(candidates.get('spotify_id') or '').strip()
+        if spotify_id:
+            return resolve_track_by_spotify(spotify_id)
+
+        return None
+
+    return _resolve
+
+
+def _resolve_track_by_mbid_uncached(recording_mbid: str) -> UUID | None:
+    track = IdentityResolver.resolve_track(mbid=_maybe_uuid(recording_mbid))
+    return track.juke_id if track else None
+
+
+def _resolve_track_by_spotify_uncached(spotify_id: str) -> UUID | None:
+    track = IdentityResolver.resolve_track(source='spotify', external_id=spotify_id)
+    if track is None:
+        track = Track.objects.filter(spotify_id=spotify_id).first()
+    return track.juke_id if track else None
+
+
+def _maybe_release_memory(
+    *,
+    counts: dict[str, int],
+    last_trimmed_source_rows: int,
+    force: bool = False,
+) -> int:
+    trim_every_rows = int(
+        getattr(
+            settings,
+            'MLCORE_LISTENBRAINZ_MEMORY_TRIM_EVERY_ROWS',
+            DEFAULT_MEMORY_TRIM_EVERY_ROWS,
+        )
+    )
+    if trim_every_rows <= 0:
+        return last_trimmed_source_rows
+    if not force and counts['source_row_count'] - last_trimmed_source_rows < trim_every_rows:
+        return last_trimmed_source_rows
+
+    gc.collect()
+    trimmed = _malloc_trim()
+    logger.info(
+        'listenbrainz import memory trim rows=%d trimmed=%s',
+        counts['source_row_count'],
+        trimmed,
+    )
+    return counts['source_row_count']
+
+
+@functools.lru_cache(maxsize=1)
+def _malloc_trim_function():
+    for candidate in (None, 'libc.so.6'):
+        try:
+            libc = ctypes.CDLL(candidate) if candidate is not None else ctypes.CDLL(None)
+        except OSError:
+            continue
+        malloc_trim = getattr(libc, 'malloc_trim', None)
+        if malloc_trim is None:
+            continue
+        malloc_trim.argtypes = [ctypes.c_size_t]
+        malloc_trim.restype = ctypes.c_int
+        return malloc_trim
+    return None
+
+
+def _malloc_trim() -> bool:
+    malloc_trim = _malloc_trim_function()
+    if malloc_trim is None:
+        return False
+    try:
+        return bool(malloc_trim(0))
+    except OSError:
+        return False
+
+
+def _persist_run_progress(
+    run: SourceIngestionRun,
+    *,
+    counts: dict[str, int],
+    last_origin: str,
+    last_line_number: int,
+    last_entry_index: int,
+) -> None:
+    run.source_row_count = counts['source_row_count']
+    run.imported_row_count = counts['imported_row_count']
+    run.duplicate_row_count = counts['duplicate_row_count']
+    run.canonicalized_row_count = counts['canonicalized_row_count']
+    run.unresolved_row_count = counts['unresolved_row_count']
+    run.malformed_row_count = counts['malformed_row_count']
+    run.metadata = {
+        **run.metadata,
+        'last_progress_at': timezone.now().isoformat(),
+        'last_committed_checkpoint': _checkpoint_to_metadata(
+            ResumeCheckpoint(
+                origin=last_origin,
+                line_number=last_line_number,
+                entry_index=last_entry_index,
+                source_row_count=counts['source_row_count'],
+                imported_row_count=counts['imported_row_count'],
+                duplicate_row_count=counts['duplicate_row_count'],
+                canonicalized_row_count=counts['canonicalized_row_count'],
+                unresolved_row_count=counts['unresolved_row_count'],
+                malformed_row_count=counts['malformed_row_count'],
+            )
+        ),
+    }
+    run.save(
+        update_fields=[
+            'source_row_count',
+            'imported_row_count',
+            'duplicate_row_count',
+            'canonicalized_row_count',
+            'unresolved_row_count',
+            'malformed_row_count',
+            'metadata',
+        ]
+    )
+
+
+def _counts_from_resume_checkpoint(resume_checkpoint: ResumeCheckpoint | None) -> dict[str, int]:
+    if resume_checkpoint is None:
+        return {
+            'source_row_count': 0,
+            'imported_row_count': 0,
+            'duplicate_row_count': 0,
+            'canonicalized_row_count': 0,
+            'unresolved_row_count': 0,
+            'malformed_row_count': 0,
+        }
+    return {
+        'source_row_count': resume_checkpoint.source_row_count,
+        'imported_row_count': resume_checkpoint.imported_row_count,
+        'duplicate_row_count': resume_checkpoint.duplicate_row_count,
+        'canonicalized_row_count': resume_checkpoint.canonicalized_row_count,
+        'unresolved_row_count': resume_checkpoint.unresolved_row_count,
+        'malformed_row_count': resume_checkpoint.malformed_row_count,
+    }
+
+
+def _checkpoint_to_metadata(checkpoint: ResumeCheckpoint) -> dict[str, Any]:
+    return {
+        'origin': checkpoint.origin,
+        'line_number': checkpoint.line_number,
+        'entry_index': checkpoint.entry_index,
+        'source_row_count': checkpoint.source_row_count,
+        'imported_row_count': checkpoint.imported_row_count,
+        'duplicate_row_count': checkpoint.duplicate_row_count,
+        'canonicalized_row_count': checkpoint.canonicalized_row_count,
+        'unresolved_row_count': checkpoint.unresolved_row_count,
+        'malformed_row_count': checkpoint.malformed_row_count,
+    }
+
+
+def _find_resume_candidate(
+    path: Path,
+    *,
+    checksum: str,
+    import_mode: str,
+    exclude_run_id: UUID,
+) -> ResumeCandidate | None:
+    previous_runs = (
+        SourceIngestionRun.objects.filter(
+            source=LISTENBRAINZ_SOURCE_ID,
+            import_mode=import_mode,
+            raw_path=str(path),
+            checksum=checksum,
+            status='failed',
+        )
+        .exclude(pk=exclude_run_id)
+        .order_by('-started_at')
+    )
+    for previous_run in previous_runs:
+        checkpoint_data = previous_run.metadata.get('last_committed_checkpoint') or {}
+        origin = str(checkpoint_data.get('origin') or '').strip()
+        line_number = int(checkpoint_data.get('line_number') or 0)
+        entry_index = int(checkpoint_data.get('entry_index') or 1)
+        if not origin or line_number <= 0:
+            continue
+
+        return ResumeCandidate(
+            run=previous_run,
+            checkpoint=ResumeCheckpoint(
+                origin=origin,
+                line_number=line_number,
+                entry_index=entry_index,
+                source_row_count=int(checkpoint_data.get('source_row_count') or 0),
+                imported_row_count=int(checkpoint_data.get('imported_row_count') or 0),
+                duplicate_row_count=int(checkpoint_data.get('duplicate_row_count') or 0),
+                canonicalized_row_count=int(checkpoint_data.get('canonicalized_row_count') or 0),
+                unresolved_row_count=int(checkpoint_data.get('unresolved_row_count') or 0),
+                malformed_row_count=int(checkpoint_data.get('malformed_row_count') or 0),
+            ),
+        )
 
     return None
 
@@ -342,7 +741,9 @@ def _parse_listen(payload: dict[str, Any]) -> ParsedListen:
 
     listened_at = payload.get('listened_at')
     if listened_at in (None, ''):
-        raise ValueError('ListenBrainz row missing listened_at')
+        listened_at = payload.get('timestamp')
+    if listened_at in (None, ''):
+        raise ValueError('ListenBrainz row missing listened_at/timestamp')
 
     try:
         played_at = datetime.fromtimestamp(int(listened_at), tz=UTC)
@@ -356,9 +757,10 @@ def _parse_listen(payload: dict[str, Any]) -> ParsedListen:
     mbid_mapping = track_metadata.get('mbid_mapping') or {}
     additional_info = track_metadata.get('additional_info') or {}
 
-    recording_mbid = _maybe_uuid(mbid_mapping.get('recording_mbid'))
-    release_mbid = _maybe_uuid(mbid_mapping.get('release_mbid'))
-    artist_mbids = [str(value) for value in (mbid_mapping.get('artist_mbids') or []) if _maybe_uuid(value)]
+    recording_mbid = _maybe_uuid(mbid_mapping.get('recording_mbid') or additional_info.get('recording_mbid'))
+    release_mbid = _maybe_uuid(mbid_mapping.get('release_mbid') or additional_info.get('release_mbid'))
+    artist_mbid_values = mbid_mapping.get('artist_mbids') or additional_info.get('artist_mbids') or []
+    artist_mbids = [str(value) for value in artist_mbid_values if _maybe_uuid(value)]
     spotify_id = _extract_spotify_id(additional_info)
     recording_msid = str(track_metadata.get('recording_msid') or additional_info.get('recording_msid') or '').strip()
     release_msid = str(track_metadata.get('release_msid') or additional_info.get('release_msid') or '').strip()
@@ -411,42 +813,86 @@ def _parse_listen(payload: dict[str, Any]) -> ParsedListen:
     )
 
 
-def _iter_listen_payloads(path: Path) -> Iterator[tuple[dict[str, Any] | None, str | None]]:
+def _iter_listen_payloads(
+    path: Path,
+    *,
+    resume_after: ResumeCheckpoint | None = None,
+) -> Iterator[tuple[dict[str, Any] | None, str | None, str, int, int]]:
     if _is_tar_archive(path):
-        yield from _iter_tar_payloads(path)
+        yield from _iter_tar_payloads(path, resume_after=resume_after)
         return
 
     if path.suffix == '.gz':
         with gzip.open(path, 'rt', encoding='utf-8') as handle:
-            yield from _iter_json_line_payloads(handle, origin=path.name)
+            if resume_after is not None and resume_after.origin != path.name:
+                raise ValueError(f'Resume checkpoint origin not found in gzip dump: {resume_after.origin}')
+            yield from _iter_json_line_payloads(
+                handle,
+                origin=path.name,
+                skip_through_line=resume_after.line_number if resume_after is not None else 0,
+                skip_through_entry_index=resume_after.entry_index if resume_after is not None else 0,
+            )
         return
 
     with path.open('rt', encoding='utf-8') as handle:
-        yield from _iter_json_line_payloads(handle, origin=path.name)
+        if resume_after is not None and resume_after.origin != path.name:
+            raise ValueError(f'Resume checkpoint origin not found in dump: {resume_after.origin}')
+        yield from _iter_json_line_payloads(
+            handle,
+            origin=path.name,
+            skip_through_line=resume_after.line_number if resume_after is not None else 0,
+            skip_through_entry_index=resume_after.entry_index if resume_after is not None else 0,
+        )
 
 
-def _iter_tar_payloads(path: Path) -> Iterator[tuple[dict[str, Any] | None, str | None]]:
+def _iter_tar_payloads(
+    path: Path,
+    *,
+    resume_after: ResumeCheckpoint | None = None,
+) -> Iterator[tuple[dict[str, Any] | None, str | None, str, int, int]]:
+    awaiting_resume_origin = resume_after is not None
+    resume_origin_found = False
     with tarfile.open(path, 'r:*') as archive:
-        for member in archive.getmembers():
+        for member in archive:
             if not member.isfile():
                 continue
             if not member.name.endswith(SUPPORTED_JSON_LINE_SUFFIXES):
                 continue
+            if awaiting_resume_origin:
+                if member.name != resume_after.origin:
+                    continue
+                awaiting_resume_origin = False
+                resume_origin_found = True
 
             extracted = archive.extractfile(member)
             if extracted is None:
                 continue
 
             with io.TextIOWrapper(extracted, encoding='utf-8') as handle:
-                yield from _iter_json_line_payloads(handle, origin=member.name)
+                yield from _iter_json_line_payloads(
+                    handle,
+                    origin=member.name,
+                    skip_through_line=resume_after.line_number if resume_after and member.name == resume_after.origin else 0,
+                    skip_through_entry_index=(
+                        resume_after.entry_index
+                        if resume_after and member.name == resume_after.origin
+                        else 0
+                    ),
+                )
+    if resume_after is not None and not resume_origin_found:
+        raise ValueError(f'Resume checkpoint origin not found in tar dump: {resume_after.origin}')
 
 
 def _iter_json_line_payloads(
     handle: io.TextIOBase,
     *,
     origin: str,
-) -> Iterator[tuple[dict[str, Any] | None, str | None]]:
+    skip_through_line: int = 0,
+    skip_through_entry_index: int = 0,
+) -> Iterator[tuple[dict[str, Any] | None, str | None, str, int, int]]:
     for line_number, raw_line in enumerate(handle, start=1):
+        if line_number < skip_through_line:
+            continue
         line = raw_line.strip()
         if not line:
             continue
@@ -454,7 +900,9 @@ def _iter_json_line_payloads(
         try:
             record = json.loads(line)
         except json.JSONDecodeError as exc:
-            yield None, f'{origin}:{line_number}: invalid JSON ({exc.msg})'
+            if line_number == skip_through_line and skip_through_entry_index > 0:
+                continue
+            yield None, f'{origin}:{line_number}: invalid JSON ({exc.msg})', origin, line_number, 1
             continue
 
         if isinstance(record, dict) and isinstance(record.get('payload'), dict):
@@ -463,33 +911,108 @@ def _iter_json_line_payloads(
             if isinstance(listens, list):
                 inherited_user = record.get('user_name') or payload.get('user_name')
                 for index, entry in enumerate(listens, start=1):
+                    if line_number == skip_through_line and index <= skip_through_entry_index:
+                        continue
                     if not isinstance(entry, dict):
-                        yield None, f'{origin}:{line_number}:{index}: listen entry is not an object'
+                        yield None, f'{origin}:{line_number}:{index}: listen entry is not an object', origin, line_number, index
                         continue
                     event = dict(entry)
                     if inherited_user and 'user_name' not in event:
                         event['user_name'] = inherited_user
-                    yield event, None
+                    yield event, None, origin, line_number, index
                 continue
 
         if not isinstance(record, dict):
-            yield None, f'{origin}:{line_number}: expected JSON object row'
+            if line_number == skip_through_line and skip_through_entry_index > 0:
+                continue
+            yield None, f'{origin}:{line_number}: expected JSON object row', origin, line_number, 1
             continue
 
-        yield record, None
+        if line_number == skip_through_line and skip_through_entry_index > 0:
+            continue
+        yield record, None, origin, line_number, 1
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open('rb') as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
-            digest.update(chunk)
-    return digest.hexdigest()
+def _maybe_report_progress(
+    run: SourceIngestionRun,
+    *,
+    counts: dict[str, int],
+    batch_size: int,
+    last_origin: str,
+    last_line_number: int,
+    last_entry_index: int,
+    progress_callback: Callable[[dict[str, Any]], None] | None,
+    last_reported_source_rows: int,
+    last_reported_at: float,
+    force: bool = False,
+) -> tuple[int, float]:
+    now = time.monotonic()
+    should_report = force
+    if not should_report and counts['source_row_count'] - last_reported_source_rows >= PROGRESS_REPORT_EVERY_ROWS:
+        should_report = True
+    if not should_report and now - last_reported_at >= PROGRESS_REPORT_EVERY_SECONDS:
+        should_report = True
+    if not should_report:
+        return last_reported_source_rows, last_reported_at
+
+    snapshot = {
+        'run_id': str(run.pk),
+        'status': run.status,
+        'source': run.source,
+        'import_mode': run.import_mode,
+        'source_version': run.source_version,
+        'raw_path': run.raw_path,
+        'phase': 'importing',
+        'source_row_count': counts['source_row_count'],
+        'imported_row_count': counts['imported_row_count'],
+        'duplicate_row_count': counts['duplicate_row_count'],
+        'canonicalized_row_count': counts['canonicalized_row_count'],
+        'unresolved_row_count': counts['unresolved_row_count'],
+        'malformed_row_count': counts['malformed_row_count'],
+        'batch_size': batch_size,
+        'last_origin': last_origin,
+        'last_line_number': last_line_number,
+        'last_entry_index': last_entry_index,
+    }
+    logger.info(
+        'listenbrainz import progress run=%s rows=%d imported=%d duplicates=%d unresolved=%d malformed=%d at=%s:%d:%d',
+        run.pk,
+        counts['source_row_count'],
+        counts['imported_row_count'],
+        counts['duplicate_row_count'],
+        counts['unresolved_row_count'],
+        counts['malformed_row_count'],
+        last_origin,
+        last_line_number,
+        last_entry_index,
+    )
+    if progress_callback is not None:
+        progress_callback(snapshot)
+    return counts['source_row_count'], now
+
+
+def _dump_fingerprint(path: Path, *, source_version: str) -> str:
+    stat = path.stat()
+    identity = ':'.join(
+        [
+            'listenbrainz',
+            source_version,
+            path.name,
+            str(stat.st_size),
+            str(stat.st_mtime_ns),
+        ]
+    )
+    return hashlib.sha256(identity.encode('utf-8')).hexdigest()
 
 
 def _is_tar_archive(path: Path) -> bool:
     lower_name = path.name.lower()
-    return lower_name.endswith('.tar') or lower_name.endswith('.tar.gz') or lower_name.endswith('.tgz')
+    return (
+        lower_name.endswith('.tar')
+        or lower_name.endswith('.tar.gz')
+        or lower_name.endswith('.tar.zst')
+        or lower_name.endswith('.tgz')
+    )
 
 
 def _hash_user_id(value: str) -> str:

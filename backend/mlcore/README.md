@@ -99,6 +99,7 @@ result = train_cooccurrence(baskets=baskets, split='all')
 A task wrapper is available for orchestration:
 
 - `mlcore.tasks.train_cooccurrence_task`
+- `mlcore.tasks.sync_listenbrainz_remote_task`
 - `mlcore.tasks.import_listenbrainz_full_task`
 - `mlcore.tasks.replay_listenbrainz_incremental_task`
 
@@ -131,8 +132,12 @@ This command:
 
 ## ListenBrainz operations
 
-ListenBrainz import is file-based today. MLCore does not download dumps for you;
-operators place dump files on disk and point the backend at them with env vars.
+ListenBrainz import supports both manual file-based imports and scheduled remote
+sync. The scheduled path discovers new releases from the official MetaBrainz FTP
+index, downloads the `listenbrainz-listens-dump-*.tar.zst` artifacts into local
+storage, and imports them through the same policy-gated pipeline used by manual
+file imports. Supported input formats are plain JSON-lines files, `.gz`, `.tar`,
+`.tar.gz`, `.tgz`, and `.tar.zst`.
 
 ### Environment knobs
 
@@ -140,6 +145,11 @@ operators place dump files on disk and point the backend at them with env vars.
 - `MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_PATH`
 - `MLCORE_LISTENBRAINZ_FULL_SOURCE_VERSION`
 - `MLCORE_LISTENBRAINZ_INCREMENTAL_SOURCE_VERSION`
+- `MLCORE_LISTENBRAINZ_REMOTE_ROOT_URL`
+- `MLCORE_LISTENBRAINZ_DOWNLOAD_DIR`
+- `MLCORE_LISTENBRAINZ_REMOTE_TIMEOUT_SECONDS`
+- `MLCORE_LISTENBRAINZ_REMOTE_SYNC_SCHEDULE_SECONDS`
+- `MLCORE_LISTENBRAINZ_REMOTE_SYNC_MAX_INCREMENTALS_PER_RUN`
 - `MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS`
 - `MLCORE_LISTENBRAINZ_USER_HASH_SALT`
 - `MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS`
@@ -147,10 +157,15 @@ operators place dump files on disk and point the backend at them with env vars.
 ### Example `.env` values
 
 ```env
-MLCORE_LISTENBRAINZ_FULL_IMPORT_PATH=/srv/juke-data/listenbrainz/fullexport-2026-03-22.tar.gz
+MLCORE_LISTENBRAINZ_FULL_IMPORT_PATH=/srv/juke-data/listenbrainz/fullexport-2026-03-22.tar.zst
 MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_PATH=/srv/juke-data/listenbrainz/incremental-2026-03-23.tar.gz
 MLCORE_LISTENBRAINZ_FULL_SOURCE_VERSION=2026-03-22
 MLCORE_LISTENBRAINZ_INCREMENTAL_SOURCE_VERSION=2026-03-23
+MLCORE_LISTENBRAINZ_REMOTE_ROOT_URL=https://ftp.musicbrainz.org/pub/musicbrainz/listenbrainz/
+MLCORE_LISTENBRAINZ_DOWNLOAD_DIR=/srv/data/listenbrainz
+MLCORE_LISTENBRAINZ_REMOTE_TIMEOUT_SECONDS=60
+MLCORE_LISTENBRAINZ_REMOTE_SYNC_SCHEDULE_SECONDS=86400
+MLCORE_LISTENBRAINZ_REMOTE_SYNC_MAX_INCREMENTALS_PER_RUN=14
 MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS=0
 MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS=1800
 ```
@@ -162,6 +177,9 @@ MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS=1800
 docker compose -f docker-compose.yml exec backend python manage.py shell -c \
   "from mlcore.tasks import import_listenbrainz_full_task; print(import_listenbrainz_full_task.apply().get())"
 
+# discover/download/import the latest full dump plus missing incrementals
+docker compose -f docker-compose.yml exec backend python manage.py sync_listenbrainz_remote
+
 # run the incremental replay task against configured env paths
 docker compose -f docker-compose.yml exec backend python manage.py shell -c \
   "from mlcore.tasks import replay_listenbrainz_incremental_task; print(replay_listenbrainz_incremental_task.apply().get())"
@@ -172,12 +190,37 @@ docker compose -f docker-compose.yml exec backend python manage.py shell -c \
 print(import_listenbrainz_dump('/data/listenbrainz/sample.tar.gz', source_version='sample-2026-03-22', import_mode='full'))"
 ```
 
+When the import runs through Celery, task progress is exposed through the
+result backend with `state='PROGRESS'` and metadata including:
+
+- `source_row_count`
+- `imported_row_count`
+- `duplicate_row_count`
+- `canonicalized_row_count`
+- `unresolved_row_count`
+- `malformed_row_count`
+- `last_origin`
+- `last_line_number`
+
+Example progress probe:
+
+```bash
+docker compose -f docker-compose.yml exec backend python manage.py shell -c \
+  "from celery.result import AsyncResult; r=AsyncResult('<task-id>'); print(r.state); print(r.info)"
+```
+
 ### Operator notes
 
-- ListenBrainz is currently classified `research_only` in `LicensePolicy`, so it is valid for research/eval workflows but not for production promotion without a policy decision.
+- Scheduled sync runs through `mlcore.tasks.sync_listenbrainz_remote` once per
+  `MLCORE_LISTENBRAINZ_REMOTE_SYNC_SCHEDULE_SECONDS` interval. It imports the
+  latest full dump when a new one appears upstream, then replays only the
+  missing incremental releases published after that full baseline.
+- ListenBrainz is classified `production_approved` in `LicensePolicy`. It is
+  eligible for production ML use as long as the privacy constraints from
+  `docs/arch/MLCORE_DATASET_VIABILITY_ASSESSMENT.md` remain in place.
 - Raw rows are immutable in `ListenBrainzRawListen`; rerunning the same dump creates a new `SourceIngestionRun` but suppresses duplicate event signatures.
 - `NormalizedInteraction.track` may be null when MBID/Spotify fallback resolution fails. Those rows remain valuable for audit metrics but do not form baskets until resolved.
-- For real-data validation, import first, then train/evaluate. There is no fetch step hidden inside MLCore today.
+- Manual full/incremental import tasks remain available for one-off backfills and local testing against explicit files.
 
 ## Serving interfaces (integration)
 

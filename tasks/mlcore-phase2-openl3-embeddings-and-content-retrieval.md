@@ -58,3 +58,8 @@ Ship content-based recommendations using OpenL3 embeddings stored in pgvector wi
 - Completed:
 - Next:
 - Blockers:
+
+## Dependencies
+
+- Prerequisite: `mlcore-phase0-corpus-license-policy` for manifest-backed admission and promotion rules.
+- Prerequisite: `mlcore-phase0b-provider-dataset-policy-operationalization` for mixed-rights source partitioning (`fma_metadata`, `fma_audio`, and future content-provider splits) before extraction work begins.

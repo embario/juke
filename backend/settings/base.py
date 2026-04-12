@@ -325,6 +325,7 @@ CELERY_TASK_ROUTES = {
     'catalog.tasks.crawl_catalog': {'queue': 'catalog'},
     'recommender.tasks.ingest_training_data': {'queue': 'recommender'},
     'mlcore.tasks.train_cooccurrence': {'queue': 'mlcore'},
+    'mlcore.tasks.sync_listenbrainz_remote': {'queue': 'mlcore'},
     'mlcore.tasks.import_listenbrainz_full': {'queue': 'mlcore'},
     'mlcore.tasks.replay_listenbrainz_incremental': {'queue': 'mlcore'},
 }
@@ -337,13 +338,9 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'catalog.tasks.refresh_featured_genres',
         'schedule': 60 * 60 * 24,  # 24 hours
     },
-    'mlcore-listenbrainz-full-import': {
-        'task': 'mlcore.tasks.import_listenbrainz_full',
-        'schedule': int(os.environ.get('MLCORE_LISTENBRAINZ_FULL_IMPORT_SCHEDULE_SECONDS', str(60 * 60 * 24 * 7))),
-    },
-    'mlcore-listenbrainz-incremental-replay': {
-        'task': 'mlcore.tasks.replay_listenbrainz_incremental',
-        'schedule': int(os.environ.get('MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_SCHEDULE_SECONDS', str(60 * 60 * 24))),
+    'mlcore-listenbrainz-remote-sync': {
+        'task': 'mlcore.tasks.sync_listenbrainz_remote',
+        'schedule': int(os.environ.get('MLCORE_LISTENBRAINZ_REMOTE_SYNC_SCHEDULE_SECONDS', str(60 * 60 * 24))),
     },
 }
 # Keep Redis-queued tasks invisible long enough for workers to finish after fetching.
@@ -372,6 +369,33 @@ MLCORE_LISTENBRAINZ_FULL_IMPORT_PATH = os.environ.get('MLCORE_LISTENBRAINZ_FULL_
 MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_PATH = os.environ.get('MLCORE_LISTENBRAINZ_INCREMENTAL_IMPORT_PATH', '')
 MLCORE_LISTENBRAINZ_FULL_SOURCE_VERSION = os.environ.get('MLCORE_LISTENBRAINZ_FULL_SOURCE_VERSION', '')
 MLCORE_LISTENBRAINZ_INCREMENTAL_SOURCE_VERSION = os.environ.get('MLCORE_LISTENBRAINZ_INCREMENTAL_SOURCE_VERSION', '')
+MLCORE_LISTENBRAINZ_REMOTE_ROOT_URL = os.environ.get(
+    'MLCORE_LISTENBRAINZ_REMOTE_ROOT_URL',
+    'https://ftp.musicbrainz.org/pub/musicbrainz/listenbrainz/',
+)
+MLCORE_LISTENBRAINZ_DOWNLOAD_DIR = os.environ.get('MLCORE_LISTENBRAINZ_DOWNLOAD_DIR', '/srv/data/listenbrainz')
+MLCORE_LISTENBRAINZ_REMOTE_TIMEOUT_SECONDS = int(
+    os.environ.get('MLCORE_LISTENBRAINZ_REMOTE_TIMEOUT_SECONDS', '60')
+)
+MLCORE_LISTENBRAINZ_REMOTE_SYNC_MAX_INCREMENTALS_PER_RUN = int(
+    os.environ.get('MLCORE_LISTENBRAINZ_REMOTE_SYNC_MAX_INCREMENTALS_PER_RUN', '14')
+)
+MLCORE_DATASET_SHARD_PARALLELISM = int(
+    os.environ.get('MLCORE_DATASET_SHARD_PARALLELISM', '1')
+)
+MLCORE_DATASET_MAX_SHARDS_PER_RUN = int(os.environ.get('MLCORE_DATASET_MAX_SHARDS_PER_RUN', '0'))
+MLCORE_DATASET_ORCHESTRATION_STALE_TIMEOUT_SECONDS = int(
+    os.environ.get('MLCORE_DATASET_ORCHESTRATION_STALE_TIMEOUT_SECONDS', str(60 * 30))
+)
+MLCORE_DATASET_ORCHESTRATION_POLL_SECONDS = float(
+    os.environ.get('MLCORE_DATASET_ORCHESTRATION_POLL_SECONDS', '5')
+)
+MLCORE_DATASET_ORCHESTRATION_LOG_SECONDS = float(
+    os.environ.get('MLCORE_DATASET_ORCHESTRATION_LOG_SECONDS', '300')
+)
+CELERY_WORKER_TOTAL_SLOTS = int(
+    os.environ.get('CELERY_WORKER_TOTAL_SLOTS', '1')
+)
 MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS = int(os.environ.get('MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS', '0'))
 MLCORE_LISTENBRAINZ_USER_HASH_SALT = os.environ.get('MLCORE_LISTENBRAINZ_USER_HASH_SALT', 'listenbrainz')
 MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS = int(

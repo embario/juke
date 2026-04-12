@@ -16,10 +16,10 @@ from mlcore.models import CorpusManifest
 logger = logging.getLogger(__name__)
 
 # Source classification registry.
-# Initial policy: MusicBrainz-only for production (per task spec).
+# Keep this synchronized with docs/arch/MLCORE_DATASET_VIABILITY_ASSESSMENT.md.
 SOURCE_CLASSIFICATION: dict[str, str] = {
     'musicbrainz': 'production_approved',
-    'listenbrainz': 'research_only',
+    'listenbrainz': 'production_approved',
 }
 
 

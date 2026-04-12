@@ -103,6 +103,96 @@ class SourceIngestionRun(models.Model):
         return f"{self.source}:{self.import_mode}:{self.source_version}"
 
 
+class DatasetOrchestrationRun(models.Model):
+    """Top-level execution record for one orchestrated dataset shard run."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=64)
+    import_mode = models.CharField(max_length=16, choices=INGESTION_MODE_CHOICES, default='full')
+    source_version = models.CharField(max_length=255)
+    manifest_path = models.CharField(max_length=1024)
+    orchestration_path = models.CharField(max_length=1024)
+    output_root = models.CharField(max_length=1024)
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    shard_parallelism = models.IntegerField(default=1)
+    max_shards_per_run = models.IntegerField(null=True, blank=True)
+    shard_count = models.IntegerField(default=0)
+    scheduled_shard_count = models.IntegerField(default=0)
+    completed_shard_count = models.IntegerField(default=0)
+    failed_shard_count = models.IntegerField(default=0)
+    source_row_count = models.IntegerField(default=0)
+    imported_row_count = models.IntegerField(default=0)
+    duplicate_row_count = models.IntegerField(default=0)
+    canonicalized_row_count = models.IntegerField(default=0)
+    unresolved_row_count = models.IntegerField(default=0)
+    malformed_row_count = models.IntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mlcore_dataset_orchestration_run'
+        unique_together = ('provider', 'source_version', 'orchestration_path')
+        indexes = [
+            models.Index(fields=['provider', 'source_version'], name='mlcore_dor_provider_821c5f_idx'),
+            models.Index(fields=['status'], name='mlcore_dor_status_6798d7_idx'),
+            models.Index(fields=['started_at'], name='mlcore_dor_started_9dfd6a_idx'),
+        ]
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f"{self.provider}:{self.source_version}:{self.status}"
+
+
+class DatasetShardIngestionRun(models.Model):
+    """Persistent shard-level execution record for orchestrated dataset imports."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    orchestration_run = models.ForeignKey(
+        DatasetOrchestrationRun,
+        on_delete=models.CASCADE,
+        related_name='shard_runs',
+    )
+    provider = models.CharField(max_length=64)
+    import_mode = models.CharField(max_length=16, choices=INGESTION_MODE_CHOICES, default='full')
+    source_version = models.CharField(max_length=255)
+    shard_key = models.CharField(max_length=255)
+    shard_path = models.CharField(max_length=1024)
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    task_id = models.CharField(max_length=255, blank=True, default='')
+    source_ingestion_run = models.ForeignKey(
+        SourceIngestionRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='dataset_shard_runs',
+    )
+    source_row_count = models.IntegerField(default=0)
+    imported_row_count = models.IntegerField(default=0)
+    duplicate_row_count = models.IntegerField(default=0)
+    canonicalized_row_count = models.IntegerField(default=0)
+    unresolved_row_count = models.IntegerField(default=0)
+    malformed_row_count = models.IntegerField(default=0)
+    metadata = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mlcore_dataset_shard_ingestion_run'
+        unique_together = ('orchestration_run', 'shard_key')
+        indexes = [
+            models.Index(fields=['orchestration_run', 'status'], name='mlcore_dsi_orchest_0f7624_idx'),
+            models.Index(fields=['provider', 'source_version'], name='mlcore_dsi_provider_6dc0a4_idx'),
+            models.Index(fields=['status'], name='mlcore_dsi_status_d073af_idx'),
+        ]
+        ordering = ['shard_key', 'started_at']
+
+    def __str__(self):
+        return f"{self.provider}:{self.source_version}:{self.shard_key}:{self.status}"
+
+
 class ListenBrainzRawListen(models.Model):
     """Immutable raw staging row for ListenBrainz listen events."""
 
@@ -117,11 +207,11 @@ class ListenBrainzRawListen(models.Model):
     played_at = models.DateTimeField(db_index=True)
     recording_mbid = models.UUIDField(null=True, blank=True, db_index=True)
     release_mbid = models.UUIDField(null=True, blank=True)
-    recording_msid = models.CharField(max_length=255, blank=True, default='')
-    release_msid = models.CharField(max_length=255, blank=True, default='')
-    track_name = models.CharField(max_length=1024, blank=True, default='')
-    artist_name = models.CharField(max_length=1024, blank=True, default='')
-    release_name = models.CharField(max_length=1024, blank=True, default='')
+    recording_msid = models.TextField(blank=True, default='')
+    release_msid = models.TextField(blank=True, default='')
+    track_name = models.TextField(blank=True, default='')
+    artist_name = models.TextField(blank=True, default='')
+    release_name = models.TextField(blank=True, default='')
     track_identifier_candidates = models.JSONField(default=dict, blank=True)
     payload = models.JSONField(default=dict, blank=True)
     ingested_at = models.DateTimeField(auto_now_add=True)
