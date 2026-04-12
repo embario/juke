@@ -89,6 +89,7 @@ class SourceIngestionRun(models.Model):
     source_version = models.CharField(max_length=255)
     raw_path = models.CharField(max_length=1024)
     checksum = models.CharField(max_length=128)
+    fingerprint = models.CharField(max_length=128, blank=True, default='')
     status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
     source_row_count = models.IntegerField(default=0)
     imported_row_count = models.IntegerField(default=0)
@@ -260,7 +261,9 @@ class ListenBrainzSessionTrack(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     import_run = models.ForeignKey(
         SourceIngestionRun,
-        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name='listenbrainz_session_tracks',
     )
     session_key = models.BinaryField(max_length=32, db_index=True)

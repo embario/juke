@@ -180,6 +180,7 @@ def import_listenbrainz_full_task(self, dump_path: str | None = None, source_ver
         'unresolved_row_count': result.unresolved_row_count,
         'malformed_row_count': result.malformed_row_count,
         'checksum': result.checksum,
+        'fingerprint': result.fingerprint,
     }
 
 
@@ -220,6 +221,7 @@ def replay_listenbrainz_incremental_task(self, dump_path: str | None = None, sou
         'unresolved_row_count': result.unresolved_row_count,
         'malformed_row_count': result.malformed_row_count,
         'checksum': result.checksum,
+        'fingerprint': result.fingerprint,
     }
 
 
@@ -271,6 +273,7 @@ def import_dataset_shard_task(
             extra_meta={
                 'phase': 'completed',
                 'checksum': result.checksum,
+                'fingerprint': result.fingerprint,
                 **{field: getattr(result, field) for field in PROGRESS_COUNTER_FIELDS},
             },
         )
@@ -278,6 +281,7 @@ def import_dataset_shard_task(
             **snapshot,
             'run_id': str(result.run_id),
             'checksum': result.checksum,
+            'fingerprint': result.fingerprint,
         }
     except Exception as exc:
         latest_source_run = _lookup_latest_source_ingestion_run(

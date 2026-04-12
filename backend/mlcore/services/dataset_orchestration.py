@@ -272,6 +272,13 @@ def ensure_dataset_shard_runs(
     orchestration_run: DatasetOrchestrationRun,
     document: DatasetOrchestrationDocument,
 ) -> None:
+    expected_keys = {shard.key for shard in document.shards}
+    obsolete_rows = orchestration_run.shard_runs.exclude(shard_key__in=expected_keys)
+    if obsolete_rows.filter(status='running').exists():
+        raise ValueError('Cannot replace running shard rows while the orchestration run is active')
+    if obsolete_rows.exists():
+        obsolete_rows.delete()
+
     existing_keys = set(
         orchestration_run.shard_runs.values_list('shard_key', flat=True)
     )
@@ -381,6 +388,7 @@ def dispatch_dataset_shard_tasks(
             'last_progress_at': dispatched_at,
             'dispatch_count': int(shard_run.metadata.get('dispatch_count') or 0) + 1,
         }
+        shard_run.metadata.pop('stale_marked_at', None)
         shard_run.save(update_fields=['status', 'task_id', 'completed_at', 'last_error', 'metadata'])
         queued.append(shard_run)
     return queued

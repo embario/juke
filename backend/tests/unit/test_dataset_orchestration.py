@@ -1,5 +1,6 @@
 import json
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from django.test import TestCase, override_settings
@@ -202,6 +203,30 @@ class DatasetOrchestrationTests(TestCase):
         shard_run.refresh_from_db()
         self.assertEqual(shard_run.status, 'running')
         self.assertEqual(shard_run.task_id, 'retry-task')
+        self.assertNotIn('stale_marked_at', shard_run.metadata)
+
+    def test_ensure_dataset_shard_runs_removes_obsolete_rows_after_schedule_change(self):
+        document = self._document()
+        orchestration_run = get_or_create_dataset_orchestration_run(document)
+        ensure_dataset_shard_runs(orchestration_run, document)
+        self.assertEqual(orchestration_run.shard_runs.count(), 2)
+
+        reduced_document = DatasetOrchestrationDocument(
+            plan=replace(
+                document.plan,
+                max_shards_per_run=1,
+                scheduled_shard_count=1,
+                scheduled_uncompressed_bytes=1,
+            ),
+            shards=[document.shards[0]],
+        )
+
+        ensure_dataset_shard_runs(orchestration_run, reduced_document)
+
+        self.assertEqual(
+            list(orchestration_run.shard_runs.values_list('shard_key', flat=True)),
+            ['listens/2007/5.listens'],
+        )
 
     def test_import_dataset_shard_task_updates_shard_run_and_links_source_run(self):
         document = self._document()

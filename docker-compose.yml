@@ -6,8 +6,8 @@ services:
       - -c
       - max_wal_size=${POSTGRES_MAX_WAL_SIZE:-16GB}
     volumes:
-      - ${MLCORE_PG_HOT_TABLESPACE_HOST_PATH:?Set MLCORE_PG_HOT_TABLESPACE_HOST_PATH}:/var/lib/postgresql/tablespaces/juke_mlcore_hot:z
-      - ${MLCORE_PG_COLD_TABLESPACE_HOST_PATH:?Set MLCORE_PG_COLD_TABLESPACE_HOST_PATH}:/var/lib/postgresql/tablespaces/juke_mlcore_cold:z
+      - ${MLCORE_PG_HOT_TABLESPACE_HOST_PATH:-./data/postgres/tablespaces/juke_mlcore_hot}:/var/lib/postgresql/tablespaces/juke_mlcore_hot:z
+      - ${MLCORE_PG_COLD_TABLESPACE_HOST_PATH:-./data/postgres/tablespaces/juke_mlcore_cold}:/var/lib/postgresql/tablespaces/juke_mlcore_cold:z
     env_file: .env
 
   redis:
@@ -36,7 +36,7 @@ services:
   worker:
     build:
       context: ./backend
-    command: celery -A settings.celery worker --loglevel=INFO -Q default,mlcore --concurrency=${CELERY_WORKER_TOTAL_SLOTS:-1}
+    command: celery -A settings.celery worker --loglevel=INFO -Q default,catalog,recommender,mlcore --concurrency=${CELERY_WORKER_TOTAL_SLOTS:-1}
     working_dir: /app
     volumes:
       - ./backend:/app

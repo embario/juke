@@ -37,9 +37,9 @@ class SourceIngestionRunAdmin(admin.ModelAdmin):
         'imported_row_count', 'duplicate_row_count', 'malformed_row_count', 'started_at',
     )
     list_filter = ('source', 'import_mode', 'status', 'policy_classification')
-    search_fields = ('source_version', 'raw_path', 'checksum')
+    search_fields = ('source_version', 'raw_path', 'checksum', 'fingerprint')
     readonly_fields = (
-        'id', 'source', 'import_mode', 'source_version', 'raw_path', 'checksum', 'status',
+        'id', 'source', 'import_mode', 'source_version', 'raw_path', 'checksum', 'fingerprint', 'status',
         'source_row_count', 'imported_row_count', 'duplicate_row_count', 'canonicalized_row_count',
         'unresolved_row_count', 'malformed_row_count', 'policy_classification', 'metadata',
         'last_error', 'started_at', 'completed_at',

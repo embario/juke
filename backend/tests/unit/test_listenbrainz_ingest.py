@@ -132,7 +132,8 @@ class ListenBrainzImportTests(TestCase):
         run = SourceIngestionRun.objects.get(pk=result.run_id)
         self.assertEqual(run.import_mode, 'full')
         self.assertEqual(run.policy_classification, 'production_approved')
-        self.assertTrue(run.checksum)
+        self.assertEqual(run.checksum, '')
+        self.assertTrue(run.fingerprint)
 
         matched = ListenBrainzSessionTrack.objects.get(track_id=self.track.juke_id)
         self.assertEqual(matched.play_count, 1)
@@ -396,7 +397,7 @@ class ListenBrainzImportTests(TestCase):
             import_mode='full',
             source_version='2026-03-22-checkpoint-skip',
             raw_path=str(archive_path),
-            checksum=checkpointed_run.checksum,
+            checksum=checkpointed_run.fingerprint,
             status='failed',
             policy_classification='production_approved',
             completed_at=timezone.now(),
@@ -413,6 +414,51 @@ class ListenBrainzImportTests(TestCase):
         resumed_run = SourceIngestionRun.objects.get(pk=resumed.run_id)
         self.assertEqual(str(resumed_run.metadata['resumed_from_run_id']), str(checkpointed_run.pk))
         self.assertEqual(resumed.imported_row_count, 2)
+
+    def test_session_track_keeps_first_import_run_and_survives_run_deletion(self):
+        first_archive_path = _write_tar({
+            'listenbrainz/listens/2026/03/chunk-0001.listens': json.dumps(
+                _listen_payload(
+                    user_name='alice',
+                    listened_at=1710000000,
+                    recording_mbid=self.track.mbid,
+                    recording_msid='session-track-msid-1',
+                    track_name='Testing Track',
+                )
+            ),
+        })
+        second_archive_path = _write_tar({
+            'listenbrainz/listens/2026/03/chunk-0002.listens': json.dumps(
+                _listen_payload(
+                    user_name='alice',
+                    listened_at=1710000600,
+                    recording_mbid=self.track.mbid,
+                    recording_msid='session-track-msid-2',
+                    track_name='Testing Track',
+                )
+            ),
+        })
+
+        first_result = import_listenbrainz_dump(
+            first_archive_path,
+            source_version='2026-03-22-session-track-a',
+            import_mode='full',
+        )
+        import_listenbrainz_dump(
+            second_archive_path,
+            source_version='2026-03-22-session-track-b',
+            import_mode='full',
+        )
+
+        session_track = ListenBrainzSessionTrack.objects.get(track_id=self.track.juke_id)
+        self.assertEqual(str(session_track.import_run_id), str(first_result.run_id))
+        self.assertEqual(session_track.play_count, 2)
+
+        SourceIngestionRun.objects.get(pk=first_result.run_id).delete()
+
+        session_track.refresh_from_db()
+        self.assertIsNone(session_track.import_run_id)
+        self.assertEqual(session_track.play_count, 2)
 
     @override_settings(MLCORE_LISTENBRAINZ_MEMORY_TRIM_EVERY_ROWS=1000)
     @mock.patch('mlcore.ingestion.listenbrainz._malloc_trim', return_value=True)

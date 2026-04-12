@@ -18,6 +18,7 @@ from uuid import UUID
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from catalog.models import Track
@@ -77,6 +78,7 @@ class ImportResult:
     unresolved_row_count: int
     malformed_row_count: int
     checksum: str
+    fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -131,10 +133,11 @@ def import_listenbrainz_dump(
         source_version=source_version,
         raw_path=str(path),
         checksum='',
+        fingerprint='',
         status='running',
         policy_classification=classification,
         metadata={
-            'stage': 'checksum',
+            'stage': 'fingerprint',
             'batch_size': batch_size,
             'session_window_seconds': getattr(
                 settings,
@@ -155,7 +158,7 @@ def import_listenbrainz_dump(
                     'import_mode': import_mode,
                     'source_version': source_version,
                     'raw_path': str(path),
-                    'phase': 'checksum',
+                    'phase': 'fingerprint',
                     'source_row_count': 0,
                     'imported_row_count': 0,
                     'duplicate_row_count': 0,
@@ -165,19 +168,19 @@ def import_listenbrainz_dump(
                 }
             )
 
-        checksum = _dump_fingerprint(path, source_version=source_version)
+        fingerprint = _dump_fingerprint(path, source_version=source_version)
         resume_candidate = _find_resume_candidate(
             path,
-            checksum=checksum,
+            fingerprint=fingerprint,
             import_mode=import_mode,
             exclude_run_id=run.pk,
         ) if resume else None
 
-        run.checksum = checksum
+        run.fingerprint = fingerprint
         run.metadata = {
             **run.metadata,
             'stage': 'importing',
-            'checksum_mode': 'stat_fingerprint',
+            'fingerprint_mode': 'sampled_content_sha256',
             'resumed_from_run_id': (
                 str(resume_candidate.run.pk)
                 if resume_candidate is not None
@@ -189,7 +192,7 @@ def import_listenbrainz_dump(
                 else {}
             ),
         }
-        run.save(update_fields=['checksum', 'metadata'])
+        run.save(update_fields=['fingerprint', 'metadata'])
 
         counts = _ingest_dump(
             path,
@@ -254,6 +257,7 @@ def import_listenbrainz_dump(
         unresolved_row_count=run.unresolved_row_count,
         malformed_row_count=run.malformed_row_count,
         checksum=run.checksum,
+        fingerprint=run.fingerprint,
     )
 
 
@@ -566,7 +570,6 @@ def _upsert_session_tracks(
             )
             continue
 
-        existing.import_run = run
         if aggregate.first_played_at < existing.first_played_at:
             existing.first_played_at = aggregate.first_played_at
         if aggregate.last_played_at > existing.last_played_at:
@@ -579,7 +582,7 @@ def _upsert_session_tracks(
     if rows_to_update:
         ListenBrainzSessionTrack.objects.bulk_update(
             rows_to_update,
-            ['import_run', 'first_played_at', 'last_played_at', 'play_count'],
+            ['first_played_at', 'last_played_at', 'play_count'],
         )
 
 
@@ -758,7 +761,7 @@ def _checkpoint_to_metadata(checkpoint: ResumeCheckpoint) -> dict[str, Any]:
 def _find_resume_candidate(
     path: Path,
     *,
-    checksum: str,
+    fingerprint: str,
     import_mode: str,
     exclude_run_id: UUID,
 ) -> ResumeCandidate | None:
@@ -767,8 +770,11 @@ def _find_resume_candidate(
             source=LISTENBRAINZ_SOURCE_ID,
             import_mode=import_mode,
             raw_path=str(path),
-            checksum=checksum,
             status='failed',
+        )
+        .filter(
+            Q(fingerprint=fingerprint)
+            | Q(fingerprint='', checksum=fingerprint)
         )
         .exclude(pk=exclude_run_id)
         .order_by('-started_at')
@@ -1058,16 +1064,19 @@ def _maybe_report_progress(
 
 def _dump_fingerprint(path: Path, *, source_version: str) -> str:
     stat = path.stat()
-    identity = ':'.join(
-        [
-            'listenbrainz',
-            source_version,
-            path.name,
-            str(stat.st_size),
-            str(stat.st_mtime_ns),
-        ]
-    )
-    return hashlib.sha256(identity.encode('utf-8')).hexdigest()
+    sample_size = 1024 * 1024
+    digest = hashlib.sha256()
+    digest.update(b'listenbrainz')
+    digest.update(source_version.encode('utf-8'))
+    digest.update(str(stat.st_size).encode('ascii'))
+    with path.open('rb') as handle:
+        head = handle.read(sample_size)
+        digest.update(head)
+        if stat.st_size > sample_size:
+            tail_offset = max(0, stat.st_size - sample_size)
+            handle.seek(tail_offset)
+            digest.update(handle.read(sample_size))
+    return digest.hexdigest()
 
 
 def _is_tar_archive(path: Path) -> bool:
