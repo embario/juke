@@ -29,6 +29,30 @@ class ListenBrainzRemoteSyncTests(TestCase):
     def setUp(self):
         self.download_dir = Path(tempfile.mkdtemp())
         self.root_url = 'https://ftp.example/listenbrainz/'
+        self.full_release_dir = (
+            'https://ftp.example/listenbrainz/fullexport/'
+            'listenbrainz-dump-2446-20260301-000003-full/'
+        )
+        self.full_archive_url = (
+            f'{self.full_release_dir}'
+            'listenbrainz-listens-dump-2446-20260301-000003-full.tar.zst'
+        )
+        self.incremental_2447_dir = (
+            'https://ftp.example/listenbrainz/incremental/'
+            'listenbrainz-dump-2447-20260302-000003-incremental/'
+        )
+        self.incremental_2447_archive_url = (
+            f'{self.incremental_2447_dir}'
+            'listenbrainz-listens-dump-2447-20260302-000003-incremental.tar.zst'
+        )
+        self.incremental_2448_dir = (
+            'https://ftp.example/listenbrainz/incremental/'
+            'listenbrainz-dump-2448-20260303-000003-incremental/'
+        )
+        self.incremental_2448_archive_url = (
+            f'{self.incremental_2448_dir}'
+            'listenbrainz-listens-dump-2448-20260303-000003-incremental.tar.zst'
+        )
 
     def _urlopen_side_effect(self, payloads: dict[str, bytes]):
         def _open(request, timeout=None):
@@ -60,23 +84,23 @@ class ListenBrainzRemoteSyncTests(TestCase):
                 <a href="../">../</a>
                 <a href="listenbrainz-dump-2446-20260301-000003-full/">full</a>
             ''',
-            'https://ftp.example/listenbrainz/fullexport/listenbrainz-dump-2446-20260301-000003-full/': b'''
+            self.full_release_dir: b'''
                 <a href="listenbrainz-listens-dump-2446-20260301-000003-full.tar.zst">archive</a>
             ''',
-            'https://ftp.example/listenbrainz/fullexport/listenbrainz-dump-2446-20260301-000003-full/listenbrainz-listens-dump-2446-20260301-000003-full.tar.zst': b'FULL',
+            self.full_archive_url: b'FULL',
             'https://ftp.example/listenbrainz/incremental/': b'''
                 <a href="listenbrainz-dump-2445-20260228-000003-incremental/">old-inc</a>
                 <a href="listenbrainz-dump-2447-20260302-000003-incremental/">inc-1</a>
                 <a href="listenbrainz-dump-2448-20260303-000003-incremental/">inc-2</a>
             ''',
-            'https://ftp.example/listenbrainz/incremental/listenbrainz-dump-2447-20260302-000003-incremental/': b'''
+            self.incremental_2447_dir: b'''
                 <a href="listenbrainz-listens-dump-2447-20260302-000003-incremental.tar.zst">archive</a>
             ''',
-            'https://ftp.example/listenbrainz/incremental/listenbrainz-dump-2447-20260302-000003-incremental/listenbrainz-listens-dump-2447-20260302-000003-incremental.tar.zst': b'INC1',
-            'https://ftp.example/listenbrainz/incremental/listenbrainz-dump-2448-20260303-000003-incremental/': b'''
+            self.incremental_2447_archive_url: b'INC1',
+            self.incremental_2448_dir: b'''
                 <a href="listenbrainz-listens-dump-2448-20260303-000003-incremental.tar.zst">archive</a>
             ''',
-            'https://ftp.example/listenbrainz/incremental/listenbrainz-dump-2448-20260303-000003-incremental/listenbrainz-listens-dump-2448-20260303-000003-incremental.tar.zst': b'INC2',
+            self.incremental_2448_archive_url: b'INC2',
         })
         mock_import.side_effect = lambda dump_path, **kwargs: self._import_result()
 
@@ -115,10 +139,10 @@ class ListenBrainzRemoteSyncTests(TestCase):
             'https://ftp.example/listenbrainz/fullexport/': b'''
                 <a href="listenbrainz-dump-2446-20260301-000003-full/">full</a>
             ''',
-            'https://ftp.example/listenbrainz/fullexport/listenbrainz-dump-2446-20260301-000003-full/': b'''
+            self.full_release_dir: b'''
                 <a href="listenbrainz-listens-dump-2446-20260301-000003-full.tar.zst">archive</a>
             ''',
-            'https://ftp.example/listenbrainz/fullexport/listenbrainz-dump-2446-20260301-000003-full/listenbrainz-listens-dump-2446-20260301-000003-full.tar.zst': b'FULL',
+            self.full_archive_url: b'FULL',
             'https://ftp.example/listenbrainz/incremental/': b'',
         })
         mock_import.side_effect = lambda dump_path, **kwargs: self._import_result()
@@ -163,10 +187,10 @@ class ListenBrainzRemoteSyncTests(TestCase):
                 <a href="listenbrainz-dump-2447-20260302-000003-incremental/">inc-1</a>
                 <a href="listenbrainz-dump-2448-20260303-000003-incremental/">inc-2</a>
             ''',
-            'https://ftp.example/listenbrainz/incremental/listenbrainz-dump-2448-20260303-000003-incremental/': b'''
+            self.incremental_2448_dir: b'''
                 <a href="listenbrainz-listens-dump-2448-20260303-000003-incremental.tar.zst">archive</a>
             ''',
-            'https://ftp.example/listenbrainz/incremental/listenbrainz-dump-2448-20260303-000003-incremental/listenbrainz-listens-dump-2448-20260303-000003-incremental.tar.zst': b'INC2',
+            self.incremental_2448_archive_url: b'INC2',
         })
         mock_import.side_effect = lambda dump_path, **kwargs: self._import_result()
 
@@ -196,10 +220,10 @@ class ListenBrainzRemoteSyncTests(TestCase):
             'https://ftp.example/listenbrainz/incremental/': b'''
                 <a href="listenbrainz-dump-2447-20260302-000003-incremental/">inc-1</a>
             ''',
-            'https://ftp.example/listenbrainz/incremental/listenbrainz-dump-2447-20260302-000003-incremental/': b'''
+            self.incremental_2447_dir: b'''
                 <a href="listenbrainz-listens-dump-2447-20260302-000003-incremental.tar.zst">archive</a>
             ''',
-            'https://ftp.example/listenbrainz/incremental/listenbrainz-dump-2447-20260302-000003-incremental/listenbrainz-listens-dump-2447-20260302-000003-incremental.tar.zst': b'INC1',
+            self.incremental_2447_archive_url: b'INC1',
         })
         mock_import.side_effect = lambda dump_path, **kwargs: self._import_result()
 

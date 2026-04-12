@@ -9,10 +9,9 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from django.conf import settings
-from django.db import transaction
 from django.utils import timezone
 
-from mlcore.models import DatasetOrchestrationRun, DatasetShardIngestionRun, SourceIngestionRun
+from mlcore.models import DatasetOrchestrationRun, DatasetShardIngestionRun
 
 logger = logging.getLogger(__name__)
 

@@ -441,7 +441,9 @@ def _run_import(
         progress_callback=progress_callback,
     )
     logger.info(
-        'listenbrainz remote sync import finished source_version=%s mode=%s run_id=%s rows=%d imported=%d duplicates=%d unresolved=%d malformed=%d',
+        'listenbrainz remote sync import finished '
+        'source_version=%s mode=%s run_id=%s rows=%d imported=%d '
+        'duplicates=%d unresolved=%d malformed=%d',
         release.source_version,
         release.import_mode,
         result.run_id,
