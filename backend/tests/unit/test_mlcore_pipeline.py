@@ -111,7 +111,7 @@ class MLCorePipelineTests(TestCase):
     # --- stage by stage ---
 
     def test_01_training_produces_expected_pair_structure(self):
-        result = train_cooccurrence()
+        result = train_cooccurrence(split='all')
         self.assertEqual(result.baskets_processed, 7)
         self.assertEqual(result.baskets_skipped, 0)
         # Distinct items across all sessions: A0T0, A0T1, A0T2, A1T0, A2T0 → 5
@@ -152,7 +152,7 @@ class MLCorePipelineTests(TestCase):
         0 and 2) but cooccurrence succeeds (the pair exists in the table).
         So cooccurrence should strictly beat metadata on recall.
         """
-        train_cooccurrence()
+        train_cooccurrence(split='all')
         results = run_offline_evaluation(persist=True)
         self.assertEqual(len(results), 2)
         by_label = {r.candidate_label: r for r in results}
@@ -181,7 +181,7 @@ class MLCorePipelineTests(TestCase):
         be high for cooc). We verify the gate machinery runs and records
         results — not that a specific ranker wins.
         """
-        train_cooccurrence()
+        train_cooccurrence(split='all')
         results = run_offline_evaluation(persist=True)
         dataset_hash = results[0].dataset_hash
 
@@ -206,7 +206,7 @@ class MLCorePipelineTests(TestCase):
         but makes the test fragile to fixture tweaks. Point here is the
         workflow transitions, not the threshold.
         """
-        train_cooccurrence()
+        train_cooccurrence(split='all')
         run_offline_evaluation(persist=True)
 
         with override_settings(JUKE_PROMOTION_GATE_COVERAGE_MIN=0.10):
@@ -231,12 +231,12 @@ class MLCorePipelineTests(TestCase):
         regression guard — if this test fails, either the trainer or the
         dataset builder lost determinism.
         """
-        train_cooccurrence()
+        train_cooccurrence(split='all')
         snapshot1 = sorted(ItemCoOccurrence.objects.values_list(
             'item_a_juke_id', 'item_b_juke_id', 'co_count', 'pmi_score'))
         ds1 = build_loo_dataset()
 
-        train_cooccurrence()  # rerun — should be a no-op overwrite
+        train_cooccurrence(split='all')  # rerun — should be a no-op overwrite
         snapshot2 = sorted(ItemCoOccurrence.objects.values_list(
             'item_a_juke_id', 'item_b_juke_id', 'co_count', 'pmi_score'))
         ds2 = build_loo_dataset()
