@@ -745,13 +745,18 @@ def execute_full_ingestion_copy_stage(
             write_full_ingestion_plan(running_plan)
             write_full_ingestion_metrics(running_plan)
     except Exception:
+        if 'index' in locals():
+            failed_partition = finalized_partitions[index]
+            finalized_partitions[index] = replace(failed_partition, state='failed')
         failed_plan = replace(
             running_plan,
             status=FULL_INGESTION_STATUS_FAILED,
             updated_at=datetime.now(tz=UTC).isoformat(),
             counters={
                 **counters,
-                'partitions_failed': running_plan.partition_count,
+                'partitions_failed': sum(
+                    1 for partition in finalized_partitions if partition.state == 'failed'
+                ),
             },
             partitions=list(finalized_partitions),
         )
@@ -838,13 +843,18 @@ def execute_full_ingestion_merge_stage(
             write_full_ingestion_plan(running_plan)
             write_full_ingestion_metrics(running_plan)
     except Exception as exc:
+        if 'index' in locals():
+            failed_partition = finalized_partitions[index]
+            finalized_partitions[index] = replace(failed_partition, state='failed')
         failed_plan = replace(
             running_plan,
             status=FULL_INGESTION_STATUS_FAILED,
             updated_at=datetime.now(tz=UTC).isoformat(),
             counters={
                 **counters,
-                'partitions_failed': running_plan.partition_count,
+                'partitions_failed': sum(
+                    1 for partition in finalized_partitions if partition.state == 'failed'
+                ),
             },
             partitions=list(finalized_partitions),
         )
@@ -1005,6 +1015,7 @@ class _PipelinePartitionOutcome:
     partition_key: str
     copy_result: FullIngestionCopyResult
     merge_result: FullIngestionMergeResult
+    copy_completed: bool
 
 
 class _FullIngestionPipelineCoordinator:
@@ -1067,10 +1078,12 @@ class _FullIngestionPipelineCoordinator:
                     rows_malformed=0,
                     stage_file_path='',
                 )
+                copy_completed = False
             else:
                 self._mark_partition_state(partition_key, 'loading')
                 partition = self._partition_by_key(partition_key)
                 copy_result = self.provider.load_partition_to_staging(self.plan, partition)
+                copy_completed = True
             self._mark_partition_state(partition_key, 'merging')
             partition = self._partition_by_key(partition_key)
             merge_result = self.provider.merge_partition_to_final(
@@ -1082,6 +1095,7 @@ class _FullIngestionPipelineCoordinator:
                 partition_key=partition_key,
                 copy_result=copy_result,
                 merge_result=merge_result,
+                copy_completed=copy_completed,
             )
         except Exception:
             self._mark_partition_state(partition_key, 'failed')
@@ -1118,7 +1132,10 @@ class _FullIngestionPipelineCoordinator:
                 'rows_malformed': (
                     int(self.plan.counters.get('rows_malformed') or 0) + outcome.copy_result.rows_malformed
                 ),
-                'partitions_loaded': int(self.plan.counters.get('partitions_loaded') or 0) + 1,
+                'partitions_loaded': (
+                    int(self.plan.counters.get('partitions_loaded') or 0)
+                    + (1 if outcome.copy_completed else 0)
+                ),
                 'partitions_merged': int(self.plan.counters.get('partitions_merged') or 0) + 1,
                 'partitions_failed': _pipeline_failed_partition_count(self.plan.partitions),
             }
@@ -1413,6 +1430,12 @@ def ensure_listenbrainz_staging_tables() -> None:
                 )
                 '''
             )
+            cursor.execute(
+                f'''
+                CREATE INDEX IF NOT EXISTS {LISTENBRAINZ_EVENT_STAGE_TABLE}_run_partition_idx
+                ON {LISTENBRAINZ_EVENT_STAGE_TABLE} (run_id, partition_key)
+                '''
+            )
         else:
             cursor.execute(
                 f'''
@@ -1437,6 +1460,12 @@ def ensure_listenbrainz_staging_tables() -> None:
                     artist_name text NOT NULL,
                     release_name text NOT NULL
                 )
+                '''
+            )
+            cursor.execute(
+                f'''
+                CREATE INDEX IF NOT EXISTS {LISTENBRAINZ_EVENT_STAGE_TABLE}_run_partition_idx
+                ON {LISTENBRAINZ_EVENT_STAGE_TABLE} (run_id, partition_key)
                 '''
             )
 
@@ -1641,6 +1670,7 @@ def _mark_full_ingestion_source_run_failed(
     source_ingestion_run.source_row_count = int(plan.counters.get('rows_parsed') or 0)
     source_ingestion_run.imported_row_count = int(plan.counters.get('rows_merged') or 0)
     source_ingestion_run.duplicate_row_count = int(plan.counters.get('rows_deduplicated') or 0)
+    source_ingestion_run.canonicalized_row_count = int(plan.counters.get('rows_merged') or 0)
     source_ingestion_run.unresolved_row_count = int(plan.counters.get('rows_unresolved') or 0)
     source_ingestion_run.malformed_row_count = int(plan.counters.get('rows_malformed') or 0)
     source_ingestion_run.metadata = {
@@ -1656,6 +1686,7 @@ def _mark_full_ingestion_source_run_failed(
             'source_row_count',
             'imported_row_count',
             'duplicate_row_count',
+            'canonicalized_row_count',
             'unresolved_row_count',
             'malformed_row_count',
             'metadata',

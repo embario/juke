@@ -3,6 +3,7 @@ import tarfile
 import tempfile
 from io import BytesIO, StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.db import connection
@@ -12,12 +13,14 @@ from catalog.models import Album, Track
 from mlcore.models import ListenBrainzEventLedger, ListenBrainzSessionTrack, SourceIngestionRun
 from mlcore.services.full_ingestion import (
     LISTENBRAINZ_EVENT_STAGE_TABLE,
+    ListenBrainzFullIngestionProvider,
     build_full_ingestion_partition_estimates,
     build_full_ingestion_plan,
     execute_full_ingestion_copy_stage,
     execute_full_ingestion_merge_stage,
     execute_full_ingestion_pipeline,
     execute_full_ingestion_partition_stage,
+    ensure_listenbrainz_staging_tables,
     full_ingestion_copy_manifest_path,
     full_ingestion_merge_manifest_path,
     full_ingestion_partition_manifest_path,
@@ -415,6 +418,68 @@ class FullIngestionCopyTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(min_origin, 'listens/2007/5.listens')
         self.assertEqual(max_origin, 'listens/2007/6.listens')
 
+    def test_staging_table_has_partition_lookup_index(self):
+        ensure_listenbrainz_staging_tables()
+
+        if connection.vendor == 'postgresql':
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT indexname
+                    FROM pg_indexes
+                    WHERE schemaname = current_schema()
+                      AND tablename = %s
+                    """,
+                    [LISTENBRAINZ_EVENT_STAGE_TABLE],
+                )
+                index_names = {row[0] for row in cursor.fetchall()}
+        else:
+            with connection.cursor() as cursor:
+                cursor.execute(f"PRAGMA index_list('{LISTENBRAINZ_EVENT_STAGE_TABLE}')")
+                index_names = {row[1] for row in cursor.fetchall()}
+
+        self.assertIn(
+            f'{LISTENBRAINZ_EVENT_STAGE_TABLE}_run_partition_idx',
+            index_names,
+        )
+
+    def test_copy_stage_records_only_failed_partitions(self):
+        archive_path = self._build_archive()
+        plan = build_full_ingestion_plan(
+            'listenbrainz',
+            archive_path,
+            scratch_root=self.temp_dir / 'scratch',
+            partition_count=4,
+        )
+
+        initialize_full_ingestion_plan(plan)
+        partitioned = execute_full_ingestion_partition_stage(plan)
+        original_load = ListenBrainzFullIngestionProvider.load_partition_to_staging
+        failed_partition_key: str | None = None
+
+        def flaky_load(provider, current_plan, partition):
+            nonlocal failed_partition_key
+            if failed_partition_key is None:
+                failed_partition_key = partition.partition_key
+                raise RuntimeError('boom')
+            return original_load(provider, current_plan, partition)
+
+        with patch.object(ListenBrainzFullIngestionProvider, 'load_partition_to_staging', autospec=True, side_effect=flaky_load):
+            with self.assertRaises(RuntimeError):
+                execute_full_ingestion_copy_stage(partitioned)
+
+        failed = load_full_ingestion_plan(partitioned.manifest_path)
+        self.assertEqual(failed.status, 'failed')
+        self.assertEqual(failed.counters['partitions_failed'], 1)
+        self.assertEqual(
+            sum(1 for partition in failed.partitions if partition.state == 'failed'),
+            1,
+        )
+        self.assertEqual(
+            [partition.partition_key for partition in failed.partitions if partition.state == 'failed'],
+            [failed_partition_key],
+        )
+
     def test_command_can_execute_copy_stage(self):
         archive_path = self._build_archive()
         scratch_root = self.temp_dir / 'scratch'
@@ -540,6 +605,64 @@ class FullIngestionCopyTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(completed.counters['partitions_loaded'], 4)
         self.assertEqual(completed.counters['partitions_merged'], 4)
         self.assertTrue(all(partition.state == 'merged' for partition in completed.partitions))
+
+    def test_pipeline_resume_does_not_double_count_loaded_partitions(self):
+        self._create_track(spotify_id='spotify-may')
+        archive_path = self._build_archive()
+        plan = build_full_ingestion_plan(
+            'listenbrainz',
+            archive_path,
+            scratch_root=self.temp_dir / 'scratch',
+            partition_count=4,
+            load_workers=2,
+            merge_workers=2,
+        )
+
+        initialize_full_ingestion_plan(plan)
+        partitioned = execute_full_ingestion_partition_stage(plan)
+        loaded = execute_full_ingestion_copy_stage(partitioned)
+        completed = execute_full_ingestion_pipeline(loaded)
+
+        self.assertEqual(completed.counters['partitions_loaded'], 4)
+        self.assertEqual(completed.counters['partitions_merged'], 4)
+
+    def test_failed_merge_persists_canonicalized_count(self):
+        self._create_track(spotify_id='spotify-may')
+        archive_path = self._build_archive()
+        plan = build_full_ingestion_plan(
+            'listenbrainz',
+            archive_path,
+            scratch_root=self.temp_dir / 'scratch',
+            partition_count=2,
+        )
+
+        initialize_full_ingestion_plan(plan)
+        partitioned = execute_full_ingestion_partition_stage(plan)
+        loaded = execute_full_ingestion_copy_stage(partitioned)
+        original_merge = ListenBrainzFullIngestionProvider.merge_partition_to_final
+        failed_once = False
+
+        def flaky_merge(provider, current_plan, partition, *, source_ingestion_run):
+            nonlocal failed_once
+            if failed_once:
+                raise RuntimeError('merge boom')
+            failed_once = True
+            return original_merge(
+                provider,
+                current_plan,
+                partition,
+                source_ingestion_run=source_ingestion_run,
+            )
+
+        with patch.object(ListenBrainzFullIngestionProvider, 'merge_partition_to_final', autospec=True, side_effect=flaky_merge):
+            with self.assertRaises(RuntimeError):
+                execute_full_ingestion_merge_stage(loaded)
+
+        source_run = SourceIngestionRun.objects.order_by('-started_at', '-pk').first()
+        self.assertIsNotNone(source_run)
+        self.assertEqual(source_run.status, 'failed')
+        self.assertGreater(source_run.imported_row_count, 0)
+        self.assertEqual(source_run.imported_row_count, source_run.canonicalized_row_count)
 
     def test_command_can_execute_pipeline(self):
         self._create_track(spotify_id='spotify-may')
