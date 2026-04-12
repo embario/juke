@@ -78,7 +78,7 @@ class ImportResult:
     unresolved_row_count: int
     malformed_row_count: int
     checksum: str
-    fingerprint: str
+    fingerprint: str = ''
 
 
 @dataclass(frozen=True)
