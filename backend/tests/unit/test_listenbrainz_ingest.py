@@ -15,7 +15,13 @@ from mlcore.ingestion.listenbrainz import (
     configured_source_version,
     import_listenbrainz_dump,
 )
-from mlcore.models import ListenBrainzRawListen, NormalizedInteraction, SourceIngestionRun
+from mlcore.models import (
+    ListenBrainzEventLedger,
+    ListenBrainzRawListen,
+    ListenBrainzSessionTrack,
+    NormalizedInteraction,
+    SourceIngestionRun,
+)
 from tests.utils import create_album, create_track
 
 
@@ -118,20 +124,24 @@ class ListenBrainzImportTests(TestCase):
         self.assertEqual(result.source_row_count, 2)
         self.assertEqual(result.imported_row_count, 2)
         self.assertEqual(result.canonicalized_row_count, 2)
-        self.assertEqual(ListenBrainzRawListen.objects.count(), 2)
-        self.assertEqual(NormalizedInteraction.objects.count(), 2)
+        self.assertEqual(ListenBrainzEventLedger.objects.count(), 2)
+        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 1)
+        self.assertEqual(ListenBrainzRawListen.objects.count(), 0)
+        self.assertEqual(NormalizedInteraction.objects.count(), 0)
 
         run = SourceIngestionRun.objects.get(pk=result.run_id)
         self.assertEqual(run.import_mode, 'full')
         self.assertEqual(run.policy_classification, 'production_approved')
         self.assertTrue(run.checksum)
 
-        matched = NormalizedInteraction.objects.get(track_id=self.track.juke_id)
-        self.assertEqual(matched.source_id, 'listenbrainz')
-        self.assertEqual(matched.source_version, '2026-03-22-full')
-        self.assertNotEqual(matched.source_user_id, 'alice')
-        self.assertTrue(matched.session_hint.startswith(matched.source_user_id))
-        self.assertEqual(matched.track_identifier_candidates['recording_mbid'], str(self.track.mbid))
+        matched = ListenBrainzSessionTrack.objects.get(track_id=self.track.juke_id)
+        self.assertEqual(matched.play_count, 1)
+        self.assertEqual(len(matched.session_key_hex), 64)
+        self.assertEqual(
+            ListenBrainzEventLedger.objects.filter(track_id=self.track.juke_id).count(),
+            1,
+        )
+        self.assertEqual(ListenBrainzEventLedger.objects.filter(track_id__isnull=True).count(), 1)
 
     def test_reimport_is_idempotent_and_counts_duplicates(self):
         payload = _listen_payload(
@@ -155,8 +165,10 @@ class ListenBrainzImportTests(TestCase):
         self.assertEqual(first.duplicate_row_count, 1)
         self.assertEqual(second.imported_row_count, 0)
         self.assertEqual(second.duplicate_row_count, 2)
-        self.assertEqual(ListenBrainzRawListen.objects.count(), 1)
-        self.assertEqual(NormalizedInteraction.objects.count(), 1)
+        self.assertEqual(ListenBrainzEventLedger.objects.count(), 1)
+        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 1)
+        self.assertEqual(ListenBrainzRawListen.objects.count(), 0)
+        self.assertEqual(NormalizedInteraction.objects.count(), 0)
         self.assertEqual(SourceIngestionRun.objects.count(), 2)
 
     def test_malformed_dump_fails_fast_and_rolls_back_rows(self):
@@ -173,6 +185,8 @@ class ListenBrainzImportTests(TestCase):
         run = SourceIngestionRun.objects.get()
         self.assertEqual(run.status, 'failed')
         self.assertIn('invalid JSON', run.last_error)
+        self.assertEqual(ListenBrainzEventLedger.objects.count(), 0)
+        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 0)
         self.assertEqual(ListenBrainzRawListen.objects.count(), 0)
         self.assertEqual(NormalizedInteraction.objects.count(), 0)
 
@@ -199,8 +213,10 @@ class ListenBrainzImportTests(TestCase):
         self.assertEqual(result.source_row_count, 1)
         self.assertEqual(result.imported_row_count, 1)
         self.assertEqual(result.canonicalized_row_count, 1)
-        self.assertEqual(ListenBrainzRawListen.objects.count(), 1)
-        self.assertEqual(NormalizedInteraction.objects.count(), 1)
+        self.assertEqual(ListenBrainzEventLedger.objects.count(), 1)
+        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 1)
+        self.assertEqual(ListenBrainzRawListen.objects.count(), 0)
+        self.assertEqual(NormalizedInteraction.objects.count(), 0)
 
     def test_reports_progress_snapshots(self):
         payloads = [
@@ -255,9 +271,10 @@ class ListenBrainzImportTests(TestCase):
         result = import_listenbrainz_dump(archive_path, source_version='2026-03-22-long-fields', import_mode='full')
 
         self.assertEqual(result.status, 'succeeded')
-        raw = ListenBrainzRawListen.objects.get(import_run_id=result.run_id)
-        self.assertEqual(raw.track_name, long_track_name)
-        self.assertEqual(raw.artist_name, long_artist_name)
+        self.assertEqual(ListenBrainzEventLedger.objects.filter(import_run_id=result.run_id).count(), 1)
+        self.assertEqual(ListenBrainzSessionTrack.objects.filter(import_run_id=result.run_id).count(), 0)
+        self.assertEqual(ListenBrainzRawListen.objects.count(), 0)
+        self.assertEqual(NormalizedInteraction.objects.count(), 0)
 
     def test_resume_restarts_inside_multi_listen_line_after_committed_batch(self):
         archive_path = _write_tar({
@@ -335,8 +352,10 @@ class ListenBrainzImportTests(TestCase):
         self.assertEqual(resumed.status, 'succeeded')
         self.assertEqual(resumed.source_row_count, 3)
         self.assertEqual(resumed.imported_row_count, 3)
-        self.assertEqual(ListenBrainzRawListen.objects.count(), 3)
-        self.assertEqual(NormalizedInteraction.objects.count(), 3)
+        self.assertEqual(ListenBrainzEventLedger.objects.count(), 3)
+        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 0)
+        self.assertEqual(ListenBrainzRawListen.objects.count(), 0)
+        self.assertEqual(NormalizedInteraction.objects.count(), 0)
         resumed_run = SourceIngestionRun.objects.get(pk=resumed.run_id)
         self.assertEqual(
             resumed_run.metadata['resume_start_checkpoint'],
@@ -444,9 +463,9 @@ class ListenBrainzImportTests(TestCase):
         self.assertEqual(result.status, 'succeeded')
         self.assertEqual(result.source_row_count, 1)
         self.assertEqual(result.imported_row_count, 1)
-        matched = NormalizedInteraction.objects.get()
+        matched = ListenBrainzSessionTrack.objects.get()
         self.assertEqual(matched.track_id, self.track.juke_id)
-        self.assertEqual(matched.track_identifier_candidates['recording_mbid'], str(self.track.mbid))
+        self.assertEqual(ListenBrainzEventLedger.objects.get().track_id, self.track.juke_id)
 
     def test_configured_source_version_strips_dump_archive_suffix(self):
         version = configured_source_version(

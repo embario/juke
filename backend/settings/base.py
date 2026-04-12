@@ -265,6 +265,13 @@ DATABASES = {
     }
 }
 
+MLCORE_PG_HOT_TABLESPACE_NAME = 'juke_mlcore_hot'
+MLCORE_PG_COLD_TABLESPACE_NAME = 'juke_mlcore_cold'
+MLCORE_PG_HOT_TABLESPACE_PATH = '/var/lib/postgresql/tablespaces/juke_mlcore_hot'
+MLCORE_PG_COLD_TABLESPACE_PATH = '/var/lib/postgresql/tablespaces/juke_mlcore_cold'
+MLCORE_PG_HOT_TABLESPACE_HOST_PATH = os.environ.get('MLCORE_PG_HOT_TABLESPACE_HOST_PATH', '').strip()
+MLCORE_PG_COLD_TABLESPACE_HOST_PATH = os.environ.get('MLCORE_PG_COLD_TABLESPACE_HOST_PATH', '').strip()
+
 # Application definition
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

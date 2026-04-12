@@ -5,7 +5,7 @@ Produces symmetric pairwise PMI scores from behavioral baskets and
 persists them to mlcore_item_cooccurrence. A basket is any collection
 of juke_ids observed together (same search session, same playlist, etc).
 
-PMI(a,b) = log2( P(a,b) / (P(a) * P(b)) )
+PMI(a,b) = log2(P(a,b) / (P(a) * P(b)))
   where P(x)   = count_baskets_containing_x / N
         P(a,b) = co_count / N
 No smoothing needed: we only store pairs with co_count >= 1, and any
@@ -14,6 +14,8 @@ item in a stored pair has item_count >= 1, so the log is always finite.
 Pairs are stored canonically (a < b lexicographic) so the table holds
 exactly one row per unordered pair.
 """
+from __future__ import annotations
+
 import hashlib
 import logging
 import math
@@ -24,7 +26,7 @@ from typing import Iterable
 from uuid import UUID
 
 from catalog.models import SearchHistoryResource, Track
-from mlcore.models import ItemCoOccurrence, NormalizedInteraction, TrainingRun
+from mlcore.models import ItemCoOccurrence, ListenBrainzSessionTrack, TrainingRun
 
 logger = logging.getLogger(__name__)
 
@@ -61,15 +63,22 @@ def _canonical_pair(a: UUID, b: UUID) -> tuple[UUID, UUID]:
     return (a, b) if str(a) < str(b) else (b, a)
 
 
-def _split_bucket(session_key: int | str, bucket_count: int) -> int:
+def _split_bucket(session_key: int | str | bytes | memoryview, bucket_count: int) -> int:
     if isinstance(session_key, int):
         return session_key % bucket_count
+
+    if isinstance(session_key, memoryview):
+        session_key = session_key.tobytes()
+
+    if isinstance(session_key, bytes):
+        digest = hashlib.sha256(session_key).hexdigest()
+        return int(digest[:16], 16) % bucket_count
 
     digest = hashlib.sha256(str(session_key).encode('utf-8')).hexdigest()
     return int(digest[:16], 16) % bucket_count
 
 
-def _is_in_split(session_key: int | str, split: str, bucket_count: int) -> bool:
+def _is_in_split(session_key: int | str | bytes | memoryview, split: str, bucket_count: int) -> bool:
     bucket = _split_bucket(session_key, bucket_count)
     if split == "all":
         return True
@@ -151,7 +160,7 @@ def _append_search_history_baskets(
     resource_type: str,
     split: str,
     split_buckets: int,
-    session_to_jukes: dict[tuple[str, str], set[UUID]],
+    session_to_jukes: dict[tuple[str, str | bytes], set[UUID]],
 ) -> int:
     rows = SearchHistoryResource.objects.filter(resource_type=resource_type).values_list(
         "search_history_id", "resource_id"
@@ -160,7 +169,6 @@ def _append_search_history_baskets(
     if not rows:
         return 0
 
-    # Resolve PK → juke_id in one query. Phase 1 is track-centric.
     if resource_type != DEFAULT_RESOURCE_TYPE:
         raise ValueError(f"resource_type '{resource_type}' not supported in Phase 1")
 
@@ -190,25 +198,19 @@ def _append_search_history_baskets(
     return source_row_count
 
 
-def _append_normalized_interaction_baskets(
+def _append_listenbrainz_session_track_baskets(
     *,
-    source_ids: Iterable[str],
     split: str,
     split_buckets: int,
-    session_to_jukes: dict[tuple[str, str], set[UUID]],
+    session_to_jukes: dict[tuple[str, str | bytes], set[UUID]],
 ) -> int:
-    rows = (
-        NormalizedInteraction.objects
-        .filter(source_id__in=list(source_ids))
-        .exclude(track_id__isnull=True)
-        .values_list('source_id', 'session_hint', 'track_id')
-    )
+    rows = ListenBrainzSessionTrack.objects.values_list('session_key', 'track_id')
     source_row_count = 0
-    for source_id, session_hint, track_juke_id in rows:
-        split_key = f'{source_id}:{session_hint}'
-        if not _is_in_split(split_key, split, split_buckets):
+    for session_key, track_juke_id in rows:
+        if not _is_in_split(session_key, split, split_buckets):
             continue
-        session_to_jukes[(source_id, session_hint)].add(track_juke_id)
+        normalized_session_key = session_key.tobytes() if isinstance(session_key, memoryview) else bytes(session_key)
+        session_to_jukes[(BEHAVIOR_SOURCE_LISTENBRAINZ, normalized_session_key)].add(track_juke_id)
         source_row_count += 1
 
     return source_row_count
@@ -221,7 +223,7 @@ def baskets_from_behavioral_sources_with_count(
     sources: Iterable[str] | None = None,
 ) -> tuple[list[list[UUID]], int]:
     normalized_sources = _normalized_sources(sources)
-    session_to_jukes: dict[tuple[str, str], set[UUID]] = defaultdict(set)
+    session_to_jukes: dict[tuple[str, str | bytes], set[UUID]] = defaultdict(set)
     source_row_count = 0
 
     if BEHAVIOR_SOURCE_SEARCH_HISTORY in normalized_sources:
@@ -232,13 +234,8 @@ def baskets_from_behavioral_sources_with_count(
             session_to_jukes=session_to_jukes,
         )
 
-    external_sources = [
-        source for source in normalized_sources
-        if source != BEHAVIOR_SOURCE_SEARCH_HISTORY
-    ]
-    if external_sources:
-        source_row_count += _append_normalized_interaction_baskets(
-            source_ids=external_sources,
+    if BEHAVIOR_SOURCE_LISTENBRAINZ in normalized_sources:
+        source_row_count += _append_listenbrainz_session_track_baskets(
             split=split,
             split_buckets=split_buckets,
             session_to_jukes=session_to_jukes,
@@ -257,10 +254,10 @@ def compute_pmi_table(
     baskets: Iterable[list[UUID]]
 ) -> tuple[dict[tuple[UUID, UUID], tuple[int, float]], TrainingResult]:
     """
-    Count pairs and compute smoothed PMI. Returns (pair_table, result_stats)
+    Count pairs and compute PMI. Returns (pair_table, result_stats)
     where pair_table maps canonical (a,b) -> (co_count, pmi_score).
 
-    Pure function — no DB writes. Makes the math independently testable.
+    Pure function: no DB writes. Makes the math independently testable.
     """
     item_count: Counter[UUID] = Counter()
     pair_count: Counter[tuple[UUID, UUID]] = Counter()

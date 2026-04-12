@@ -22,7 +22,11 @@ from django.utils import timezone
 
 from catalog.models import Track
 from catalog.services.identity import IdentityResolver
-from mlcore.models import ListenBrainzRawListen, NormalizedInteraction, SourceIngestionRun
+from mlcore.models import (
+    ListenBrainzEventLedger,
+    ListenBrainzSessionTrack,
+    SourceIngestionRun,
+)
 from mlcore.services.corpus import LicensePolicy
 
 logger = logging.getLogger(__name__)
@@ -48,8 +52,8 @@ SPOTIFY_ID_KEYS = (
 class ParsedListen:
     source_user_id: str
     played_at: datetime
-    session_hint: str
-    source_event_signature: str
+    session_key: bytes
+    source_event_signature: bytes
     track_identifier_candidates: dict[str, Any]
     payload: dict[str, Any]
     metadata: dict[str, Any]
@@ -92,6 +96,15 @@ class ResumeCheckpoint:
 class ResumeCandidate:
     run: SourceIngestionRun
     checkpoint: ResumeCheckpoint
+
+
+@dataclass
+class SessionTrackAggregate:
+    session_key: bytes
+    track_juke_id: UUID
+    first_played_at: datetime
+    last_played_at: datetime
+    play_count: int = 1
 
 
 def import_listenbrainz_dump(
@@ -298,7 +311,7 @@ def _ingest_dump(
     counts = _counts_from_resume_checkpoint(resume_checkpoint)
     max_malformed = getattr(settings, 'MLCORE_LISTENBRAINZ_MAX_MALFORMED_ROWS', 0)
     parsed_batch: list[ParsedListen] = []
-    seen_in_batch: set[str] = set()
+    seen_in_batch: set[bytes] = set()
     last_origin = dump_path.name
     last_line_number = 0
     last_entry_index = 0
@@ -451,8 +464,9 @@ def _flush_batch(
     with transaction.atomic():
         signatures = [parsed.source_event_signature for parsed in parsed_batch]
         existing_signatures = set(
-            ListenBrainzRawListen.objects.filter(source_event_signature__in=signatures).values_list(
-                'source_event_signature',
+            _as_binary(value)
+            for value in ListenBrainzEventLedger.objects.filter(event_signature__in=signatures).values_list(
+                'event_signature',
                 flat=True,
             )
         )
@@ -460,57 +474,50 @@ def _flush_batch(
         new_listens = [parsed for parsed in parsed_batch if parsed.source_event_signature not in existing_signatures]
         counts['duplicate_row_count'] += len(parsed_batch) - len(new_listens)
         if new_listens:
-            raw_rows = [
-                ListenBrainzRawListen(
-                    import_run=run,
-                    source_event_signature=parsed.source_event_signature,
-                    source_user_id=parsed.source_user_id,
-                    played_at=parsed.played_at,
-                    recording_mbid=parsed.recording_mbid,
-                    release_mbid=parsed.release_mbid,
-                    recording_msid=parsed.recording_msid,
-                    release_msid=parsed.release_msid,
-                    track_name=parsed.track_name,
-                    artist_name=parsed.artist_name,
-                    release_name=parsed.release_name,
-                    track_identifier_candidates=parsed.track_identifier_candidates,
-                    payload=parsed.payload,
-                )
-                for parsed in new_listens
-            ]
-            ListenBrainzRawListen.objects.bulk_create(raw_rows)
-            raw_by_signature = {row.source_event_signature: row for row in raw_rows}
-
-            normalized_rows: list[NormalizedInteraction] = []
+            ledger_rows: list[ListenBrainzEventLedger] = []
+            session_track_aggregates: dict[tuple[bytes, UUID], SessionTrackAggregate] = {}
             unresolved = 0
             for parsed in new_listens:
                 track_juke_id = resolve_track_juke_id(parsed.track_identifier_candidates)
                 if track_juke_id is None:
                     unresolved += 1
-                normalized_rows.append(
-                    NormalizedInteraction(
+                ledger_rows.append(
+                    ListenBrainzEventLedger(
                         import_run=run,
-                        raw_listen=raw_by_signature[parsed.source_event_signature],
-                        track_id=track_juke_id,
-                        source_id=LISTENBRAINZ_SOURCE_ID,
-                        source_version=source_version,
-                        source_event_signature=parsed.source_event_signature,
-                        source_user_id=parsed.source_user_id,
+                        event_signature=parsed.source_event_signature,
                         played_at=parsed.played_at,
-                        session_hint=parsed.session_hint,
-                        track_identifier_candidates=parsed.track_identifier_candidates,
-                        metadata=parsed.metadata,
+                        session_key=parsed.session_key,
+                        track_id=track_juke_id,
+                        resolution_state=1 if track_juke_id is not None else 0,
                     )
                 )
+                if track_juke_id is None:
+                    continue
 
-            NormalizedInteraction.objects.bulk_create(normalized_rows)
+                aggregate_key = (parsed.session_key, track_juke_id)
+                aggregate = session_track_aggregates.get(aggregate_key)
+                if aggregate is None:
+                    session_track_aggregates[aggregate_key] = SessionTrackAggregate(
+                        session_key=parsed.session_key,
+                        track_juke_id=track_juke_id,
+                        first_played_at=parsed.played_at,
+                        last_played_at=parsed.played_at,
+                    )
+                    continue
+                if parsed.played_at < aggregate.first_played_at:
+                    aggregate.first_played_at = parsed.played_at
+                if parsed.played_at > aggregate.last_played_at:
+                    aggregate.last_played_at = parsed.played_at
+                aggregate.play_count += 1
 
-            counts['imported_row_count'] += len(raw_rows)
-            counts['canonicalized_row_count'] += len(normalized_rows)
+            ListenBrainzEventLedger.objects.bulk_create(ledger_rows)
+            _upsert_session_tracks(run, session_track_aggregates)
+
+            counts['imported_row_count'] += len(ledger_rows)
+            counts['canonicalized_row_count'] += len(ledger_rows)
             counts['unresolved_row_count'] += unresolved
-            del normalized_rows
-            del raw_by_signature
-            del raw_rows
+            del session_track_aggregates
+            del ledger_rows
         del new_listens
         del existing_signatures
         del signatures
@@ -522,6 +529,64 @@ def _flush_batch(
             last_line_number=batch_end_line_number,
             last_entry_index=batch_end_entry_index,
         )
+
+
+def _upsert_session_tracks(
+    run: SourceIngestionRun,
+    aggregates: dict[tuple[bytes, UUID], SessionTrackAggregate],
+) -> None:
+    if not aggregates:
+        return
+
+    session_keys = list({aggregate.session_key for aggregate in aggregates.values()})
+    track_ids = list({aggregate.track_juke_id for aggregate in aggregates.values()})
+    existing_rows = ListenBrainzSessionTrack.objects.filter(
+        session_key__in=session_keys,
+        track_id__in=track_ids,
+    )
+    existing_by_key = {
+        (_as_binary(row.session_key), row.track_id): row
+        for row in existing_rows
+    }
+
+    rows_to_create: list[ListenBrainzSessionTrack] = []
+    rows_to_update: list[ListenBrainzSessionTrack] = []
+    for aggregate_key, aggregate in aggregates.items():
+        existing = existing_by_key.get(aggregate_key)
+        if existing is None:
+            rows_to_create.append(
+                ListenBrainzSessionTrack(
+                    import_run=run,
+                    session_key=aggregate.session_key,
+                    track_id=aggregate.track_juke_id,
+                    first_played_at=aggregate.first_played_at,
+                    last_played_at=aggregate.last_played_at,
+                    play_count=aggregate.play_count,
+                )
+            )
+            continue
+
+        existing.import_run = run
+        if aggregate.first_played_at < existing.first_played_at:
+            existing.first_played_at = aggregate.first_played_at
+        if aggregate.last_played_at > existing.last_played_at:
+            existing.last_played_at = aggregate.last_played_at
+        existing.play_count += aggregate.play_count
+        rows_to_update.append(existing)
+
+    if rows_to_create:
+        ListenBrainzSessionTrack.objects.bulk_create(rows_to_create)
+    if rows_to_update:
+        ListenBrainzSessionTrack.objects.bulk_update(
+            rows_to_update,
+            ['import_run', 'first_played_at', 'last_played_at', 'play_count'],
+        )
+
+
+def _as_binary(value: bytes | memoryview) -> bytes:
+    if isinstance(value, memoryview):
+        return value.tobytes()
+    return bytes(value)
 
 
 def _build_track_resolver(maxsize: int) -> Callable[[dict[str, Any]], UUID | None]:
@@ -772,7 +837,7 @@ def _parse_listen(payload: dict[str, Any]) -> ParsedListen:
         raise ValueError('ListenBrainz row missing track identifiers')
 
     source_user_id = _hash_user_id(user_name)
-    session_hint = _session_hint(source_user_id, played_at)
+    session_key = _session_key(source_user_id, played_at)
     track_identifier_candidates = {
         'recording_mbid': str(recording_mbid) if recording_mbid else '',
         'release_mbid': str(release_mbid) if release_mbid else '',
@@ -798,7 +863,7 @@ def _parse_listen(payload: dict[str, Any]) -> ParsedListen:
     return ParsedListen(
         source_user_id=source_user_id,
         played_at=played_at,
-        session_hint=session_hint,
+        session_key=session_key,
         source_event_signature=source_event_signature,
         track_identifier_candidates=track_identifier_candidates,
         payload=payload,
@@ -1020,10 +1085,10 @@ def _hash_user_id(value: str) -> str:
     return hashlib.sha256(f'{salt}:{value}'.encode('utf-8')).hexdigest()
 
 
-def _session_hint(source_user_id: str, played_at: datetime) -> str:
+def _session_key(source_user_id: str, played_at: datetime) -> bytes:
     window_seconds = getattr(settings, 'MLCORE_LISTENBRAINZ_SESSION_WINDOW_SECONDS', DEFAULT_SESSION_WINDOW_SECONDS)
     bucket = int(played_at.timestamp()) // window_seconds
-    return f'{source_user_id}:{bucket}'
+    return hashlib.sha256(f'{source_user_id}:{bucket}'.encode('utf-8')).digest()
 
 
 def _event_signature(
@@ -1033,7 +1098,7 @@ def _event_signature(
     candidates: dict[str, Any],
     track_name: str,
     artist_name: str,
-) -> str:
+) -> bytes:
     parts = [
         LISTENBRAINZ_SOURCE_ID,
         source_user_id,
@@ -1044,7 +1109,7 @@ def _event_signature(
         track_name.casefold().strip(),
         artist_name.casefold().strip(),
     ]
-    return hashlib.sha256('\x1f'.join(parts).encode('utf-8')).hexdigest()
+    return hashlib.sha256('\x1f'.join(parts).encode('utf-8')).digest()
 
 
 def _maybe_uuid(value: Any) -> UUID | None:

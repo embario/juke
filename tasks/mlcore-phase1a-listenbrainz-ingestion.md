@@ -12,7 +12,7 @@ labels:
   - backend
   - data-ingestion
 complexity: 5
-updated_at: 2026-03-28
+updated_at: 2026-04-09
 ---
 
 ## Goal
@@ -148,6 +148,23 @@ Build a production-safe ingest pipeline for ListenBrainz full + incremental dump
     - keep `source_user_id` hashed/pseudonymous,
     - do not ingest or train on user-facing profile fields,
     - preserve periodic full rebuilds because incrementals do not encode deletions.
+  - Additional completed on 2026-04-09:
+  - Switched the ListenBrainz ingest write path away from deprecated wide-row dual writes:
+    - new hot training facts land in `ListenBrainzSessionTrack`
+    - compact replay/dedupe facts land in `ListenBrainzEventLedger`
+    - legacy `ListenBrainzRawListen` and `NormalizedInteraction` rows are no longer populated by the importer
+  - Switched MLCore ListenBrainz basket loading for cooccurrence/evaluation to read `ListenBrainzSessionTrack` instead of `NormalizedInteraction`.
+  - Added PostgreSQL tablespace split support for fresh juke-dev rebuilds:
+    - fixed tablespace names:
+      - `juke_mlcore_hot`
+      - `juke_mlcore_cold`
+    - admin-supplied host-path env vars:
+      - `MLCORE_PG_HOT_TABLESPACE_HOST_PATH`
+      - `MLCORE_PG_COLD_TABLESPACE_HOST_PATH`
+    - fixed Postgres-internal locations:
+      - `/var/lib/postgresql/tablespaces/juke_mlcore_hot`
+      - `/var/lib/postgresql/tablespaces/juke_mlcore_cold`
+    - migrations `backend/mlcore/migrations/0008_mlcore_tablespace_split.py` and `backend/mlcore/migrations/0009_reapply_mlcore_tablespace_split.py` create those tablespaces and move compact hot tables plus cold/deprecated ListenBrainz tables into place.
 - Blocker: none.
 
 ## Dependencies

@@ -29,6 +29,19 @@ INGESTION_MODE_CHOICES = (
     ('incremental', 'Incremental'),
 )
 
+LISTENBRAINZ_RESOLUTION_STATE_CHOICES = (
+    (0, 'Unresolved'),
+    (1, 'Resolved'),
+)
+
+
+def _binary_to_hex(value):
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if value in (None, b''):
+        return ''
+    return bytes(value).hex()
+
 
 class CorpusManifest(models.Model):
     """
@@ -193,8 +206,95 @@ class DatasetShardIngestionRun(models.Model):
         return f"{self.provider}:{self.source_version}:{self.shard_key}:{self.status}"
 
 
+class ListenBrainzEventLedger(models.Model):
+    """Compact event-level ledger for ListenBrainz replay, dedupe, and audit."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    import_run = models.ForeignKey(
+        SourceIngestionRun,
+        on_delete=models.CASCADE,
+        related_name='listenbrainz_event_ledgers',
+    )
+    event_signature = models.BinaryField(max_length=32, unique=True)
+    played_at = models.DateTimeField(db_index=True)
+    session_key = models.BinaryField(max_length=32, db_index=True)
+    track = models.ForeignKey(
+        'catalog.Track',
+        to_field='juke_id',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='listenbrainz_event_ledgers',
+    )
+    resolution_state = models.PositiveSmallIntegerField(
+        choices=LISTENBRAINZ_RESOLUTION_STATE_CHOICES,
+        default=0,
+    )
+    cold_ref = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_listenbrainz_event_ledger'
+        indexes = [
+            models.Index(fields=['import_run'], name='mlcore_lbe_import__e9179a_idx'),
+            models.Index(fields=['track'], name='mlcore_lbe_track_i_4c8647_idx'),
+            models.Index(fields=['resolution_state'], name='mlcore_lbe_resolut_8e2ae0_idx'),
+        ]
+        ordering = ['played_at', 'id']
+
+    @property
+    def event_signature_hex(self):
+        return _binary_to_hex(self.event_signature)
+
+    @property
+    def session_key_hex(self):
+        return _binary_to_hex(self.session_key)
+
+    def __str__(self):
+        return f"{self.played_at.isoformat()}:{self.event_signature_hex[:12]}"
+
+
+class ListenBrainzSessionTrack(models.Model):
+    """Compact hot-path training facts keyed by ListenBrainz session and track."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    import_run = models.ForeignKey(
+        SourceIngestionRun,
+        on_delete=models.CASCADE,
+        related_name='listenbrainz_session_tracks',
+    )
+    session_key = models.BinaryField(max_length=32, db_index=True)
+    track = models.ForeignKey(
+        'catalog.Track',
+        to_field='juke_id',
+        on_delete=models.CASCADE,
+        related_name='listenbrainz_session_tracks',
+    )
+    first_played_at = models.DateTimeField()
+    last_played_at = models.DateTimeField()
+    play_count = models.IntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_listenbrainz_session_track'
+        unique_together = ('session_key', 'track')
+        indexes = [
+            models.Index(fields=['track'], name='mlcore_lst_track_i_5d5e20_idx'),
+            models.Index(fields=['import_run'], name='mlcore_lst_import__6d7bf6_idx'),
+            models.Index(fields=['last_played_at'], name='mlcore_lst_last_pl_4a4ec9_idx'),
+        ]
+        ordering = ['first_played_at', 'id']
+
+    @property
+    def session_key_hex(self):
+        return _binary_to_hex(self.session_key)
+
+    def __str__(self):
+        return f"{self.session_key_hex[:12]}:{self.track_id}"
+
+
 class ListenBrainzRawListen(models.Model):
-    """Immutable raw staging row for ListenBrainz listen events."""
+    """Deprecated wide raw staging row retained only for legacy transition work."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     import_run = models.ForeignKey(
@@ -230,7 +330,7 @@ class ListenBrainzRawListen(models.Model):
 
 
 class NormalizedInteraction(models.Model):
-    """Canonicalized interaction row for downstream ML training/evaluation."""
+    """Deprecated wide training row retained only for legacy transition work."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     import_run = models.ForeignKey(

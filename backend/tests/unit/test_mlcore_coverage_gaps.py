@@ -10,6 +10,7 @@ Targeted tests filling branch-level gaps identified in the Stage 6 audit:
   - baskets_from_search_history() unsupported resource_type ValueError
 """
 import datetime
+import hashlib
 import uuid
 from io import StringIO
 from unittest.mock import patch
@@ -19,7 +20,13 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 
 from catalog.models import SearchHistory, SearchHistoryResource
-from mlcore.models import ItemCoOccurrence, ModelEvaluation, ModelPromotion, NormalizedInteraction, SourceIngestionRun
+from mlcore.models import (
+    ItemCoOccurrence,
+    ListenBrainzSessionTrack,
+    ModelEvaluation,
+    ModelPromotion,
+    SourceIngestionRun,
+)
 from mlcore.services.cooccurrence import (
     BEHAVIOR_SOURCE_LISTENBRAINZ,
     BEHAVIOR_SOURCE_SEARCH_HISTORY,
@@ -43,6 +50,17 @@ User = get_user_model()
 
 def _mk_album(name='A'):
     return create_album(name=name, total_tracks=10, release_date=datetime.date(2020, 1, 1))
+
+
+def _mk_listenbrainz_session_track(run, *, track, session_hint, played_at):
+    return ListenBrainzSessionTrack.objects.create(
+        import_run=run,
+        track=track,
+        session_key=hashlib.sha256(session_hint.encode('utf-8')).digest(),
+        first_played_at=played_at,
+        last_played_at=played_at,
+        play_count=1,
+    )
 
 
 # --- WRITE_BATCH_SIZE chunking ---
@@ -112,17 +130,11 @@ class CeleryTaskTests(TestCase):
             status='succeeded',
         )
         for idx, track in enumerate((t1, t2), start=1):
-            NormalizedInteraction.objects.create(
-                import_run=run,
+            _mk_listenbrainz_session_track(
+                run,
                 track=track,
-                source_id='listenbrainz',
-                source_version='2026-03-22',
-                source_event_signature=f'sig-{idx}',
-                source_user_id='lb-user',
-                played_at=datetime.datetime(2026, 3, 22, 12, idx, tzinfo=datetime.UTC),
                 session_hint='lb-session',
-                track_identifier_candidates={},
-                metadata={},
+                played_at=datetime.datetime(2026, 3, 22, 12, idx, tzinfo=datetime.UTC),
             )
 
         result = train_cooccurrence_task.apply(kwargs={'split': 'all', 'sources': [BEHAVIOR_SOURCE_LISTENBRAINZ]}).get()
@@ -155,17 +167,11 @@ class CeleryTaskTests(TestCase):
             status='succeeded',
         )
         for idx, track in enumerate((t2, t3), start=1):
-            NormalizedInteraction.objects.create(
-                import_run=run,
+            _mk_listenbrainz_session_track(
+                run,
                 track=track,
-                source_id='listenbrainz',
-                source_version='2026-03-22',
-                source_event_signature=f'blend-sig-{idx}',
-                source_user_id='lb-user',
-                played_at=datetime.datetime(2026, 3, 22, 14, idx, tzinfo=datetime.UTC),
                 session_hint='lb-default-blend',
-                track_identifier_candidates={},
-                metadata={},
+                played_at=datetime.datetime(2026, 3, 22, 14, idx, tzinfo=datetime.UTC),
             )
 
         result = train_cooccurrence_task.apply(kwargs={'split': 'all'}).get()
@@ -353,17 +359,11 @@ class TrainCooccurrenceCommandTests(TestCase):
             status='succeeded',
         )
         for idx, track in enumerate((t1, t2), start=1):
-            NormalizedInteraction.objects.create(
-                import_run=run,
+            _mk_listenbrainz_session_track(
+                run,
                 track=track,
-                source_id='listenbrainz',
-                source_version='2026-03-22',
-                source_event_signature=f'cmd-sig-{idx}',
-                source_user_id='lb-user',
-                played_at=datetime.datetime(2026, 3, 22, 13, idx, tzinfo=datetime.UTC),
                 session_hint='lb-command-session',
-                track_identifier_candidates={},
-                metadata={},
+                played_at=datetime.datetime(2026, 3, 22, 13, idx, tzinfo=datetime.UTC),
             )
 
         out = StringIO()
@@ -397,17 +397,11 @@ class TrainCooccurrenceCommandTests(TestCase):
             status='succeeded',
         )
         for idx, track in enumerate((t2, t3), start=1):
-            NormalizedInteraction.objects.create(
-                import_run=run,
+            _mk_listenbrainz_session_track(
+                run,
                 track=track,
-                source_id='listenbrainz',
-                source_version='2026-03-22',
-                source_event_signature=f'cmd-blend-sig-{idx}',
-                source_user_id='lb-user',
-                played_at=datetime.datetime(2026, 3, 22, 15, idx, tzinfo=datetime.UTC),
                 session_hint='lb-command-default',
-                track_identifier_candidates={},
-                metadata={},
+                played_at=datetime.datetime(2026, 3, 22, 15, idx, tzinfo=datetime.UTC),
             )
 
         out = StringIO()
