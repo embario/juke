@@ -102,7 +102,8 @@ class Command(BaseCommand):
             (
                 'provider={provider} source_version={source_version} run_id={run_id} '
                 'stage={stage} status={status} partitions={partitions} states={states} '
-                'rows_parsed={rows_parsed} rows_staged={rows_staged} rows_merged={rows_merged} '
+                'rows_parsed={rows_parsed} rows_staged={rows_staged} session_rows_loaded={session_rows_loaded} '
+                'chunks_written={chunks_written} chunks_loaded={chunks_loaded} rows_merged={rows_merged} '
                 'rows_deduplicated={rows_deduplicated} unresolved={rows_unresolved} malformed={rows_malformed} '
                 'manifest={manifest}'
             ).format(
@@ -115,6 +116,9 @@ class Command(BaseCommand):
                 states=','.join(f'{state}:{count}' for state, count in sorted(partition_states.items())),
                 rows_parsed=int(plan.counters.get('rows_parsed') or 0),
                 rows_staged=int(plan.counters.get('rows_staged') or 0),
+                session_rows_loaded=int(plan.counters.get('session_rows_loaded') or 0),
+                chunks_written=int(plan.counters.get('chunks_written') or 0),
+                chunks_loaded=int(plan.counters.get('chunks_loaded') or 0),
                 rows_merged=int(plan.counters.get('rows_merged') or 0),
                 rows_deduplicated=int(plan.counters.get('rows_deduplicated') or 0),
                 rows_unresolved=int(plan.counters.get('rows_unresolved') or 0),

@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand, CommandError
 
 from mlcore.services.full_ingestion import (
+    acquire_full_ingestion_lease,
     build_full_ingestion_plan,
     configured_full_ingestion_load_workers,
     configured_full_ingestion_merge_workers,
@@ -13,9 +14,12 @@ from mlcore.services.full_ingestion import (
     execute_full_ingestion_merge_stage,
     execute_full_ingestion_pipeline,
     execute_full_ingestion_partition_stage,
+    FullIngestionLeaseHeldError,
     get_full_ingestion_provider,
     initialize_full_ingestion_plan,
     load_full_ingestion_plan,
+    release_full_ingestion_lease,
+    touch_full_ingestion_lease,
     write_full_ingestion_metrics,
 )
 
@@ -57,19 +61,19 @@ class Command(BaseCommand):
             '--partition-workers',
             type=int,
             default=configured_full_ingestion_partition_workers(),
-            help='Target worker count for archive -> partition conversion.',
+            help='Target process count for archive -> compact chunk extraction after member spooling.',
         )
         parser.add_argument(
             '--load-workers',
             type=int,
             default=configured_full_ingestion_load_workers(),
-            help='Target worker count for partition -> staging COPY work.',
+            help='Target worker count for compact event chunk -> load table COPY work.',
         )
         parser.add_argument(
             '--merge-workers',
             type=int,
             default=configured_full_ingestion_merge_workers(),
-            help='Target worker count for staging -> final merge work.',
+            help='Reserved provider finalization parallelism hint. ListenBrainz currently finalizes set-wise in one swap.',
         )
         parser.add_argument(
             '--materialized-manifest-path',
@@ -97,22 +101,25 @@ class Command(BaseCommand):
         parser.add_argument(
             '--execute-partition-stage',
             action='store_true',
-            help='Run Stage A now and extract provider artifacts into fixed partition directories under the scratch root.',
+            help='Run Stage A now and extract compact provider event chunks under the scratch root.',
         )
         parser.add_argument(
             '--execute-copy-stage',
             action='store_true',
-            help='Run Stage B now and load partitioned artifacts into provider staging tables.',
+            help='Run Stage B now and load compact event chunks into the provider load tables.',
         )
         parser.add_argument(
             '--execute-merge-stage',
             action='store_true',
-            help='Run Stage C now and merge staged partition rows into final provider tables.',
+            help='Run Stage C now and finalize the provider load tables into the compact hot/cold tables.',
         )
         parser.add_argument(
             '--execute-pipeline',
             action='store_true',
-            help='Run the bounded full-ingestion executor: partition once, then process partitions through shared copy+merge lanes.',
+            help=(
+                'Run the full-ingestion pipeline end to end: extract compact chunks, '
+                'load lean tables, and finalize into the compact hot/cold tables.'
+            ),
         )
 
     def handle(self, *args, **options):
@@ -137,6 +144,16 @@ class Command(BaseCommand):
             metrics_path=str(options['metrics_path'] or '').strip() or None,
         )
 
+        execute_requested = any(
+            options[flag]
+            for flag in (
+                'execute_partition_stage',
+                'execute_copy_stage',
+                'execute_merge_stage',
+                'execute_pipeline',
+            )
+        )
+
         if options['resume']:
             try:
                 existing_plan = load_full_ingestion_plan(plan.manifest_path)
@@ -144,32 +161,7 @@ class Command(BaseCommand):
                 raise CommandError(
                     f'No existing full-ingestion manifest found at {plan.manifest_path}; cannot resume.'
                 ) from exc
-            if options['execute_partition_stage']:
-                try:
-                    existing_plan = execute_full_ingestion_partition_stage(existing_plan)
-                except ValueError as exc:
-                    raise CommandError(str(exc)) from exc
-            if options['execute_copy_stage']:
-                try:
-                    if existing_plan.stage == 'planned':
-                        existing_plan = execute_full_ingestion_partition_stage(existing_plan)
-                    existing_plan = execute_full_ingestion_copy_stage(existing_plan)
-                except ValueError as exc:
-                    raise CommandError(str(exc)) from exc
-            if options['execute_merge_stage']:
-                try:
-                    if existing_plan.stage == 'planned':
-                        existing_plan = execute_full_ingestion_partition_stage(existing_plan)
-                    if existing_plan.stage == 'partition':
-                        existing_plan = execute_full_ingestion_copy_stage(existing_plan)
-                    existing_plan = execute_full_ingestion_merge_stage(existing_plan)
-                except ValueError as exc:
-                    raise CommandError(str(exc)) from exc
-            if options['execute_pipeline']:
-                try:
-                    existing_plan = execute_full_ingestion_pipeline(existing_plan)
-                except ValueError as exc:
-                    raise CommandError(str(exc)) from exc
+            existing_plan = self._execute_requested_stages(existing_plan, options, execute_requested=execute_requested)
             write_full_ingestion_metrics(existing_plan)
             self.stdout.write(
                 (
@@ -192,32 +184,7 @@ class Command(BaseCommand):
         except FileExistsError as exc:
             raise CommandError(str(exc)) from exc
 
-        if options['execute_partition_stage']:
-            try:
-                plan = execute_full_ingestion_partition_stage(plan)
-            except ValueError as exc:
-                raise CommandError(str(exc)) from exc
-        if options['execute_copy_stage']:
-            try:
-                if plan.stage == 'planned':
-                    plan = execute_full_ingestion_partition_stage(plan)
-                plan = execute_full_ingestion_copy_stage(plan)
-            except ValueError as exc:
-                raise CommandError(str(exc)) from exc
-        if options['execute_merge_stage']:
-            try:
-                if plan.stage == 'planned':
-                    plan = execute_full_ingestion_partition_stage(plan)
-                if plan.stage == 'partition':
-                    plan = execute_full_ingestion_copy_stage(plan)
-                plan = execute_full_ingestion_merge_stage(plan)
-            except ValueError as exc:
-                raise CommandError(str(exc)) from exc
-        if options['execute_pipeline']:
-            try:
-                plan = execute_full_ingestion_pipeline(plan)
-            except ValueError as exc:
-                raise CommandError(str(exc)) from exc
+        plan = self._execute_requested_stages(plan, options, execute_requested=execute_requested)
 
         if options['execute_pipeline'] or options['execute_merge_stage']:
             action = 'completed'
@@ -250,3 +217,77 @@ class Command(BaseCommand):
                 materialized_manifest=plan.materialized_manifest_path or '-',
             )
         )
+
+    def _execute_requested_stages(self, plan, options, *, execute_requested: bool):
+        if not execute_requested:
+            return plan
+
+        try:
+            acquire_full_ingestion_lease(
+                provider=plan.provider,
+                run_id=plan.run_id,
+                source_version=plan.source_version,
+                stage=plan.stage,
+                metadata={
+                    'manifest_path': plan.manifest_path,
+                    'archive_path': plan.archive_path,
+                    'source_version': plan.source_version,
+                },
+            )
+        except FullIngestionLeaseHeldError as exc:
+            raise CommandError(str(exc)) from exc
+
+        try:
+            if options['execute_partition_stage']:
+                plan = execute_full_ingestion_partition_stage(plan)
+            if options['execute_copy_stage']:
+                if plan.stage == 'planned':
+                    plan = execute_full_ingestion_partition_stage(plan)
+                plan = execute_full_ingestion_copy_stage(plan)
+            if options['execute_merge_stage']:
+                if plan.stage == 'planned':
+                    plan = execute_full_ingestion_partition_stage(plan)
+                if plan.stage == 'partition':
+                    plan = execute_full_ingestion_copy_stage(plan)
+                plan = execute_full_ingestion_merge_stage(plan)
+            if options['execute_pipeline']:
+                plan = execute_full_ingestion_pipeline(plan)
+        except ValueError as exc:
+            release_full_ingestion_lease(
+                provider=plan.provider,
+                run_id=plan.run_id,
+                status='failed',
+                metadata={'manifest_path': plan.manifest_path, 'error': str(exc)},
+            )
+            raise CommandError(str(exc)) from exc
+        except Exception:
+            release_full_ingestion_lease(
+                provider=plan.provider,
+                run_id=plan.run_id,
+                status='failed',
+                metadata={'manifest_path': plan.manifest_path},
+            )
+            raise
+
+        if plan.status in ('succeeded', 'failed'):
+            release_full_ingestion_lease(
+                provider=plan.provider,
+                run_id=plan.run_id,
+                status=plan.status,
+                metadata={
+                    'manifest_path': plan.manifest_path,
+                    'stage': plan.stage,
+                    'source_version': plan.source_version,
+                },
+            )
+        else:
+            touch_full_ingestion_lease(
+                provider=plan.provider,
+                run_id=plan.run_id,
+                stage=plan.stage,
+                metadata={
+                    'manifest_path': plan.manifest_path,
+                    'source_version': plan.source_version,
+                },
+            )
+        return plan

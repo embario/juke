@@ -207,6 +207,32 @@ class DatasetShardIngestionRun(models.Model):
         return f"{self.provider}:{self.source_version}:{self.shard_key}:{self.status}"
 
 
+class FullIngestionLease(models.Model):
+    """Exclusive provider-level lease for long-running full dataset ingestions."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=64, unique=True)
+    holder_type = models.CharField(max_length=32, default='full_ingestion')
+    holder_run_id = models.CharField(max_length=64, blank=True, default='')
+    source_version = models.CharField(max_length=255, blank=True, default='')
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    metadata = models.JSONField(default=dict, blank=True)
+    acquired_at = models.DateTimeField(auto_now_add=True)
+    heartbeat_at = models.DateTimeField(auto_now=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mlcore_full_ingestion_lease'
+        indexes = [
+            models.Index(fields=['status'], name='mlcore_fil_status_c3a27d_idx'),
+            models.Index(fields=['heartbeat_at'], name='mlcore_fil_heartbe_207655_idx'),
+        ]
+        ordering = ['provider']
+
+    def __str__(self):
+        return f"{self.provider}:{self.status}:{self.holder_run_id or '-'}"
+
+
 class ListenBrainzEventLedger(models.Model):
     """Compact event-level ledger for ListenBrainz replay, dedupe, and audit."""
 

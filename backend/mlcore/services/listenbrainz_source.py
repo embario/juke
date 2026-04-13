@@ -122,6 +122,23 @@ def sync_listenbrainz_remote_dumps(
     max_incrementals_per_run: int | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> RemoteSyncResult:
+    from mlcore.services.full_ingestion import full_ingestion_conflict_metadata
+
+    lease_conflict = full_ingestion_conflict_metadata(LISTENBRAINZ_SOURCE_ID)
+    if lease_conflict is not None:
+        logger.warning(
+            'listenbrainz remote sync skipped because full ingestion run %s owns the provider lease',
+            lease_conflict['lease_run_id'],
+        )
+        return RemoteSyncResult(
+            status='skipped',
+            policy_classification='n/a',
+            full_source_version=None,
+            incremental_source_versions=[],
+            downloaded_paths=[],
+            skipped_source_versions=[],
+        )
+
     policy = LicensePolicy().classify_source(LISTENBRAINZ_SOURCE_ID)
     if policy == 'blocked':
         logger.warning('listenbrainz remote sync skipped because policy classification is blocked')

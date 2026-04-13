@@ -16,6 +16,7 @@ from mlcore.services.dataset_orchestration import (
     get_dataset_orchestration_service,
     run_dataset_orchestration_loop,
 )
+from mlcore.services.full_ingestion import full_ingestion_conflict_metadata
 from mlcore.services.listenbrainz_source import sync_listenbrainz_remote_dumps
 
 logger = logging.getLogger(__name__)
@@ -153,6 +154,14 @@ def train_cooccurrence_task(
     name='mlcore.tasks.import_listenbrainz_full',
 )
 def import_listenbrainz_full_task(self, dump_path: str | None = None, source_version: str | None = None):
+    lease_conflict = full_ingestion_conflict_metadata('listenbrainz')
+    if lease_conflict is not None:
+        logger.warning(
+            'listenbrainz full import skipped because full ingestion run %s owns the provider lease',
+            lease_conflict['lease_run_id'],
+        )
+        return {'status': 'skipped', **lease_conflict}
+
     resolved_path = dump_path or configured_dump_path('full')
     if not resolved_path:
         logger.warning('listenbrainz full import skipped: MLCORE_LISTENBRAINZ_FULL_IMPORT_PATH is not set')
@@ -192,6 +201,14 @@ def import_listenbrainz_full_task(self, dump_path: str | None = None, source_ver
     name='mlcore.tasks.replay_listenbrainz_incremental',
 )
 def replay_listenbrainz_incremental_task(self, dump_path: str | None = None, source_version: str | None = None):
+    lease_conflict = full_ingestion_conflict_metadata('listenbrainz')
+    if lease_conflict is not None:
+        logger.warning(
+            'listenbrainz incremental replay skipped because full ingestion run %s owns the provider lease',
+            lease_conflict['lease_run_id'],
+        )
+        return {'status': 'skipped', **lease_conflict}
+
     resolved_path = dump_path or configured_dump_path('incremental')
     if not resolved_path:
         logger.warning(

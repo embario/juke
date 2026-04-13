@@ -3,19 +3,18 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import multiprocessing
 import shutil
 import tarfile
 import uuid
-from collections import defaultdict
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from threading import Lock
 from pathlib import Path
-from typing import Any, Iterator, Protocol
+from typing import Any, Protocol
 
 from django.conf import settings
-from django.db import close_old_connections, connection
+from django.db import IntegrityError, close_old_connections, connection, transaction
 from django.utils import timezone
 
 from mlcore.ingestion.listenbrainz import (
@@ -25,6 +24,7 @@ from mlcore.ingestion.listenbrainz import (
     parse_listenbrainz_payload,
 )
 from mlcore.models import SourceIngestionRun
+from mlcore.models import FullIngestionLease
 from mlcore.services.listenbrainz_shards import (
     configured_listenbrainz_shard_root,
     listenbrainz_shard_relative_path,
@@ -47,17 +47,36 @@ PROGRESS_COUNTER_FIELDS = (
     'input_bytes_partitioned',
     'rows_parsed',
     'rows_staged',
+    'session_rows_loaded',
     'rows_merged',
     'rows_deduplicated',
     'rows_resolved',
     'rows_unresolved',
     'rows_malformed',
+    'chunks_written',
+    'chunks_loaded',
     'partitions_completed',
     'partitions_loaded',
     'partitions_merged',
     'partitions_failed',
 )
-LISTENBRAINZ_EVENT_STAGE_TABLE = 'mlcore_listenbrainz_event_stage'
+LISTENBRAINZ_EVENT_LOAD_TABLE = 'mlcore_listenbrainz_event_load'
+LISTENBRAINZ_SESSION_LOAD_TABLE = 'mlcore_listenbrainz_session_delta_load'
+LISTENBRAINZ_EVENT_LEDGER_TABLE = 'mlcore_listenbrainz_event_ledger'
+LISTENBRAINZ_SESSION_TRACK_TABLE = 'mlcore_listenbrainz_session_track'
+LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE = 'mlcore_listenbrainz_event_ledger_build'
+LISTENBRAINZ_EVENT_LEDGER_BACKUP_TABLE = 'mlcore_listenbrainz_event_ledger_old'
+LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE = 'mlcore_listenbrainz_session_track_build'
+LISTENBRAINZ_SESSION_TRACK_BACKUP_TABLE = 'mlcore_listenbrainz_session_track_old'
+_LISTENBRAINZ_EXTRACT_IDENTITY_SNAPSHOT: ListenBrainzIdentitySnapshot | None = None
+_LISTENBRAINZ_EXTRACT_PARTITION_ROOT: str = ''
+_LISTENBRAINZ_EXTRACT_RUN_ID: str = ''
+_LISTENBRAINZ_EXTRACT_PARTITION_COUNT: int = 0
+_LISTENBRAINZ_EXTRACT_CHUNK_TARGET_ROWS: int = 0
+
+
+class FullIngestionLeaseHeldError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -84,22 +103,26 @@ class FullIngestionPartitionArtifact:
 @dataclass(frozen=True)
 class FullIngestionCopyResult:
     partition_key: str
-    rows_parsed: int
-    rows_staged: int
-    rows_resolved: int
-    rows_unresolved: int
-    rows_malformed: int
-    stage_file_path: str
+    rows_loaded: int
+    session_rows_loaded: int
+    chunks_loaded: int
+    copy_manifest_path: str
 
 
 @dataclass(frozen=True)
 class FullIngestionMergeResult:
-    partition_key: str
     rows_merged: int
     rows_deduplicated: int
     rows_resolved: int
     rows_unresolved: int
     session_rows_merged: int
+
+
+@dataclass(frozen=True)
+class ListenBrainzMemberChunkResult:
+    member_token: str
+    counters: dict[str, int]
+    chunk_manifests_by_partition: dict[str, list[dict[str, int | str]]]
 
 
 @dataclass(frozen=True)
@@ -142,23 +165,22 @@ class FullDatasetIngestionProvider(Protocol):
     def discover_materialized_manifest(self, source_version: str) -> Path | None:
         ...
 
-    def iter_partition_artifacts(self, plan: FullIngestionPlan) -> Iterator[FullIngestionPartitionArtifact]:
+    def extract_archive(self, plan: FullIngestionPlan) -> FullIngestionPlan:
         ...
 
-    def ensure_staging_tables(self) -> None:
+    def ensure_load_tables(self) -> None:
         ...
 
-    def load_partition_to_staging(
+    def load_partition_to_load_tables(
         self,
         plan: FullIngestionPlan,
         partition: FullIngestionPartitionPlan,
     ) -> FullIngestionCopyResult:
         ...
 
-    def merge_partition_to_final(
+    def finalize_into_final_tables(
         self,
         plan: FullIngestionPlan,
-        partition: FullIngestionPartitionPlan,
         *,
         source_ingestion_run: SourceIngestionRun,
     ) -> FullIngestionMergeResult:
@@ -180,70 +202,27 @@ class ListenBrainzFullIngestionProvider:
         manifest_path = resolved_shard_root / source_version / 'manifest.json'
         return manifest_path if manifest_path.exists() else None
 
-    def iter_partition_artifacts(self, plan: FullIngestionPlan) -> Iterator[FullIngestionPartitionArtifact]:
-        archive_path = Path(plan.archive_path)
-        partition_root = Path(plan.partition_root)
-        with tarfile.open(archive_path, 'r:*') as archive:
-            for member in archive:
-                relative_path = listenbrainz_shard_relative_path(member.name)
-                if relative_path is None:
-                    continue
+    def extract_archive(self, plan: FullIngestionPlan) -> FullIngestionPlan:
+        return extract_listenbrainz_archive(plan)
 
-                extracted = archive.extractfile(member)
-                if extracted is None:
-                    continue
+    def ensure_load_tables(self) -> None:
+        ensure_listenbrainz_load_tables()
 
-                partition_index = partition_index_for_path(
-                    relative_path.as_posix(),
-                    partition_count=plan.partition_count,
-                )
-                partition_key = f'p{partition_index:03d}'
-                destination = partition_root / partition_key / 'input' / relative_path
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                temp_destination = destination.with_name(destination.name + '.part')
-                if temp_destination.exists():
-                    temp_destination.unlink()
-
-                digest = hashlib.sha256()
-                size_bytes = 0
-                with temp_destination.open('wb') as handle:
-                    while True:
-                        chunk = extracted.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        handle.write(chunk)
-                        digest.update(chunk)
-                        size_bytes += len(chunk)
-                temp_destination.replace(destination)
-                yield FullIngestionPartitionArtifact(
-                    partition_key=partition_key,
-                    partition_index=partition_index,
-                    source_member_name=member.name,
-                    relative_path=relative_path.as_posix(),
-                    size_bytes=size_bytes,
-                    sha256=digest.hexdigest(),
-                )
-
-    def ensure_staging_tables(self) -> None:
-        ensure_listenbrainz_staging_tables()
-
-    def load_partition_to_staging(
+    def load_partition_to_load_tables(
         self,
         plan: FullIngestionPlan,
         partition: FullIngestionPartitionPlan,
     ) -> FullIngestionCopyResult:
-        return load_listenbrainz_partition_to_staging(plan, partition)
+        return load_listenbrainz_partition_to_load_tables(plan, partition)
 
-    def merge_partition_to_final(
+    def finalize_into_final_tables(
         self,
         plan: FullIngestionPlan,
-        partition: FullIngestionPartitionPlan,
         *,
         source_ingestion_run: SourceIngestionRun,
     ) -> FullIngestionMergeResult:
-        return merge_listenbrainz_partition_to_final(
+        return finalize_listenbrainz_full_ingestion(
             plan,
-            partition,
             source_ingestion_run=source_ingestion_run,
         )
 
@@ -280,11 +259,161 @@ def configured_full_ingestion_merge_workers() -> int:
     return max(1, int(getattr(settings, 'MLCORE_FULL_INGESTION_MERGE_WORKERS', 4)))
 
 
+def configured_full_ingestion_target_chunk_rows() -> int:
+    return max(1, int(getattr(settings, 'MLCORE_FULL_INGESTION_TARGET_CHUNK_ROWS', 250000)))
+
+
 def configured_full_ingestion_metrics_path() -> Path | None:
     value = str(getattr(settings, 'MLCORE_FULL_INGESTION_TEXTFILE_METRICS_PATH', '') or '').strip()
     if not value:
         return None
     return Path(value)
+
+
+def configured_full_ingestion_lease_timeout_seconds() -> int:
+    return max(60, int(getattr(settings, 'MLCORE_FULL_INGESTION_LEASE_TIMEOUT_SECONDS', 60 * 30)))
+
+
+def full_ingestion_lease_is_stale(
+    lease: FullIngestionLease,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    reference = now or timezone.now()
+    return (reference - lease.heartbeat_at).total_seconds() > configured_full_ingestion_lease_timeout_seconds()
+
+
+def get_active_full_ingestion_lease(provider: str) -> FullIngestionLease | None:
+    lease = FullIngestionLease.objects.filter(provider=provider).first()
+    if lease is None:
+        return None
+    if lease.status != FULL_INGESTION_STATUS_RUNNING:
+        return None
+    if full_ingestion_lease_is_stale(lease):
+        return None
+    return lease
+
+
+def full_ingestion_conflict_metadata(provider: str) -> dict[str, str] | None:
+    lease = get_active_full_ingestion_lease(provider)
+    if lease is None:
+        return None
+    return {
+        'reason': 'full_ingestion_active',
+        'lease_run_id': lease.holder_run_id,
+        'lease_provider': lease.provider,
+        'lease_source_version': lease.source_version,
+        'lease_heartbeat_at': lease.heartbeat_at.isoformat(),
+    }
+
+
+def acquire_full_ingestion_lease(
+    *,
+    provider: str,
+    run_id: str,
+    source_version: str,
+    stage: str,
+    metadata: dict[str, Any] | None = None,
+) -> FullIngestionLease:
+    now = timezone.now()
+    payload = dict(metadata or {})
+    payload.update(
+        {
+            'run_id': run_id,
+            'source_version': source_version,
+            'stage': stage,
+        }
+    )
+    with transaction.atomic():
+        lease = FullIngestionLease.objects.select_for_update().filter(provider=provider).first()
+        if lease is None:
+            try:
+                return FullIngestionLease.objects.create(
+                    provider=provider,
+                    holder_run_id=run_id,
+                    source_version=source_version,
+                    status=FULL_INGESTION_STATUS_RUNNING,
+                    metadata=payload,
+                )
+            except IntegrityError:
+                lease = FullIngestionLease.objects.select_for_update().get(provider=provider)
+
+        if (
+            lease.status == FULL_INGESTION_STATUS_RUNNING
+            and lease.holder_run_id
+            and lease.holder_run_id != run_id
+            and not full_ingestion_lease_is_stale(lease, now=now)
+        ):
+            raise FullIngestionLeaseHeldError(
+                f"Provider '{provider}' is already locked by full-ingestion run {lease.holder_run_id}."
+            )
+
+        lease.holder_type = 'full_ingestion'
+        lease.holder_run_id = run_id
+        lease.source_version = source_version
+        lease.status = FULL_INGESTION_STATUS_RUNNING
+        lease.metadata = {
+            **lease.metadata,
+            **payload,
+        }
+        lease.released_at = None
+        lease.save(
+            update_fields=[
+                'holder_type',
+                'holder_run_id',
+                'source_version',
+                'status',
+                'metadata',
+                'released_at',
+                'heartbeat_at',
+            ]
+        )
+        return lease
+
+
+def touch_full_ingestion_lease(
+    *,
+    provider: str,
+    run_id: str,
+    stage: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    payload = dict(metadata or {})
+    payload['stage'] = stage
+    lease = FullIngestionLease.objects.filter(
+        provider=provider,
+        holder_run_id=run_id,
+    ).first()
+    if lease is None:
+        return
+
+    lease.status = FULL_INGESTION_STATUS_RUNNING
+    lease.metadata = {
+        **lease.metadata,
+        **payload,
+    }
+    lease.released_at = None
+    lease.save(update_fields=['status', 'metadata', 'released_at', 'heartbeat_at'])
+
+
+def release_full_ingestion_lease(
+    *,
+    provider: str,
+    run_id: str,
+    status: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    payload = dict(metadata or {})
+    payload['released_status'] = status
+    FullIngestionLease.objects.filter(
+        provider=provider,
+        holder_run_id=run_id,
+    ).update(
+        status=status,
+        metadata=payload,
+        heartbeat_at=timezone.now(),
+        released_at=timezone.now(),
+    )
 
 
 def full_ingestion_run_root(
@@ -563,78 +692,32 @@ def execute_full_ingestion_partition_stage(
             'artifacts_discovered': 0,
             'artifacts_partitioned': 0,
             'input_bytes_partitioned': 0,
+            'rows_parsed': 0,
+            'rows_resolved': 0,
+            'rows_unresolved': 0,
+            'rows_malformed': 0,
+            'chunks_written': 0,
             'partitions_completed': 0,
             'partitions_failed': 0,
         },
     )
-    write_full_ingestion_plan(running_plan)
-    write_full_ingestion_metrics(running_plan)
+    _persist_full_ingestion_state(running_plan)
 
     provider = get_full_ingestion_provider(running_plan.provider)
-    artifacts_by_partition: dict[int, list[FullIngestionPartitionArtifact]] = defaultdict(list)
-    counters = dict(running_plan.counters)
-
     try:
-        for artifact in provider.iter_partition_artifacts(running_plan):
-            artifacts_by_partition[artifact.partition_index].append(artifact)
-            counters['artifacts_discovered'] = int(counters.get('artifacts_discovered') or 0) + 1
-            counters['artifacts_partitioned'] = int(counters.get('artifacts_partitioned') or 0) + 1
-            counters['input_bytes_partitioned'] = int(counters.get('input_bytes_partitioned') or 0) + artifact.size_bytes
-            running_plan = replace(
-                running_plan,
-                counters=counters,
-                updated_at=datetime.now(tz=UTC).isoformat(),
-            )
-            write_full_ingestion_plan(running_plan)
-            write_full_ingestion_metrics(running_plan)
+        return provider.extract_archive(running_plan)
     except Exception:
         failed_plan = replace(
             running_plan,
             status=FULL_INGESTION_STATUS_FAILED,
             updated_at=datetime.now(tz=UTC).isoformat(),
             counters={
-                **counters,
+                **running_plan.counters,
                 'partitions_failed': running_plan.partition_count,
             },
         )
-        write_full_ingestion_plan(failed_plan)
-        write_full_ingestion_metrics(failed_plan)
+        _persist_full_ingestion_state(failed_plan)
         raise
-
-    finalized_partitions: list[FullIngestionPartitionPlan] = []
-    for partition in running_plan.partitions:
-        artifacts = sorted(
-            artifacts_by_partition.get(partition.index, []),
-            key=lambda artifact: artifact.relative_path,
-        )
-        write_full_ingestion_partition_manifest(
-            running_plan,
-            partition=partition,
-            artifacts=artifacts,
-        )
-        finalized_partitions.append(
-            replace(
-                partition,
-                state='partitioned',
-                actual_input_bytes=sum(artifact.size_bytes for artifact in artifacts),
-                actual_artifact_count=len(artifacts),
-            )
-        )
-
-    completed_counters = {
-        **counters,
-        'partitions_completed': len(finalized_partitions),
-        'partitions_failed': 0,
-    }
-    completed_plan = replace(
-        running_plan,
-        updated_at=datetime.now(tz=UTC).isoformat(),
-        counters=completed_counters,
-        partitions=finalized_partitions,
-    )
-    write_full_ingestion_plan(completed_plan)
-    write_full_ingestion_metrics(completed_plan)
-    return completed_plan
 
 
 def full_ingestion_partition_manifest_path(
@@ -649,7 +732,7 @@ def write_full_ingestion_partition_manifest(
     plan: FullIngestionPlan,
     *,
     partition: FullIngestionPartitionPlan,
-    artifacts: list[FullIngestionPartitionArtifact],
+    chunks: list[dict[str, int | str]],
 ) -> Path:
     path = full_ingestion_partition_manifest_path(plan, partition_key=partition.partition_key)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -660,17 +743,9 @@ def write_full_ingestion_partition_manifest(
         'partition_key': partition.partition_key,
         'partition_index': partition.index,
         'stage': FULL_INGESTION_STAGE_PARTITION,
-        'artifact_count': len(artifacts),
-        'total_input_bytes': sum(artifact.size_bytes for artifact in artifacts),
-        'artifacts': [
-            {
-                'source_member_name': artifact.source_member_name,
-                'relative_path': artifact.relative_path,
-                'size_bytes': artifact.size_bytes,
-                'sha256': artifact.sha256,
-            }
-            for artifact in artifacts
-        ],
+        'event_chunk_count': len(chunks),
+        'total_input_bytes': sum(int(chunk.get('size_bytes') or 0) for chunk in chunks),
+        'event_chunks': list(chunks),
     }
     temp_path = path.with_name(path.name + '.tmp')
     temp_path.write_text(
@@ -687,13 +762,13 @@ def execute_full_ingestion_copy_stage(
     force: bool = False,
 ) -> FullIngestionPlan:
     if any(partition.state not in ('partitioned', 'loaded') for partition in plan.partitions):
-        raise ValueError('Copy stage requires all partitions to be materialized first.')
+        raise ValueError('Copy stage requires all partitions to be extracted first.')
 
     if all(partition.state == 'loaded' for partition in plan.partitions) and not force:
         return plan
 
     provider = get_full_ingestion_provider(plan.provider)
-    provider.ensure_staging_tables()
+    provider.ensure_load_tables()
 
     running_plan = replace(
         plan,
@@ -702,52 +777,81 @@ def execute_full_ingestion_copy_stage(
         updated_at=datetime.now(tz=UTC).isoformat(),
         counters={
             **plan.counters,
-            'rows_parsed': 0 if force else int(plan.counters.get('rows_parsed') or 0),
             'rows_staged': 0 if force else int(plan.counters.get('rows_staged') or 0),
-            'rows_resolved': 0 if force else int(plan.counters.get('rows_resolved') or 0),
-            'rows_unresolved': 0 if force else int(plan.counters.get('rows_unresolved') or 0),
-            'rows_malformed': 0 if force else int(plan.counters.get('rows_malformed') or 0),
+            'session_rows_loaded': 0 if force else int(plan.counters.get('session_rows_loaded') or 0),
+            'chunks_loaded': 0 if force else int(plan.counters.get('chunks_loaded') or 0),
             'partitions_loaded': 0 if force else int(plan.counters.get('partitions_loaded') or 0),
         },
     )
-    write_full_ingestion_plan(running_plan)
-    write_full_ingestion_metrics(running_plan)
+    _persist_full_ingestion_state(running_plan)
 
     counters = dict(running_plan.counters)
     finalized_partitions: list[FullIngestionPartitionPlan] = list(running_plan.partitions)
-    loaded_count = 0 if force else sum(1 for partition in finalized_partitions if partition.state == 'loaded')
-    counters['partitions_loaded'] = loaded_count
+    partition_index_by_key = {partition.partition_key: index for index, partition in enumerate(finalized_partitions)}
+    counters['partitions_loaded'] = 0 if force else sum(1 for partition in finalized_partitions if partition.state == 'loaded')
+    pending_partition_keys = [
+        partition.partition_key
+        for partition in finalized_partitions
+        if force or partition.state != 'loaded'
+    ]
+
+    def _load_partition_lane(partition_key: str) -> tuple[str, FullIngestionCopyResult]:
+        close_old_connections()
+        try:
+            partition = finalized_partitions[partition_index_by_key[partition_key]]
+            result = provider.load_partition_to_load_tables(running_plan, partition)
+            return partition_key, result
+        finally:
+            close_old_connections()
 
     try:
-        for index, partition in enumerate(finalized_partitions):
-            if partition.state == 'loaded' and not force:
-                continue
+        future_to_partition: dict[Any, str] = {}
+        partition_iter = iter(pending_partition_keys)
+        with ThreadPoolExecutor(max_workers=max(1, plan.load_workers)) as executor:
+            for _ in range(min(max(1, plan.load_workers), len(pending_partition_keys))):
+                partition_key = next(partition_iter, None)
+                if partition_key is None:
+                    break
+                future = executor.submit(_load_partition_lane, partition_key)
+                future_to_partition[future] = partition_key
 
-            result = provider.load_partition_to_staging(running_plan, partition)
-            counters['rows_parsed'] = int(counters.get('rows_parsed') or 0) + result.rows_parsed
-            counters['rows_staged'] = int(counters.get('rows_staged') or 0) + result.rows_staged
-            counters['rows_resolved'] = int(counters.get('rows_resolved') or 0) + result.rows_resolved
-            counters['rows_unresolved'] = int(counters.get('rows_unresolved') or 0) + result.rows_unresolved
-            counters['rows_malformed'] = int(counters.get('rows_malformed') or 0) + result.rows_malformed
-            counters['partitions_loaded'] = int(counters.get('partitions_loaded') or 0) + 1
-            finalized_partitions[index] = replace(partition, state='loaded')
-            write_full_ingestion_copy_manifest(
-                running_plan,
-                partition=finalized_partitions[index],
-                result=result,
-            )
-            running_plan = replace(
-                running_plan,
-                updated_at=datetime.now(tz=UTC).isoformat(),
-                counters=dict(counters),
-                partitions=list(finalized_partitions),
-            )
-            write_full_ingestion_plan(running_plan)
-            write_full_ingestion_metrics(running_plan)
+            while future_to_partition:
+                done, _ = wait(future_to_partition.keys(), return_when=FIRST_COMPLETED)
+                for future in done:
+                    partition_key = future_to_partition.pop(future)
+                    try:
+                        _, result = future.result()
+                    except Exception:
+                        index = partition_index_by_key[partition_key]
+                        finalized_partitions[index] = replace(finalized_partitions[index], state='failed')
+                        raise
+                    index = partition_index_by_key[partition_key]
+                    partition = finalized_partitions[index]
+                    counters['rows_staged'] = int(counters.get('rows_staged') or 0) + result.rows_loaded
+                    counters['session_rows_loaded'] = (
+                        int(counters.get('session_rows_loaded') or 0) + result.session_rows_loaded
+                    )
+                    counters['chunks_loaded'] = int(counters.get('chunks_loaded') or 0) + result.chunks_loaded
+                    counters['partitions_loaded'] = int(counters.get('partitions_loaded') or 0) + 1
+                    finalized_partitions[index] = replace(partition, state='loaded')
+                    write_full_ingestion_copy_manifest(
+                        running_plan,
+                        partition=finalized_partitions[index],
+                        result=result,
+                    )
+                    running_plan = replace(
+                        running_plan,
+                        updated_at=datetime.now(tz=UTC).isoformat(),
+                        counters=dict(counters),
+                        partitions=list(finalized_partitions),
+                    )
+                    _persist_full_ingestion_state(running_plan)
+
+                    next_partition_key = next(partition_iter, None)
+                    if next_partition_key is not None:
+                        next_future = executor.submit(_load_partition_lane, next_partition_key)
+                        future_to_partition[next_future] = next_partition_key
     except Exception:
-        if 'index' in locals():
-            failed_partition = finalized_partitions[index]
-            finalized_partitions[index] = replace(failed_partition, state='failed')
         failed_plan = replace(
             running_plan,
             status=FULL_INGESTION_STATUS_FAILED,
@@ -760,8 +864,7 @@ def execute_full_ingestion_copy_stage(
             },
             partitions=list(finalized_partitions),
         )
-        write_full_ingestion_plan(failed_plan)
-        write_full_ingestion_metrics(failed_plan)
+        _persist_full_ingestion_state(failed_plan)
         raise
 
     completed_plan = replace(
@@ -770,8 +873,7 @@ def execute_full_ingestion_copy_stage(
         counters=dict(counters),
         partitions=list(finalized_partitions),
     )
-    write_full_ingestion_plan(completed_plan)
-    write_full_ingestion_metrics(completed_plan)
+    _persist_full_ingestion_state(completed_plan)
     return completed_plan
 
 
@@ -781,7 +883,7 @@ def execute_full_ingestion_merge_stage(
     force: bool = False,
 ) -> FullIngestionPlan:
     if any(partition.state not in ('loaded', 'merged') for partition in plan.partitions):
-        raise ValueError('Merge stage requires all partitions to be loaded into staging first.')
+        raise ValueError('Merge stage requires all partitions to be loaded into lean load tables first.')
 
     if all(partition.state == 'merged' for partition in plan.partitions) and not force:
         return plan
@@ -798,68 +900,27 @@ def execute_full_ingestion_merge_stage(
             **plan.counters,
             'rows_merged': 0 if force else int(plan.counters.get('rows_merged') or 0),
             'rows_deduplicated': 0 if force else int(plan.counters.get('rows_deduplicated') or 0),
-            'rows_resolved': 0 if force else int(plan.counters.get('rows_resolved') or 0),
-            'rows_unresolved': 0 if force else int(plan.counters.get('rows_unresolved') or 0),
             'partitions_merged': 0 if force else int(plan.counters.get('partitions_merged') or 0),
         },
     )
-    write_full_ingestion_plan(running_plan)
-    write_full_ingestion_metrics(running_plan)
-
-    counters = dict(running_plan.counters)
-    finalized_partitions: list[FullIngestionPartitionPlan] = list(running_plan.partitions)
-    merged_count = 0 if force else sum(1 for partition in finalized_partitions if partition.state == 'merged')
-    counters['partitions_merged'] = merged_count
-
+    _persist_full_ingestion_state(running_plan)
     try:
-        for index, partition in enumerate(finalized_partitions):
-            if partition.state == 'merged' and not force:
-                continue
-
-            result = provider.merge_partition_to_final(
-                running_plan,
-                partition,
-                source_ingestion_run=source_ingestion_run,
-            )
-            counters['rows_merged'] = int(counters.get('rows_merged') or 0) + result.rows_merged
-            counters['rows_deduplicated'] = (
-                int(counters.get('rows_deduplicated') or 0) + result.rows_deduplicated
-            )
-            counters['rows_resolved'] = int(counters.get('rows_resolved') or 0) + result.rows_resolved
-            counters['rows_unresolved'] = int(counters.get('rows_unresolved') or 0) + result.rows_unresolved
-            counters['partitions_merged'] = int(counters.get('partitions_merged') or 0) + 1
-            finalized_partitions[index] = replace(partition, state='merged')
-            write_full_ingestion_merge_manifest(
-                running_plan,
-                partition=finalized_partitions[index],
-                result=result,
-            )
-            running_plan = replace(
-                running_plan,
-                updated_at=datetime.now(tz=UTC).isoformat(),
-                counters=dict(counters),
-                partitions=list(finalized_partitions),
-            )
-            write_full_ingestion_plan(running_plan)
-            write_full_ingestion_metrics(running_plan)
+        result = provider.finalize_into_final_tables(
+            running_plan,
+            source_ingestion_run=source_ingestion_run,
+        )
     except Exception as exc:
-        if 'index' in locals():
-            failed_partition = finalized_partitions[index]
-            finalized_partitions[index] = replace(failed_partition, state='failed')
         failed_plan = replace(
             running_plan,
             status=FULL_INGESTION_STATUS_FAILED,
             updated_at=datetime.now(tz=UTC).isoformat(),
             counters={
-                **counters,
-                'partitions_failed': sum(
-                    1 for partition in finalized_partitions if partition.state == 'failed'
-                ),
+                **running_plan.counters,
+                'partitions_failed': running_plan.partition_count,
             },
-            partitions=list(finalized_partitions),
+            partitions=[replace(partition, state='failed') for partition in running_plan.partitions],
         )
-        write_full_ingestion_plan(failed_plan)
-        write_full_ingestion_metrics(failed_plan)
+        _persist_full_ingestion_state(failed_plan)
         _mark_full_ingestion_source_run_failed(source_ingestion_run, failed_plan, error=str(exc))
         raise
 
@@ -868,11 +929,23 @@ def execute_full_ingestion_merge_stage(
         stage=FULL_INGESTION_STAGE_COMPLETE,
         status=FULL_INGESTION_STATUS_SUCCEEDED,
         updated_at=datetime.now(tz=UTC).isoformat(),
-        counters=dict(counters),
-        partitions=list(finalized_partitions),
+        counters={
+            **running_plan.counters,
+            'rows_merged': result.rows_merged,
+            'rows_deduplicated': result.rows_deduplicated,
+            'rows_resolved': result.rows_resolved,
+            'rows_unresolved': result.rows_unresolved,
+            'partitions_merged': running_plan.partition_count,
+            'partitions_failed': 0,
+        },
+        partitions=[replace(partition, state='merged') for partition in running_plan.partitions],
     )
-    write_full_ingestion_plan(completed_plan)
-    write_full_ingestion_metrics(completed_plan)
+    write_full_ingestion_merge_manifest(
+        completed_plan,
+        partition=replace(completed_plan.partitions[0], partition_key='finalize', index=-1),
+        result=result,
+    )
+    _persist_full_ingestion_state(completed_plan)
     finalize_full_ingestion_source_run(source_ingestion_run, completed_plan)
     return completed_plan
 
@@ -884,56 +957,13 @@ def execute_full_ingestion_pipeline(
 ) -> FullIngestionPlan:
     if plan.stage == FULL_INGESTION_STAGE_PLANNED:
         plan = execute_full_ingestion_partition_stage(plan, force=force)
-    elif any(partition.state == 'pending' for partition in plan.partitions):
-        raise ValueError('Pipeline execution requires all partitions to be materialized first.')
-
-    provider = get_full_ingestion_provider(plan.provider)
-    provider.ensure_staging_tables()
-    source_ingestion_run, source_ingestion_run_id = ensure_full_ingestion_source_run(plan)
-    lane_count = max(1, min(plan.load_workers, plan.merge_workers))
-
-    normalized_partitions = _normalize_partitions_for_pipeline(plan.partitions, force=force)
-    running_plan = replace(
-        plan,
-        stage=FULL_INGESTION_STAGE_PIPELINE,
-        status=FULL_INGESTION_STATUS_RUNNING,
-        source_ingestion_run_id=str(source_ingestion_run_id),
-        updated_at=datetime.now(tz=UTC).isoformat(),
-        counters=_pipeline_counters_for_start(plan.counters, force=force),
-        partitions=normalized_partitions,
-    )
-    _persist_full_ingestion_state(running_plan)
-
-    coordinator = _FullIngestionPipelineCoordinator(
-        plan=running_plan,
-        provider=provider,
-        source_ingestion_run=source_ingestion_run,
-    )
-    try:
-        completed_plan = coordinator.run(lane_count=lane_count)
-    except Exception as exc:
-        failed_plan = replace(
-            coordinator.plan,
-            status=FULL_INGESTION_STATUS_FAILED,
-            updated_at=datetime.now(tz=UTC).isoformat(),
-            counters={
-                **coordinator.plan.counters,
-                'partitions_failed': _pipeline_failed_partition_count(coordinator.plan.partitions),
-            },
-        )
-        _persist_full_ingestion_state(failed_plan)
-        _mark_full_ingestion_source_run_failed(source_ingestion_run, failed_plan, error=str(exc))
-        raise
-
-    final_plan = replace(
-        completed_plan,
-        stage=FULL_INGESTION_STAGE_COMPLETE,
-        status=FULL_INGESTION_STATUS_SUCCEEDED,
-        updated_at=datetime.now(tz=UTC).isoformat(),
-    )
-    _persist_full_ingestion_state(final_plan)
-    finalize_full_ingestion_source_run(source_ingestion_run, final_plan)
-    return final_plan
+    if any(partition.state == 'pending' for partition in plan.partitions):
+        raise ValueError('Pipeline execution requires all partitions to be extracted first.')
+    if any(partition.state == 'partitioned' for partition in plan.partitions):
+        plan = execute_full_ingestion_copy_stage(plan, force=force)
+    if any(partition.state == 'loaded' for partition in plan.partitions):
+        plan = execute_full_ingestion_merge_stage(plan, force=force)
+    return plan
 
 
 def full_ingestion_copy_manifest_path(
@@ -959,12 +989,10 @@ def write_full_ingestion_copy_manifest(
         'partition_key': partition.partition_key,
         'partition_index': partition.index,
         'stage': FULL_INGESTION_STAGE_COPY,
-        'rows_parsed': result.rows_parsed,
-        'rows_staged': result.rows_staged,
-        'rows_resolved': result.rows_resolved,
-        'rows_unresolved': result.rows_unresolved,
-        'rows_malformed': result.rows_malformed,
-        'stage_file_path': result.stage_file_path,
+        'rows_loaded': result.rows_loaded,
+        'session_rows_loaded': result.session_rows_loaded,
+        'chunks_loaded': result.chunks_loaded,
+        'copy_manifest_path': result.copy_manifest_path,
     }
     temp_path = path.with_name(path.name + '.tmp')
     temp_path.write_text(
@@ -1010,230 +1038,19 @@ def write_full_ingestion_merge_manifest(
     return path
 
 
-@dataclass
-class _PipelinePartitionOutcome:
-    partition_key: str
-    copy_result: FullIngestionCopyResult
-    merge_result: FullIngestionMergeResult
-    copy_completed: bool
-
-
-class _FullIngestionPipelineCoordinator:
-    def __init__(
-        self,
-        *,
-        plan: FullIngestionPlan,
-        provider: FullDatasetIngestionProvider,
-        source_ingestion_run: SourceIngestionRun,
-    ) -> None:
-        self.plan = plan
-        self.provider = provider
-        self.source_ingestion_run = source_ingestion_run
-        self._lock = Lock()
-
-    def run(self, *, lane_count: int) -> FullIngestionPlan:
-        partition_keys = [
-            partition.partition_key
-            for partition in self.plan.partitions
-            if partition.state != 'merged'
-        ]
-        if not partition_keys:
-            return self.plan
-
-        partition_iter = iter(partition_keys)
-        future_to_partition: dict[Any, str] = {}
-        with ThreadPoolExecutor(max_workers=lane_count) as executor:
-            for _ in range(min(lane_count, len(partition_keys))):
-                partition_key = next(partition_iter, None)
-                if partition_key is None:
-                    break
-                future = executor.submit(self._run_partition_lane, partition_key)
-                future_to_partition[future] = partition_key
-
-            while future_to_partition:
-                done, _ = wait(future_to_partition.keys(), return_when=FIRST_COMPLETED)
-                for future in done:
-                    partition_key = future_to_partition.pop(future)
-                    outcome = future.result()
-                    self._record_partition_success(outcome)
-                    next_partition_key = next(partition_iter, None)
-                    if next_partition_key is not None:
-                        next_future = executor.submit(self._run_partition_lane, next_partition_key)
-                        future_to_partition[next_future] = next_partition_key
-
-        return self.plan
-
-    def _run_partition_lane(self, partition_key: str) -> _PipelinePartitionOutcome:
-        close_old_connections()
-        try:
-            self.provider.ensure_staging_tables()
-            partition = self._partition_by_key(partition_key)
-            if partition.state == 'loaded':
-                copy_result = FullIngestionCopyResult(
-                    partition_key=partition_key,
-                    rows_parsed=0,
-                    rows_staged=0,
-                    rows_resolved=0,
-                    rows_unresolved=0,
-                    rows_malformed=0,
-                    stage_file_path='',
-                )
-                copy_completed = False
-            else:
-                self._mark_partition_state(partition_key, 'loading')
-                partition = self._partition_by_key(partition_key)
-                copy_result = self.provider.load_partition_to_staging(self.plan, partition)
-                copy_completed = True
-            self._mark_partition_state(partition_key, 'merging')
-            partition = self._partition_by_key(partition_key)
-            merge_result = self.provider.merge_partition_to_final(
-                self.plan,
-                partition,
-                source_ingestion_run=self.source_ingestion_run,
-            )
-            return _PipelinePartitionOutcome(
-                partition_key=partition_key,
-                copy_result=copy_result,
-                merge_result=merge_result,
-                copy_completed=copy_completed,
-            )
-        except Exception:
-            self._mark_partition_state(partition_key, 'failed')
-            raise
-        finally:
-            close_old_connections()
-
-    def _record_partition_success(self, outcome: _PipelinePartitionOutcome) -> None:
-        with self._lock:
-            partition = self._partition_by_key(outcome.partition_key)
-            if outcome.copy_result.stage_file_path:
-                write_full_ingestion_copy_manifest(
-                    self.plan,
-                    partition=partition,
-                    result=outcome.copy_result,
-                )
-            write_full_ingestion_merge_manifest(
-                self.plan,
-                partition=partition,
-                result=outcome.merge_result,
-            )
-            counters = {
-                **self.plan.counters,
-                'rows_parsed': int(self.plan.counters.get('rows_parsed') or 0) + outcome.copy_result.rows_parsed,
-                'rows_staged': int(self.plan.counters.get('rows_staged') or 0) + outcome.copy_result.rows_staged,
-                'rows_merged': int(self.plan.counters.get('rows_merged') or 0) + outcome.merge_result.rows_merged,
-                'rows_deduplicated': (
-                    int(self.plan.counters.get('rows_deduplicated') or 0) + outcome.merge_result.rows_deduplicated
-                ),
-                'rows_resolved': int(self.plan.counters.get('rows_resolved') or 0) + outcome.merge_result.rows_resolved,
-                'rows_unresolved': (
-                    int(self.plan.counters.get('rows_unresolved') or 0) + outcome.merge_result.rows_unresolved
-                ),
-                'rows_malformed': (
-                    int(self.plan.counters.get('rows_malformed') or 0) + outcome.copy_result.rows_malformed
-                ),
-                'partitions_loaded': (
-                    int(self.plan.counters.get('partitions_loaded') or 0)
-                    + (1 if outcome.copy_completed else 0)
-                ),
-                'partitions_merged': int(self.plan.counters.get('partitions_merged') or 0) + 1,
-                'partitions_failed': _pipeline_failed_partition_count(self.plan.partitions),
-            }
-            self.plan = replace(
-                self.plan,
-                updated_at=datetime.now(tz=UTC).isoformat(),
-                counters=counters,
-                partitions=_replace_partition_state(self.plan.partitions, outcome.partition_key, 'merged'),
-            )
-            _persist_full_ingestion_state(self.plan)
-
-    def _mark_partition_state(self, partition_key: str, state: str) -> None:
-        with self._lock:
-            self.plan = replace(
-                self.plan,
-                updated_at=datetime.now(tz=UTC).isoformat(),
-                partitions=_replace_partition_state(self.plan.partitions, partition_key, state),
-                counters={
-                    **self.plan.counters,
-                    'partitions_failed': _pipeline_failed_partition_count(
-                        _replace_partition_state(self.plan.partitions, partition_key, state)
-                    ),
-                },
-            )
-            _persist_full_ingestion_state(self.plan)
-
-    def _partition_by_key(self, partition_key: str) -> FullIngestionPartitionPlan:
-        for partition in self.plan.partitions:
-            if partition.partition_key == partition_key:
-                return partition
-        raise ValueError(f'Unknown full-ingestion partition {partition_key}')
-
-
-def _pipeline_counters_for_start(counters: dict[str, int], *, force: bool) -> dict[str, int]:
-    if not force:
-        return {
-            **counters,
-            'rows_parsed': int(counters.get('rows_parsed') or 0),
-            'rows_staged': int(counters.get('rows_staged') or 0),
-            'rows_merged': int(counters.get('rows_merged') or 0),
-            'rows_deduplicated': int(counters.get('rows_deduplicated') or 0),
-            'rows_resolved': int(counters.get('rows_resolved') or 0),
-            'rows_unresolved': int(counters.get('rows_unresolved') or 0),
-            'rows_malformed': int(counters.get('rows_malformed') or 0),
-            'partitions_loaded': int(counters.get('partitions_loaded') or 0),
-            'partitions_merged': int(counters.get('partitions_merged') or 0),
-            'partitions_failed': int(counters.get('partitions_failed') or 0),
-        }
-    return {
-        **counters,
-        'rows_parsed': 0,
-        'rows_staged': 0,
-        'rows_merged': 0,
-        'rows_deduplicated': 0,
-        'rows_resolved': 0,
-        'rows_unresolved': 0,
-        'rows_malformed': 0,
-        'partitions_loaded': 0,
-        'partitions_merged': 0,
-        'partitions_failed': 0,
-    }
-
-
-def _normalize_partitions_for_pipeline(
-    partitions: list[FullIngestionPartitionPlan],
-    *,
-    force: bool,
-) -> list[FullIngestionPartitionPlan]:
-    normalized: list[FullIngestionPartitionPlan] = []
-    for partition in partitions:
-        if force and partition.state in ('loaded', 'merged', 'loading', 'merging'):
-            normalized.append(replace(partition, state='partitioned'))
-            continue
-        if partition.state in ('loading', 'merging'):
-            normalized.append(replace(partition, state='partitioned'))
-            continue
-        normalized.append(partition)
-    return normalized
-
-
-def _replace_partition_state(
-    partitions: list[FullIngestionPartitionPlan],
-    partition_key: str,
-    state: str,
-) -> list[FullIngestionPartitionPlan]:
-    return [
-        replace(partition, state=state) if partition.partition_key == partition_key else partition
-        for partition in partitions
-    ]
-
-
-def _pipeline_failed_partition_count(partitions: list[FullIngestionPartitionPlan]) -> int:
-    return sum(1 for partition in partitions if partition.state == 'failed')
-
-
 def _persist_full_ingestion_state(plan: FullIngestionPlan) -> None:
     write_full_ingestion_plan(plan)
     write_full_ingestion_metrics(plan)
+    touch_full_ingestion_lease(
+        provider=plan.provider,
+        run_id=plan.run_id,
+        stage=plan.stage,
+        metadata={
+            'source_version': plan.source_version,
+            'manifest_path': plan.manifest_path,
+            'status': plan.status,
+        },
+    )
 
 
 def write_full_ingestion_plan(plan: FullIngestionPlan) -> Path:
@@ -1264,7 +1081,12 @@ def write_full_ingestion_metrics(plan: FullIngestionPlan) -> Path | None:
 
     created_at = datetime.fromisoformat(plan.created_at)
     updated_at = datetime.fromisoformat(plan.updated_at)
-    elapsed_seconds = max(0.0, (updated_at - created_at).total_seconds())
+    elapsed_reference = (
+        datetime.now(tz=UTC)
+        if plan.status in (FULL_INGESTION_STATUS_PLANNED, FULL_INGESTION_STATUS_RUNNING)
+        else updated_at
+    )
+    elapsed_seconds = max(0.0, (elapsed_reference - created_at).total_seconds())
 
     lines = [
         '# HELP mlcore_full_ingestion_active Whether a full dataset ingestion run is currently active.',
@@ -1402,183 +1224,559 @@ def write_full_ingestion_metrics(plan: FullIngestionPlan) -> Path | None:
     return path
 
 
-def ensure_listenbrainz_staging_tables() -> None:
+@dataclass(frozen=True)
+class ListenBrainzIdentitySnapshot:
+    mbid_to_track_id: dict[str, str]
+    spotify_to_track_id: dict[str, str]
+
+    def resolve_track_id(self, parsed_payload: Any) -> str:
+        if parsed_payload.recording_mbid is not None:
+            resolved = self.mbid_to_track_id.get(str(parsed_payload.recording_mbid))
+            if resolved:
+                return resolved
+
+        spotify_id = str(parsed_payload.track_identifier_candidates.get('spotify_id') or '').strip()
+        if spotify_id:
+            resolved = self.spotify_to_track_id.get(spotify_id)
+            if resolved:
+                return resolved
+
+        return ''
+
+
+class _ListenBrainzPartitionChunkWriter:
+    def __init__(
+        self,
+        *,
+        partition_root: Path,
+        partition_key: str,
+        chunk_target_rows: int,
+        file_prefix: str,
+    ) -> None:
+        self.partition_root = partition_root
+        self.partition_key = partition_key
+        self.chunk_target_rows = chunk_target_rows
+        self.file_prefix = file_prefix
+        self.chunk_index = 0
+        self.current_rows = 0
+        self.current_path: Path | None = None
+        self.current_handle = None
+        self.current_writer = None
+        self.chunk_manifests: list[dict[str, int | str]] = []
+
+    def write_row(self, row: list[str]) -> None:
+        if self.current_writer is None or self.current_rows >= self.chunk_target_rows:
+            self._rotate_chunk()
+        assert self.current_writer is not None
+        self.current_writer.writerow(row)
+        self.current_rows += 1
+
+    def finish(self) -> list[dict[str, int | str]]:
+        self._close_current_chunk()
+        return list(self.chunk_manifests)
+
+    def _rotate_chunk(self) -> None:
+        self._close_current_chunk()
+        self.chunk_index += 1
+        events_root = self.partition_root / self.partition_key / 'events'
+        events_root.mkdir(parents=True, exist_ok=True)
+        self.current_path = events_root / f'{self.file_prefix}-{self.chunk_index:05d}.csv'
+        self.current_handle = self.current_path.open('w', encoding='utf-8', newline='')
+        self.current_writer = csv.writer(self.current_handle)
+        self.current_rows = 0
+
+    def _close_current_chunk(self) -> None:
+        if self.current_handle is None or self.current_path is None:
+            return
+        self.current_handle.close()
+        self.chunk_manifests.append(
+            {
+                'relative_path': self.current_path.relative_to(self.partition_root / self.partition_key).as_posix(),
+                'row_count': self.current_rows,
+                'size_bytes': self.current_path.stat().st_size,
+            }
+        )
+        self.current_handle = None
+        self.current_path = None
+        self.current_writer = None
+        self.current_rows = 0
+
+
+def build_listenbrainz_identity_snapshot() -> ListenBrainzIdentitySnapshot:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT mbid::text, juke_id::text FROM catalog_track WHERE mbid IS NOT NULL")
+        mbid_rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT external_id, track_id::text
+            FROM catalog_track_external_id
+            WHERE source = 'spotify'
+            """
+        )
+        spotify_rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT spotify_id, juke_id::text
+            FROM catalog_track
+            WHERE spotify_id IS NOT NULL AND spotify_id <> ''
+            """
+        )
+        spotify_track_rows = cursor.fetchall()
+
+    mbid_to_track_id = {str(mbid): str(track_id) for mbid, track_id in mbid_rows if mbid and track_id}
+    spotify_to_track_id = {
+        str(external_id): str(track_id)
+        for external_id, track_id in [*spotify_rows, *spotify_track_rows]
+        if external_id and track_id
+    }
+    return ListenBrainzIdentitySnapshot(
+        mbid_to_track_id=mbid_to_track_id,
+        spotify_to_track_id=spotify_to_track_id,
+    )
+
+
+def _initialize_listenbrainz_extract_worker(
+    identity_snapshot: ListenBrainzIdentitySnapshot,
+    partition_root: str,
+    run_id: str,
+    partition_count: int,
+    chunk_target_rows: int,
+) -> None:
+    global _LISTENBRAINZ_EXTRACT_IDENTITY_SNAPSHOT
+    global _LISTENBRAINZ_EXTRACT_PARTITION_ROOT
+    global _LISTENBRAINZ_EXTRACT_RUN_ID
+    global _LISTENBRAINZ_EXTRACT_PARTITION_COUNT
+    global _LISTENBRAINZ_EXTRACT_CHUNK_TARGET_ROWS
+
+    close_old_connections()
+    _LISTENBRAINZ_EXTRACT_IDENTITY_SNAPSHOT = identity_snapshot
+    _LISTENBRAINZ_EXTRACT_PARTITION_ROOT = partition_root
+    _LISTENBRAINZ_EXTRACT_RUN_ID = run_id
+    _LISTENBRAINZ_EXTRACT_PARTITION_COUNT = partition_count
+    _LISTENBRAINZ_EXTRACT_CHUNK_TARGET_ROWS = chunk_target_rows
+
+
+def _process_listenbrainz_spooled_member_in_worker(
+    spool_path: str,
+    origin: str,
+    member_token: str,
+) -> ListenBrainzMemberChunkResult:
+    if _LISTENBRAINZ_EXTRACT_IDENTITY_SNAPSHOT is None:
+        raise RuntimeError('listenbrainz extract worker identity snapshot was not initialized')
+
+    return _process_listenbrainz_spooled_member(
+        spool_path=spool_path,
+        origin=origin,
+        member_token=member_token,
+        partition_root=_LISTENBRAINZ_EXTRACT_PARTITION_ROOT,
+        run_id=_LISTENBRAINZ_EXTRACT_RUN_ID,
+        partition_count=_LISTENBRAINZ_EXTRACT_PARTITION_COUNT,
+        chunk_target_rows=_LISTENBRAINZ_EXTRACT_CHUNK_TARGET_ROWS,
+        identity_snapshot=_LISTENBRAINZ_EXTRACT_IDENTITY_SNAPSHOT,
+    )
+
+
+def partition_index_for_event(
+    session_key: bytes,
+    *,
+    track_id: str,
+    event_signature: bytes,
+    partition_count: int,
+) -> int:
+    digest = hashlib.sha256()
+    digest.update(session_key)
+    if track_id:
+        digest.update(track_id.encode('utf-8'))
+    else:
+        digest.update(event_signature)
+    return int.from_bytes(digest.digest()[:8], byteorder='big') % partition_count
+
+
+def _process_listenbrainz_spooled_member(
+    *,
+    spool_path: str,
+    origin: str,
+    member_token: str,
+    partition_root: str,
+    run_id: str,
+    partition_count: int,
+    chunk_target_rows: int,
+    identity_snapshot: ListenBrainzIdentitySnapshot,
+) -> ListenBrainzMemberChunkResult:
+    counters = {
+        'rows_parsed': 0,
+        'rows_resolved': 0,
+        'rows_unresolved': 0,
+        'rows_malformed': 0,
+    }
+    writers: dict[str, _ListenBrainzPartitionChunkWriter] = {}
+
+    with Path(spool_path).open('r', encoding='utf-8') as text_handle:
+        for payload, error, _, line_number, entry_index in iter_listenbrainz_json_payloads(
+            text_handle,
+            origin=origin,
+        ):
+            if error:
+                counters['rows_malformed'] += 1
+                continue
+
+            assert payload is not None
+            try:
+                parsed = parse_listenbrainz_payload(payload)
+            except ValueError:
+                counters['rows_malformed'] += 1
+                continue
+
+            counters['rows_parsed'] += 1
+            track_id = identity_snapshot.resolve_track_id(parsed)
+            if track_id:
+                counters['rows_resolved'] += 1
+            else:
+                counters['rows_unresolved'] += 1
+            partition_index = partition_index_for_event(
+                parsed.session_key,
+                track_id=track_id,
+                event_signature=parsed.source_event_signature,
+                partition_count=partition_count,
+            )
+            partition_key = f'p{partition_index:03d}'
+            writer = writers.get(partition_key)
+            if writer is None:
+                writer = _ListenBrainzPartitionChunkWriter(
+                    partition_root=Path(partition_root),
+                    partition_key=partition_key,
+                    chunk_target_rows=chunk_target_rows,
+                    file_prefix=f'{member_token}-events',
+                )
+                writers[partition_key] = writer
+
+            writer.write_row(
+                [
+                    run_id,
+                    partition_key,
+                    _bytea_hex(parsed.source_event_signature),
+                    parsed.played_at.isoformat(),
+                    _bytea_hex(parsed.session_key),
+                    track_id or r'\N',
+                    '1' if track_id else '0',
+                    f'{origin}:{line_number}:{entry_index}',
+                ]
+            )
+
+    chunk_manifests_by_partition: dict[str, list[dict[str, int | str]]] = {}
+    for partition_key, writer in writers.items():
+        chunk_manifests_by_partition[partition_key] = writer.finish()
+
+    return ListenBrainzMemberChunkResult(
+        member_token=member_token,
+        counters=counters,
+        chunk_manifests_by_partition=chunk_manifests_by_partition,
+    )
+
+
+def extract_listenbrainz_archive(plan: FullIngestionPlan) -> FullIngestionPlan:
+    identity_snapshot = build_listenbrainz_identity_snapshot()
+    chunk_target_rows = configured_full_ingestion_target_chunk_rows()
+    counters = dict(plan.counters)
+    running_plan = plan
+    spool_root = Path(plan.run_root) / 'spool'
+    spool_root.mkdir(parents=True, exist_ok=True)
+    partition_chunk_manifests: dict[str, list[dict[str, int | str]]] = {
+        partition.partition_key: [] for partition in plan.partitions
+    }
+    max_in_flight = max(1, plan.partition_workers)
+    close_old_connections()
+
+    def _record_member_result(result: ListenBrainzMemberChunkResult) -> None:
+        nonlocal counters, running_plan
+        counters['rows_parsed'] = int(counters.get('rows_parsed') or 0) + int(result.counters['rows_parsed'])
+        counters['rows_resolved'] = int(counters.get('rows_resolved') or 0) + int(result.counters['rows_resolved'])
+        counters['rows_unresolved'] = int(counters.get('rows_unresolved') or 0) + int(result.counters['rows_unresolved'])
+        counters['rows_malformed'] = int(counters.get('rows_malformed') or 0) + int(result.counters['rows_malformed'])
+        for partition_key, chunk_manifests in result.chunk_manifests_by_partition.items():
+            partition_chunk_manifests[partition_key].extend(chunk_manifests)
+        spool_path = spool_root / f'{result.member_token}.listens'
+        if spool_path.exists():
+            spool_path.unlink()
+        running_plan = replace(
+            running_plan,
+            counters=dict(counters),
+            updated_at=datetime.now(tz=UTC).isoformat(),
+        )
+        _persist_full_ingestion_state(running_plan)
+
+    with tarfile.open(Path(plan.archive_path), 'r:*') as archive, ProcessPoolExecutor(
+        max_workers=max_in_flight,
+        mp_context=multiprocessing.get_context('fork'),
+        initializer=_initialize_listenbrainz_extract_worker,
+        initargs=(
+            identity_snapshot,
+            plan.partition_root,
+            plan.run_id,
+            plan.partition_count,
+            chunk_target_rows,
+        ),
+    ) as executor:
+        future_to_member: dict[Any, str] = {}
+        member_index = 0
+        for member in archive:
+            relative_path = listenbrainz_shard_relative_path(member.name)
+            if relative_path is None:
+                continue
+
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                continue
+
+            counters['artifacts_discovered'] = int(counters.get('artifacts_discovered') or 0) + 1
+            counters['artifacts_partitioned'] = int(counters.get('artifacts_partitioned') or 0) + 1
+            counters['input_bytes_partitioned'] = int(counters.get('input_bytes_partitioned') or 0) + int(
+                member.size or 0
+            )
+            member_index += 1
+            member_token = f'm{member_index:05d}'
+            spool_path = spool_root / f'{member_token}.listens'
+            with extracted, spool_path.open('wb') as spool_handle:
+                shutil.copyfileobj(extracted, spool_handle, length=1024 * 1024)
+
+            future = executor.submit(
+                _process_listenbrainz_spooled_member_in_worker,
+                spool_path=str(spool_path),
+                origin=relative_path.as_posix(),
+                member_token=member_token,
+            )
+            future_to_member[future] = member_token
+
+            while len(future_to_member) >= max_in_flight:
+                done, _ = wait(future_to_member.keys(), return_when=FIRST_COMPLETED)
+                for done_future in done:
+                    future_to_member.pop(done_future, None)
+                    _record_member_result(done_future.result())
+
+        while future_to_member:
+            done, _ = wait(future_to_member.keys(), return_when=FIRST_COMPLETED)
+            for done_future in done:
+                future_to_member.pop(done_future, None)
+                _record_member_result(done_future.result())
+
+    finalized_partitions: list[FullIngestionPartitionPlan] = []
+    total_chunks = 0
+    for partition in running_plan.partitions:
+        chunks = partition_chunk_manifests.get(partition.partition_key, [])
+        total_chunks += len(chunks)
+        write_full_ingestion_partition_manifest(
+            running_plan,
+            partition=partition,
+            chunks=chunks,
+        )
+        finalized_partitions.append(
+            replace(
+                partition,
+                state='partitioned',
+                actual_input_bytes=sum(int(chunk['size_bytes']) for chunk in chunks),
+                actual_artifact_count=len(chunks),
+            )
+        )
+
+    completed_plan = replace(
+        running_plan,
+        updated_at=datetime.now(tz=UTC).isoformat(),
+        counters={
+            **counters,
+            'chunks_written': total_chunks,
+            'partitions_completed': len(finalized_partitions),
+            'partitions_failed': 0,
+        },
+        partitions=finalized_partitions,
+    )
+    _persist_full_ingestion_state(completed_plan)
+    return completed_plan
+
+
+def ensure_listenbrainz_load_tables() -> None:
     with connection.cursor() as cursor:
         if connection.vendor == 'postgresql':
             cursor.execute(
                 f'''
-                CREATE UNLOGGED TABLE IF NOT EXISTS {LISTENBRAINZ_EVENT_STAGE_TABLE} (
+                CREATE UNLOGGED TABLE IF NOT EXISTS {LISTENBRAINZ_EVENT_LOAD_TABLE} (
                     run_id uuid NOT NULL,
                     partition_key varchar(16) NOT NULL,
-                    origin varchar(1024) NOT NULL,
-                    line_number integer NOT NULL,
-                    entry_index integer NOT NULL,
-                    source_user_id varchar(64) NOT NULL,
+                    event_signature bytea NOT NULL,
                     played_at timestamptz NOT NULL,
                     session_key bytea NOT NULL,
-                    event_signature bytea NOT NULL,
-                    track_identifier_candidates jsonb NOT NULL,
-                    payload jsonb NOT NULL,
-                    metadata jsonb NOT NULL,
-                    recording_mbid uuid NULL,
-                    release_mbid uuid NULL,
-                    recording_msid text NOT NULL,
-                    release_msid text NOT NULL,
-                    track_name text NOT NULL,
-                    artist_name text NOT NULL,
-                    release_name text NOT NULL
+                    track_id uuid NULL,
+                    resolution_state smallint NOT NULL,
+                    cold_ref text NOT NULL
                 )
                 '''
             )
             cursor.execute(
                 f'''
-                CREATE INDEX IF NOT EXISTS {LISTENBRAINZ_EVENT_STAGE_TABLE}_run_partition_idx
-                ON {LISTENBRAINZ_EVENT_STAGE_TABLE} (run_id, partition_key)
+                CREATE INDEX IF NOT EXISTS {LISTENBRAINZ_EVENT_LOAD_TABLE}_run_partition_idx
+                ON {LISTENBRAINZ_EVENT_LOAD_TABLE} (run_id, partition_key)
+                '''
+            )
+            cursor.execute(
+                f'''
+                CREATE UNLOGGED TABLE IF NOT EXISTS {LISTENBRAINZ_SESSION_LOAD_TABLE} (
+                    run_id uuid NOT NULL,
+                    partition_key varchar(16) NOT NULL,
+                    session_key bytea NOT NULL,
+                    track_id uuid NOT NULL,
+                    first_played_at timestamptz NOT NULL,
+                    last_played_at timestamptz NOT NULL,
+                    play_count integer NOT NULL
+                )
+                '''
+            )
+            cursor.execute(
+                f'''
+                CREATE INDEX IF NOT EXISTS {LISTENBRAINZ_SESSION_LOAD_TABLE}_run_partition_idx
+                ON {LISTENBRAINZ_SESSION_LOAD_TABLE} (run_id, partition_key)
                 '''
             )
         else:
             cursor.execute(
                 f'''
-                CREATE TABLE IF NOT EXISTS {LISTENBRAINZ_EVENT_STAGE_TABLE} (
+                CREATE TABLE IF NOT EXISTS {LISTENBRAINZ_EVENT_LOAD_TABLE} (
                     run_id text NOT NULL,
                     partition_key text NOT NULL,
-                    origin text NOT NULL,
-                    line_number integer NOT NULL,
-                    entry_index integer NOT NULL,
-                    source_user_id text NOT NULL,
+                    event_signature blob NOT NULL,
                     played_at text NOT NULL,
                     session_key blob NOT NULL,
-                    event_signature blob NOT NULL,
-                    track_identifier_candidates text NOT NULL,
-                    payload text NOT NULL,
-                    metadata text NOT NULL,
-                    recording_mbid text NULL,
-                    release_mbid text NULL,
-                    recording_msid text NOT NULL,
-                    release_msid text NOT NULL,
-                    track_name text NOT NULL,
-                    artist_name text NOT NULL,
-                    release_name text NOT NULL
+                    track_id text NULL,
+                    resolution_state integer NOT NULL,
+                    cold_ref text NOT NULL
                 )
                 '''
             )
             cursor.execute(
                 f'''
-                CREATE INDEX IF NOT EXISTS {LISTENBRAINZ_EVENT_STAGE_TABLE}_run_partition_idx
-                ON {LISTENBRAINZ_EVENT_STAGE_TABLE} (run_id, partition_key)
+                CREATE INDEX IF NOT EXISTS {LISTENBRAINZ_EVENT_LOAD_TABLE}_run_partition_idx
+                ON {LISTENBRAINZ_EVENT_LOAD_TABLE} (run_id, partition_key)
+                '''
+            )
+            cursor.execute(
+                f'''
+                CREATE TABLE IF NOT EXISTS {LISTENBRAINZ_SESSION_LOAD_TABLE} (
+                    run_id text NOT NULL,
+                    partition_key text NOT NULL,
+                    session_key blob NOT NULL,
+                    track_id text NOT NULL,
+                    first_played_at text NOT NULL,
+                    last_played_at text NOT NULL,
+                    play_count integer NOT NULL
+                )
+                '''
+            )
+            cursor.execute(
+                f'''
+                CREATE INDEX IF NOT EXISTS {LISTENBRAINZ_SESSION_LOAD_TABLE}_run_partition_idx
+                ON {LISTENBRAINZ_SESSION_LOAD_TABLE} (run_id, partition_key)
                 '''
             )
 
 
-def load_listenbrainz_partition_to_staging(
+def load_listenbrainz_partition_to_load_tables(
     plan: FullIngestionPlan,
     partition: FullIngestionPartitionPlan,
 ) -> FullIngestionCopyResult:
-    partition_root = Path(plan.partition_root) / partition.partition_key
-    input_root = partition_root / 'input'
-    stage_root = partition_root / 'staging'
-    stage_root.mkdir(parents=True, exist_ok=True)
-    stage_file_path = stage_root / 'listenbrainz_event_stage.csv'
-
-    rows_parsed = 0
-    rows_staged = 0
-    rows_resolved = 0
-    rows_unresolved = 0
-    rows_malformed = 0
-
-    with stage_file_path.open('w', encoding='utf-8', newline='') as handle:
-        writer = csv.writer(handle)
-        for artifact_path in sorted(input_root.rglob('*.listens')):
-            origin = artifact_path.relative_to(input_root).as_posix()
-            with artifact_path.open('r', encoding='utf-8') as artifact_handle:
-                for payload, error, _, line_number, entry_index in iter_listenbrainz_json_payloads(
-                    artifact_handle,
-                    origin=origin,
-                ):
-                    if error:
-                        rows_malformed += 1
-                        continue
-
-                    assert payload is not None
-                    try:
-                        parsed = parse_listenbrainz_payload(payload)
-                    except ValueError:
-                        rows_malformed += 1
-                        continue
-
-                    rows_parsed += 1
-                    recording_mbid = str(parsed.recording_mbid) if parsed.recording_mbid else r'\N'
-                    release_mbid = str(parsed.release_mbid) if parsed.release_mbid else r'\N'
-                    writer.writerow(
-                        [
-                            plan.run_id,
-                            partition.partition_key,
-                            origin,
-                            line_number,
-                            entry_index,
-                            parsed.source_user_id,
-                            parsed.played_at.isoformat(),
-                            _bytea_hex(parsed.session_key),
-                            _bytea_hex(parsed.source_event_signature),
-                            json.dumps(parsed.track_identifier_candidates, sort_keys=True),
-                            json.dumps(parsed.payload, sort_keys=True),
-                            json.dumps(parsed.metadata, sort_keys=True),
-                            recording_mbid,
-                            release_mbid,
-                            parsed.recording_msid,
-                            parsed.release_msid,
-                            parsed.track_name,
-                            parsed.artist_name,
-                            parsed.release_name,
-                        ]
-                    )
-                    rows_staged += 1
+    manifest_payload = json.loads(
+        full_ingestion_partition_manifest_path(plan, partition_key=partition.partition_key).read_text(encoding='utf-8')
+    )
+    event_chunks = list(manifest_payload.get('event_chunks') or [])
+    if not event_chunks:
+        return FullIngestionCopyResult(
+            partition_key=partition.partition_key,
+            rows_loaded=0,
+            session_rows_loaded=0,
+            chunks_loaded=0,
+            copy_manifest_path='',
+        )
 
     with connection.cursor() as cursor:
         cursor.execute(
-            f'DELETE FROM {LISTENBRAINZ_EVENT_STAGE_TABLE} WHERE run_id = %s AND partition_key = %s',
+            f'DELETE FROM {LISTENBRAINZ_SESSION_LOAD_TABLE} WHERE run_id = %s AND partition_key = %s',
+            [plan.run_id, partition.partition_key],
+        )
+        cursor.execute(
+            f'DELETE FROM {LISTENBRAINZ_EVENT_LOAD_TABLE} WHERE run_id = %s AND partition_key = %s',
             [plan.run_id, partition.partition_key],
         )
 
-    _copy_csv_into_listenbrainz_stage(stage_file_path)
+    rows_loaded = 0
+    chunks_loaded = 0
+    for chunk in event_chunks:
+        chunk_path = Path(plan.partition_root) / partition.partition_key / str(chunk['relative_path'])
+        _copy_csv_into_table(
+            chunk_path,
+            table_name=LISTENBRAINZ_EVENT_LOAD_TABLE,
+            columns=[
+                'run_id',
+                'partition_key',
+                'event_signature',
+                'played_at',
+                'session_key',
+                'track_id',
+                'resolution_state',
+                'cold_ref',
+            ],
+        )
+        rows_loaded += int(chunk.get('row_count') or 0)
+        chunks_loaded += 1
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f'''
+            INSERT INTO {LISTENBRAINZ_SESSION_LOAD_TABLE} (
+                run_id,
+                partition_key,
+                session_key,
+                track_id,
+                first_played_at,
+                last_played_at,
+                play_count
+            )
+            SELECT
+                run_id,
+                partition_key,
+                session_key,
+                track_id,
+                MIN(played_at),
+                MAX(played_at),
+                COUNT(*)
+            FROM {LISTENBRAINZ_EVENT_LOAD_TABLE}
+            WHERE run_id = %s
+              AND partition_key = %s
+              AND track_id IS NOT NULL
+            GROUP BY run_id, partition_key, session_key, track_id
+            ''',
+            [plan.run_id, partition.partition_key],
+        )
+        session_rows_loaded = cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+    copy_manifest_path = full_ingestion_copy_manifest_path(plan, partition_key=partition.partition_key)
     return FullIngestionCopyResult(
         partition_key=partition.partition_key,
-        rows_parsed=rows_parsed,
-        rows_staged=rows_staged,
-        rows_resolved=rows_resolved,
-        rows_unresolved=rows_unresolved,
-        rows_malformed=rows_malformed,
-        stage_file_path=str(stage_file_path),
+        rows_loaded=rows_loaded,
+        session_rows_loaded=session_rows_loaded,
+        chunks_loaded=chunks_loaded,
+        copy_manifest_path=str(copy_manifest_path),
     )
 
 
-def _copy_csv_into_listenbrainz_stage(stage_file_path: Path) -> None:
-    copy_sql = (
-        f'COPY {LISTENBRAINZ_EVENT_STAGE_TABLE} ('
-        'run_id, partition_key, origin, line_number, entry_index, source_user_id, '
-        'played_at, session_key, event_signature, track_identifier_candidates, payload, metadata, '
-        'recording_mbid, release_mbid, recording_msid, release_msid, track_name, artist_name, release_name'
-        ") FROM STDIN WITH (FORMAT csv, NULL '\\N')"
-    )
+def _copy_csv_into_table(csv_path: Path, *, table_name: str, columns: list[str]) -> None:
+    copy_sql = f"COPY {table_name} ({', '.join(columns)}) FROM STDIN WITH (FORMAT csv, NULL '\\N')"
 
     if connection.vendor != 'postgresql':
-        with stage_file_path.open('r', encoding='utf-8', newline='') as handle, connection.cursor() as cursor:
-            reader = csv.reader(handle)
-            rows = list(reader)
-            cursor.executemany(
-                f'''
-                INSERT INTO {LISTENBRAINZ_EVENT_STAGE_TABLE} (
-                    run_id, partition_key, origin, line_number, entry_index, source_user_id,
-                    played_at, session_key, event_signature, track_identifier_candidates, payload, metadata,
-                    recording_mbid, release_mbid, recording_msid, release_msid, track_name, artist_name, release_name
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''',
-                rows,
-            )
+        placeholders = ', '.join(['?'] * len(columns))
+        insert_sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
+        with csv_path.open('r', encoding='utf-8', newline='') as handle, connection.cursor() as cursor:
+            cursor.executemany(insert_sql, list(csv.reader(handle)))
         return
 
     connection.ensure_connection()
-    with stage_file_path.open('r', encoding='utf-8', newline='') as handle:
+    with csv_path.open('r', encoding='utf-8', newline='') as handle:
         with connection.cursor() as cursor:
             raw_cursor = getattr(cursor, 'cursor', cursor)
             if hasattr(raw_cursor, 'copy_expert'):
@@ -1589,7 +1787,7 @@ def _copy_csv_into_listenbrainz_stage(stage_file_path: Path) -> None:
     assert raw_connection is not None
     with raw_connection.cursor() as raw_cursor:
         with raw_cursor.copy(copy_sql) as copy:
-            with stage_file_path.open('r', encoding='utf-8', newline='') as handle:
+            with csv_path.open('r', encoding='utf-8', newline='') as handle:
                 while True:
                     chunk = handle.read(1024 * 1024)
                     if not chunk:
@@ -1694,39 +1892,104 @@ def _mark_full_ingestion_source_run_failed(
     )
 
 
-def merge_listenbrainz_partition_to_final(
+def finalize_listenbrainz_full_ingestion(
     plan: FullIngestionPlan,
-    partition: FullIngestionPartitionPlan,
+    *,
+    source_ingestion_run: SourceIngestionRun,
+) -> FullIngestionMergeResult:
+    if connection.vendor != 'postgresql':
+        return finalize_listenbrainz_full_ingestion_direct(
+            plan,
+            source_ingestion_run=source_ingestion_run,
+        )
+
+    with connection.cursor() as cursor:
+        _drop_listenbrainz_shadow_tables(cursor)
+        staged_rows = _count_load_rows(cursor, LISTENBRAINZ_EVENT_LOAD_TABLE, plan.run_id)
+        _create_listenbrainz_event_ledger_build_table(
+            cursor,
+            run_id=plan.run_id,
+            import_run_id=str(source_ingestion_run.pk),
+        )
+        _create_listenbrainz_session_track_build_table(
+            cursor,
+            run_id=plan.run_id,
+            import_run_id=str(source_ingestion_run.pk),
+        )
+        inserted_rows = _count_table_rows(cursor, LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE)
+        resolved_rows = _count_table_rows(
+            cursor,
+            LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE,
+            where_clause='track_id IS NOT NULL',
+        )
+        unresolved_rows = _count_table_rows(
+            cursor,
+            LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE,
+            where_clause='track_id IS NULL',
+        )
+        session_rows_merged = _count_table_rows(cursor, LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE)
+        _create_listenbrainz_shadow_constraints_and_indexes(cursor)
+        _swap_listenbrainz_shadow_tables(cursor)
+        cursor.execute(
+            f'DELETE FROM {LISTENBRAINZ_SESSION_LOAD_TABLE} WHERE run_id = %s',
+            [plan.run_id],
+        )
+        cursor.execute(
+            f'DELETE FROM {LISTENBRAINZ_EVENT_LOAD_TABLE} WHERE run_id = %s',
+            [plan.run_id],
+        )
+        cursor.execute(f'ANALYZE {LISTENBRAINZ_EVENT_LEDGER_TABLE}')
+        cursor.execute(f'ANALYZE {LISTENBRAINZ_SESSION_TRACK_TABLE}')
+
+    return FullIngestionMergeResult(
+        rows_merged=int(inserted_rows),
+        rows_deduplicated=max(0, int(staged_rows) - int(inserted_rows)),
+        rows_resolved=int(resolved_rows),
+        rows_unresolved=int(unresolved_rows),
+        session_rows_merged=int(session_rows_merged),
+    )
+
+
+def finalize_listenbrainz_full_ingestion_direct(
+    plan: FullIngestionPlan,
     *,
     source_ingestion_run: SourceIngestionRun,
 ) -> FullIngestionMergeResult:
     with connection.cursor() as cursor:
         cursor.execute(
+            f'DELETE FROM {LISTENBRAINZ_SESSION_TRACK_TABLE} WHERE import_run_id = %s',
+            [str(source_ingestion_run.pk)],
+        )
+        cursor.execute(
+            f'DELETE FROM {LISTENBRAINZ_EVENT_LEDGER_TABLE} WHERE import_run_id = %s',
+            [str(source_ingestion_run.pk)],
+        )
+        cursor.execute(
             f'''
-            WITH stage_rows AS (
+            WITH staged_rows AS (
                 SELECT
-                    s.*,
-                    COALESCE(
-                        track_by_mbid.juke_id,
-                        track_external.track_id,
-                        track_by_spotify.juke_id
-                    ) AS track_juke_id
-                FROM {LISTENBRAINZ_EVENT_STAGE_TABLE} s
-                LEFT JOIN catalog_track track_by_mbid
-                    ON s.recording_mbid IS NOT NULL
-                    AND track_by_mbid.mbid = s.recording_mbid
-                LEFT JOIN catalog_track_external_id track_external
-                    ON COALESCE(s.track_identifier_candidates->>'spotify_id', '') <> ''
-                    AND track_external.source = 'spotify'
-                    AND track_external.external_id = s.track_identifier_candidates->>'spotify_id'
-                LEFT JOIN catalog_track track_by_spotify
-                    ON COALESCE(s.track_identifier_candidates->>'spotify_id', '') <> ''
-                    AND track_by_spotify.spotify_id = s.track_identifier_candidates->>'spotify_id'
-                WHERE s.run_id = %s
-                  AND s.partition_key = %s
+                    event_signature,
+                    played_at,
+                    session_key,
+                    track_id,
+                    resolution_state,
+                    cold_ref
+                FROM {LISTENBRAINZ_EVENT_LOAD_TABLE}
+                WHERE run_id = %s
+            ),
+            deduplicated_events AS (
+                SELECT DISTINCT ON (event_signature)
+                    event_signature,
+                    played_at,
+                    session_key,
+                    track_id,
+                    resolution_state,
+                    cold_ref
+                FROM staged_rows
+                ORDER BY event_signature, cold_ref
             ),
             inserted_events AS (
-                INSERT INTO mlcore_listenbrainz_event_ledger (
+                INSERT INTO {LISTENBRAINZ_EVENT_LEDGER_TABLE} (
                     id,
                     import_run_id,
                     event_signature,
@@ -1738,32 +2001,21 @@ def merge_listenbrainz_partition_to_final(
                     created_at
                 )
                 SELECT
-                    {deterministic_uuid_sql("encode(stage_rows.event_signature, 'hex')")},
+                    {deterministic_uuid_sql("encode(deduplicated_events.event_signature, 'hex')")},
                     %s,
-                    stage_rows.event_signature,
-                    stage_rows.played_at,
-                    stage_rows.session_key,
-                    stage_rows.track_juke_id,
-                    CASE WHEN stage_rows.track_juke_id IS NULL THEN 0 ELSE 1 END,
-                    stage_rows.partition_key || ':' || stage_rows.origin || ':' || stage_rows.line_number || ':' || stage_rows.entry_index,
+                    deduplicated_events.event_signature,
+                    deduplicated_events.played_at,
+                    deduplicated_events.session_key,
+                    deduplicated_events.track_id,
+                    deduplicated_events.resolution_state,
+                    deduplicated_events.cold_ref,
                     NOW()
-                FROM stage_rows
+                FROM deduplicated_events
                 ON CONFLICT (event_signature) DO NOTHING
-                RETURNING session_key, track_id, played_at
-            ),
-            session_track_aggregates AS (
-                SELECT
-                    session_key,
-                    track_id,
-                    MIN(played_at) AS first_played_at,
-                    MAX(played_at) AS last_played_at,
-                    COUNT(*) AS play_count
-                FROM inserted_events
-                WHERE track_id IS NOT NULL
-                GROUP BY session_key, track_id
+                RETURNING track_id
             ),
             upserted_session_tracks AS (
-                INSERT INTO mlcore_listenbrainz_session_track (
+                INSERT INTO {LISTENBRAINZ_SESSION_TRACK_TABLE} (
                     id,
                     import_run_id,
                     session_key,
@@ -1776,39 +2028,34 @@ def merge_listenbrainz_partition_to_final(
                 SELECT
                     {
                         deterministic_uuid_sql(
-                            "encode(session_track_aggregates.session_key, 'hex') || ':' || "
-                            "session_track_aggregates.track_id::text"
+                            "encode(session_delta.session_key, 'hex') || ':' || "
+                            "session_delta.track_id::text"
                         )
                     },
                     %s,
-                    session_track_aggregates.session_key,
-                    session_track_aggregates.track_id,
-                    session_track_aggregates.first_played_at,
-                    session_track_aggregates.last_played_at,
-                    session_track_aggregates.play_count,
+                    session_delta.session_key,
+                    session_delta.track_id,
+                    session_delta.first_played_at,
+                    session_delta.last_played_at,
+                    session_delta.play_count,
                     NOW()
-                FROM session_track_aggregates
+                FROM {LISTENBRAINZ_SESSION_LOAD_TABLE} session_delta
+                WHERE session_delta.run_id = %s
                 ON CONFLICT (session_key, track_id) DO UPDATE
                 SET
                     first_played_at = LEAST(
-                        mlcore_listenbrainz_session_track.first_played_at,
+                        {LISTENBRAINZ_SESSION_TRACK_TABLE}.first_played_at,
                         EXCLUDED.first_played_at
                     ),
                     last_played_at = GREATEST(
-                        mlcore_listenbrainz_session_track.last_played_at,
+                        {LISTENBRAINZ_SESSION_TRACK_TABLE}.last_played_at,
                         EXCLUDED.last_played_at
                     ),
-                    play_count = mlcore_listenbrainz_session_track.play_count + EXCLUDED.play_count
-                RETURNING 1
-            ),
-            cleared_stage AS (
-                DELETE FROM {LISTENBRAINZ_EVENT_STAGE_TABLE}
-                WHERE run_id = %s
-                  AND partition_key = %s
+                    play_count = {LISTENBRAINZ_SESSION_TRACK_TABLE}.play_count + EXCLUDED.play_count
                 RETURNING 1
             )
             SELECT
-                COALESCE((SELECT COUNT(*) FROM stage_rows), 0) AS staged_rows,
+                COALESCE((SELECT COUNT(*) FROM staged_rows), 0) AS staged_rows,
                 COALESCE((SELECT COUNT(*) FROM inserted_events), 0) AS inserted_rows,
                 COALESCE((SELECT COUNT(*) FROM inserted_events WHERE track_id IS NOT NULL), 0) AS resolved_rows,
                 COALESCE((SELECT COUNT(*) FROM inserted_events WHERE track_id IS NULL), 0) AS unresolved_rows,
@@ -1816,23 +2063,321 @@ def merge_listenbrainz_partition_to_final(
             ''',
             [
                 plan.run_id,
-                partition.partition_key,
                 str(source_ingestion_run.pk),
                 str(source_ingestion_run.pk),
                 plan.run_id,
-                partition.partition_key,
             ],
         )
         staged_rows, inserted_rows, resolved_rows, unresolved_rows, session_rows_merged = cursor.fetchone()
+        cursor.execute(
+            f'DELETE FROM {LISTENBRAINZ_SESSION_LOAD_TABLE} WHERE run_id = %s',
+            [plan.run_id],
+        )
+        cursor.execute(
+            f'DELETE FROM {LISTENBRAINZ_EVENT_LOAD_TABLE} WHERE run_id = %s',
+            [plan.run_id],
+        )
 
     return FullIngestionMergeResult(
-        partition_key=partition.partition_key,
         rows_merged=int(inserted_rows or 0),
         rows_deduplicated=max(0, int(staged_rows or 0) - int(inserted_rows or 0)),
         rows_resolved=int(resolved_rows or 0),
         rows_unresolved=int(unresolved_rows or 0),
         session_rows_merged=int(session_rows_merged or 0),
     )
+
+
+def _count_load_rows(cursor, table_name: str, run_id: str) -> int:
+    cursor.execute(f'SELECT COUNT(*) FROM {table_name} WHERE run_id = %s', [run_id])
+    return int(cursor.fetchone()[0] or 0)
+
+
+def _count_table_rows(cursor, table_name: str, *, where_clause: str = '') -> int:
+    where_sql = f' WHERE {where_clause}' if where_clause else ''
+    cursor.execute(f'SELECT COUNT(*) FROM {table_name}{where_sql}')
+    return int(cursor.fetchone()[0] or 0)
+
+
+def _drop_listenbrainz_shadow_tables(cursor) -> None:
+    for table_name in (
+        LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE,
+        LISTENBRAINZ_EVENT_LEDGER_BACKUP_TABLE,
+        LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE,
+        LISTENBRAINZ_SESSION_TRACK_BACKUP_TABLE,
+    ):
+        cursor.execute(f'DROP TABLE IF EXISTS {table_name} CASCADE')
+
+
+def _create_listenbrainz_event_ledger_build_table(cursor, *, run_id: str, import_run_id: str) -> None:
+    cursor.execute(
+        f'''
+        CREATE TABLE {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE}
+        TABLESPACE {settings.MLCORE_PG_COLD_TABLESPACE_NAME}
+        AS
+        WITH deduplicated_events AS (
+            SELECT DISTINCT ON (event_signature)
+                event_signature,
+                played_at,
+                session_key,
+                track_id,
+                resolution_state,
+                cold_ref
+            FROM {LISTENBRAINZ_EVENT_LOAD_TABLE}
+            WHERE run_id = %s
+            ORDER BY event_signature, cold_ref
+        )
+        SELECT
+            {deterministic_uuid_sql("encode(deduplicated_events.event_signature, 'hex')")} AS id,
+            %s::uuid AS import_run_id,
+            deduplicated_events.event_signature,
+            deduplicated_events.played_at,
+            deduplicated_events.session_key,
+            deduplicated_events.track_id,
+            deduplicated_events.resolution_state,
+            deduplicated_events.cold_ref,
+            NOW() AS created_at
+        FROM deduplicated_events
+        ''',
+        [run_id, import_run_id],
+    )
+    for column_name in (
+        'id',
+        'import_run_id',
+        'event_signature',
+        'played_at',
+        'session_key',
+        'resolution_state',
+        'cold_ref',
+        'created_at',
+    ):
+        cursor.execute(
+            f'ALTER TABLE {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} ALTER COLUMN {column_name} SET NOT NULL'
+        )
+
+
+def _create_listenbrainz_session_track_build_table(cursor, *, run_id: str, import_run_id: str) -> None:
+    cursor.execute(
+        f'''
+        CREATE TABLE {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE}
+        TABLESPACE {settings.MLCORE_PG_HOT_TABLESPACE_NAME}
+        AS
+        SELECT
+            {
+                deterministic_uuid_sql(
+                    "encode(session_delta.session_key, 'hex') || ':' || session_delta.track_id::text"
+                )
+            } AS id,
+            %s::uuid AS import_run_id,
+            session_delta.session_key,
+            session_delta.track_id,
+            MIN(session_delta.first_played_at) AS first_played_at,
+            MAX(session_delta.last_played_at) AS last_played_at,
+            SUM(session_delta.play_count)::integer AS play_count,
+            NOW() AS created_at
+        FROM {LISTENBRAINZ_SESSION_LOAD_TABLE} session_delta
+        WHERE session_delta.run_id = %s
+        GROUP BY session_delta.session_key, session_delta.track_id
+        ''',
+        [import_run_id, run_id],
+    )
+    for column_name in (
+        'id',
+        'session_key',
+        'track_id',
+        'first_played_at',
+        'last_played_at',
+        'play_count',
+        'created_at',
+    ):
+        cursor.execute(
+            f'ALTER TABLE {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE} ALTER COLUMN {column_name} SET NOT NULL'
+        )
+
+
+def _create_listenbrainz_shadow_constraints_and_indexes(cursor) -> None:
+    event_cold_ts = settings.MLCORE_PG_COLD_TABLESPACE_NAME
+    session_hot_ts = settings.MLCORE_PG_HOT_TABLESPACE_NAME
+
+    cursor.execute(
+        (
+            f'CREATE UNIQUE INDEX mlcore_lbe_build_pkey_idx '
+            f'ON {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} (id) TABLESPACE {event_cold_ts}'
+        )
+    )
+    cursor.execute(
+        (
+            f'ALTER TABLE {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} '
+            f'ADD CONSTRAINT mlcore_lbe_build_pkey '
+            f'PRIMARY KEY USING INDEX mlcore_lbe_build_pkey_idx'
+        )
+    )
+    cursor.execute(
+        (
+            f'CREATE UNIQUE INDEX mlcore_lbe_build_event_signature_idx '
+            f'ON {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} (event_signature) '
+            f'TABLESPACE {event_cold_ts}'
+        )
+    )
+    cursor.execute(
+        (
+            f'ALTER TABLE {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} '
+            f'ADD CONSTRAINT mlcore_lbe_build_event_signature_key '
+            f'UNIQUE USING INDEX mlcore_lbe_build_event_signature_idx'
+        )
+    )
+    cursor.execute(
+        (
+            f'ALTER TABLE {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} '
+            f'ADD CONSTRAINT mlcore_lbe_build_resolution_state_check '
+            f'CHECK (resolution_state >= 0)'
+        )
+    )
+    cursor.execute(
+        (
+            f'ALTER TABLE {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} '
+            f'ADD CONSTRAINT mlcore_lbe_build_import_run_fk '
+            f'FOREIGN KEY (import_run_id) REFERENCES mlcore_source_ingestion_run(id) '
+            f'DEFERRABLE INITIALLY DEFERRED'
+        )
+    )
+    cursor.execute(
+        (
+            f'ALTER TABLE {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} '
+            f'ADD CONSTRAINT mlcore_lbe_build_track_fk '
+            f'FOREIGN KEY (track_id) REFERENCES catalog_track(juke_id) '
+            f'DEFERRABLE INITIALLY DEFERRED'
+        )
+    )
+    for index_name, column_list in (
+        ('mlcore_lbe_build_import_idx', 'import_run_id'),
+        ('mlcore_lbe_build_track_idx', 'track_id'),
+        ('mlcore_lbe_build_resolution_idx', 'resolution_state'),
+        ('mlcore_lbe_build_import_run_fk_idx', 'import_run_id'),
+        ('mlcore_lbe_build_played_at_idx', 'played_at'),
+        ('mlcore_lbe_build_session_key_idx', 'session_key'),
+        ('mlcore_lbe_build_track_fk_idx', 'track_id'),
+    ):
+        cursor.execute(
+            f'CREATE INDEX {index_name} ON {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} ({column_list}) TABLESPACE {event_cold_ts}'
+        )
+
+    cursor.execute(
+        (
+            f'CREATE UNIQUE INDEX mlcore_lst_build_pkey_idx '
+            f'ON {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE} (id) TABLESPACE {session_hot_ts}'
+        )
+    )
+    cursor.execute(
+        (
+            f'ALTER TABLE {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE} '
+            f'ADD CONSTRAINT mlcore_lst_build_pkey '
+            f'PRIMARY KEY USING INDEX mlcore_lst_build_pkey_idx'
+        )
+    )
+    cursor.execute(
+        (
+            f'CREATE UNIQUE INDEX mlcore_lst_build_session_track_idx '
+            f'ON {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE} (session_key, track_id) '
+            f'TABLESPACE {session_hot_ts}'
+        )
+    )
+    cursor.execute(
+        (
+            f'ALTER TABLE {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE} '
+            f'ADD CONSTRAINT mlcore_lst_build_session_track_key '
+            f'UNIQUE USING INDEX mlcore_lst_build_session_track_idx'
+        )
+    )
+    cursor.execute(
+        (
+            f'ALTER TABLE {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE} '
+            f'ADD CONSTRAINT mlcore_lst_build_import_run_fk '
+            f'FOREIGN KEY (import_run_id) REFERENCES mlcore_source_ingestion_run(id) '
+            f'DEFERRABLE INITIALLY DEFERRED'
+        )
+    )
+    cursor.execute(
+        (
+            f'ALTER TABLE {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE} '
+            f'ADD CONSTRAINT mlcore_lst_build_track_fk '
+            f'FOREIGN KEY (track_id) REFERENCES catalog_track(juke_id) '
+            f'DEFERRABLE INITIALLY DEFERRED'
+        )
+    )
+    for index_name, column_list in (
+        ('mlcore_lst_build_track_idx', 'track_id'),
+        ('mlcore_lst_build_import_idx', 'import_run_id'),
+        ('mlcore_lst_build_last_played_idx', 'last_played_at'),
+        ('mlcore_lst_build_import_run_fk_idx', 'import_run_id'),
+        ('mlcore_lst_build_session_key_idx', 'session_key'),
+        ('mlcore_lst_build_track_fk_idx', 'track_id'),
+    ):
+        cursor.execute(
+            f'CREATE INDEX {index_name} ON {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE} ({column_list}) TABLESPACE {session_hot_ts}'
+        )
+
+
+def _swap_listenbrainz_shadow_tables(cursor) -> None:
+    with transaction.atomic():
+        cursor.execute(
+            f'LOCK TABLE {LISTENBRAINZ_EVENT_LEDGER_TABLE}, {LISTENBRAINZ_SESSION_TRACK_TABLE} IN ACCESS EXCLUSIVE MODE'
+        )
+        cursor.execute(
+            f'ALTER TABLE {LISTENBRAINZ_EVENT_LEDGER_TABLE} RENAME TO {LISTENBRAINZ_EVENT_LEDGER_BACKUP_TABLE}'
+        )
+        cursor.execute(
+            f'ALTER TABLE {LISTENBRAINZ_SESSION_TRACK_TABLE} RENAME TO {LISTENBRAINZ_SESSION_TRACK_BACKUP_TABLE}'
+        )
+        cursor.execute(
+            f'ALTER TABLE {LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE} RENAME TO {LISTENBRAINZ_EVENT_LEDGER_TABLE}'
+        )
+        cursor.execute(
+            f'ALTER TABLE {LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE} RENAME TO {LISTENBRAINZ_SESSION_TRACK_TABLE}'
+        )
+        cursor.execute(f'DROP TABLE {LISTENBRAINZ_EVENT_LEDGER_BACKUP_TABLE} CASCADE')
+        cursor.execute(f'DROP TABLE {LISTENBRAINZ_SESSION_TRACK_BACKUP_TABLE} CASCADE')
+
+        for old_name, new_name in (
+            ('mlcore_lbe_build_pkey', 'mlcore_listenbrainz_event_ledger_pkey'),
+            ('mlcore_lbe_build_event_signature_key', 'mlcore_listenbrainz_event_ledger_event_signature_key'),
+            ('mlcore_lbe_build_resolution_state_check', 'mlcore_listenbrainz_event_ledger_resolution_state_check'),
+            ('mlcore_lbe_build_import_run_fk', 'mlcore_listenbrainz__import_run_id_caebef5c_fk_mlcore_so'),
+            ('mlcore_lbe_build_track_fk', 'mlcore_listenbrainz__track_id_3f187a0b_fk_catalog_t'),
+        ):
+            cursor.execute(
+                f'ALTER TABLE {LISTENBRAINZ_EVENT_LEDGER_TABLE} RENAME CONSTRAINT {old_name} TO {new_name}'
+            )
+
+        for old_name, new_name in (
+            ('mlcore_lbe_build_import_idx', 'mlcore_lbe_import__e9179a_idx'),
+            ('mlcore_lbe_build_track_idx', 'mlcore_lbe_track_i_4c8647_idx'),
+            ('mlcore_lbe_build_resolution_idx', 'mlcore_lbe_resolut_8e2ae0_idx'),
+            ('mlcore_lbe_build_import_run_fk_idx', 'mlcore_listenbrainz_event_ledger_import_run_id_caebef5c'),
+            ('mlcore_lbe_build_played_at_idx', 'mlcore_listenbrainz_event_ledger_played_at_dac9bed0'),
+            ('mlcore_lbe_build_session_key_idx', 'mlcore_listenbrainz_event_ledger_session_key_1515c241'),
+            ('mlcore_lbe_build_track_fk_idx', 'mlcore_listenbrainz_event_ledger_track_id_3f187a0b'),
+        ):
+            cursor.execute(f'ALTER INDEX {old_name} RENAME TO {new_name}')
+
+        for old_name, new_name in (
+            ('mlcore_lst_build_pkey', 'mlcore_listenbrainz_session_track_pkey'),
+            ('mlcore_lst_build_session_track_key', 'mlcore_listenbrainz_sess_session_key_track_id_598560ee_uniq'),
+            ('mlcore_lst_build_import_run_fk', 'mlcore_listenbrainz__import_run_id_a2d035d9_fk_mlcore_so'),
+            ('mlcore_lst_build_track_fk', 'mlcore_listenbrainz__track_id_7ed8fb5a_fk_catalog_t'),
+        ):
+            cursor.execute(
+                f'ALTER TABLE {LISTENBRAINZ_SESSION_TRACK_TABLE} RENAME CONSTRAINT {old_name} TO {new_name}'
+            )
+
+        for old_name, new_name in (
+            ('mlcore_lst_build_track_idx', 'mlcore_lst_track_i_5d5e20_idx'),
+            ('mlcore_lst_build_import_idx', 'mlcore_lst_import__6d7bf6_idx'),
+            ('mlcore_lst_build_last_played_idx', 'mlcore_lst_last_pl_4a4ec9_idx'),
+            ('mlcore_lst_build_import_run_fk_idx', 'mlcore_listenbrainz_session_track_import_run_id_a2d035d9'),
+            ('mlcore_lst_build_session_key_idx', 'mlcore_listenbrainz_session_track_session_key_33f13768'),
+            ('mlcore_lst_build_track_fk_idx', 'mlcore_listenbrainz_session_track_track_id_7ed8fb5a'),
+        ):
+            cursor.execute(f'ALTER INDEX {old_name} RENAME TO {new_name}')
 
 
 def deterministic_uuid_sql(expression: str) -> str:

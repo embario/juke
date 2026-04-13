@@ -24,8 +24,10 @@ services:
       - "${BACKEND_PORT:?Set BACKEND_PORT}:${BACKEND_PORT:?Set BACKEND_PORT}"
     volumes:
       - ./backend:/app
+      - /srv/data/juke:/srv/data/juke
       - /srv/data/listenbrainz:/srv/data/listenbrainz
       - /srv/data/backups/juke:/srv/data/backups/juke
+      - /srv/monitoring/node-exporter/textfile:/srv/monitoring/node-exporter/textfile
     depends_on:
       - db
       - redis
@@ -40,8 +42,10 @@ services:
     working_dir: /app
     volumes:
       - ./backend:/app
+      - /srv/data/juke:/srv/data/juke
       - /srv/data/listenbrainz:/srv/data/listenbrainz
       - /srv/data/backups/juke:/srv/data/backups/juke
+      - /srv/monitoring/node-exporter/textfile:/srv/monitoring/node-exporter/textfile
     depends_on:
       - db
       - redis
