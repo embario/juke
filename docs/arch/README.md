@@ -33,6 +33,7 @@ docker compose up -d backend db redis
 - **`INDEPENDENT_ML_CORE_ARCHITECTURE.md`** - Spotify-independent ML core migration plan (MBID-first, corpus governance, hybrid ranking)
 - **`MLCORE_DATASET_VIABILITY_ASSESSMENT.md`** - Dataset licensing matrix and commercial-use determinations for MLCore sources
 - **`MLCORE_LISTENBRAINZ_REBUILD_THROUGHPUT_REDESIGN.md`** - Full-rebuild throughput redesign for ListenBrainz shard materialization and bulk ingest
+- **`MLCORE_LISTENBRAINZ_FULL_INGESTION_V3.md`** - Post-pilot v3 redesign for bounded finalization, verified identity resolution, and improved operator telemetry
 - **`CATALOG_UX_DESIGNS.md`** - Three UI/UX design options with mockups (38 KB)
 - **`REDESIGN_SUMMARY.md`** - Executive summary with KPIs
 

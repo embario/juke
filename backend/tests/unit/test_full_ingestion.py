@@ -17,6 +17,7 @@ from mlcore.models import (
     SourceIngestionRun,
 )
 from mlcore.services.full_ingestion import (
+    FULL_INGESTION_POLICY_THROUGHPUT,
     LISTENBRAINZ_EVENT_LOAD_TABLE,
     LISTENBRAINZ_SESSION_LOAD_TABLE,
     build_full_ingestion_partition_estimates,
@@ -192,6 +193,9 @@ class FullIngestionPlanningTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(extracted.counters['rows_unresolved'], 3)
         self.assertEqual(extracted.counters['rows_malformed'], 0)
         self.assertEqual(extracted.counters['chunks_written'], 3)
+        self.assertGreaterEqual(extracted.counters['chunk_bytes_written'], 1)
+        self.assertEqual(extracted.counters['spool_bytes_estimated'], 0)
+        self.assertEqual(extracted.counters['spooled_members_in_flight'], 0)
         self.assertTrue(all(partition.state == 'partitioned' for partition in extracted.partitions))
 
         manifests = sorted(Path(extracted.partition_root).glob('p*/manifest.json'))
@@ -282,6 +286,51 @@ class FullIngestionPlanningTests(FullIngestionMixin, TransactionTestCase):
         self.assertIn('stage=partition', output)
         self.assertIn('rows_parsed=3', output)
         self.assertIn('chunks_written=', output)
+
+    def test_control_command_switches_policy_and_budgets(self):
+        archive_path = self._build_archive()
+        scratch_root = self.temp_dir / 'scratch'
+        call_command(
+            'ingest_dataset_full',
+            '--provider',
+            'listenbrainz',
+            '--archive-path',
+            str(archive_path),
+            '--scratch-root',
+            str(scratch_root),
+            '--partition-count',
+            '4',
+        )
+
+        output_buffer = StringIO()
+        call_command(
+            'ingest_dataset_control',
+            '--provider',
+            'listenbrainz',
+            '--archive-path',
+            str(archive_path),
+            '--scratch-root',
+            str(scratch_root),
+            '--policy',
+            FULL_INGESTION_POLICY_THROUGHPUT,
+            '--partition-budget',
+            '4',
+            '--load-budget',
+            '3',
+            '--merge-budget',
+            '2',
+            '--scratch-soft-cap-gb',
+            '123',
+            stdout=output_buffer,
+        )
+
+        self.assertIn('policy=throughput', output_buffer.getvalue())
+        manifest_path = scratch_root / f'listenbrainz/{infer_source_version_from_path(archive_path)}/full-ingestion-manifest.json'
+        payload = json.loads(manifest_path.read_text(encoding='utf-8'))
+        self.assertEqual(payload['runtime_control']['policy_mode'], FULL_INGESTION_POLICY_THROUGHPUT)
+        self.assertEqual(payload['runtime_control']['partition_worker_budget'], 4)
+        self.assertEqual(payload['runtime_control']['load_worker_budget'], 3)
+        self.assertEqual(payload['runtime_control']['merge_worker_budget'], 2)
 
 
 class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):

@@ -165,6 +165,21 @@ Build a production-safe ingest pipeline for ListenBrainz full + incremental dump
       - `/var/lib/postgresql/tablespaces/juke_mlcore_hot`
       - `/var/lib/postgresql/tablespaces/juke_mlcore_cold`
     - migrations `backend/mlcore/migrations/0008_mlcore_tablespace_split.py` and `backend/mlcore/migrations/0009_reapply_mlcore_tablespace_split.py` create those tablespaces and move compact hot tables plus cold/deprecated ListenBrainz tables into place.
+  - Additional completed on 2026-04-13:
+    - Implemented a provider-lease guarded v2 full-ingestion engine with:
+      - process-based archive extraction via NVMe spooling
+      - compact chunk files
+      - lean event/session load tables
+      - host-mounted Prometheus textfile metrics
+      - swap-based finalization into the compact hot/cold ListenBrainz tables
+    - Ran a real full-dump pilot on Neptune and extracted the following conclusions:
+      - extract throughput is no longer the main bottleneck and the process-based extractor should be kept
+      - the current finalize step is still too monolithic and caused noticeable host storage pressure during `CREATE TABLE ... AS`
+      - current identity resolution produced `0` resolved rows in the pilot, so hot-path `ListenBrainzSessionTrack` usefulness must be fixed before the next major run
+      - Stage A progress reporting needs chunk-level metrics instead of end-of-stage-only counters
+      - scratch artifact ownership should be normalized so host cleanup does not require special handling
+    - Follow-up architecture for the next iteration is tracked in:
+      - `docs/arch/MLCORE_LISTENBRAINZ_FULL_INGESTION_V3.md`
 - Blocker: none.
 
 ## Dependencies

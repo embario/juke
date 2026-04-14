@@ -88,6 +88,11 @@ class Command(BaseCommand):
             'metrics_path': plan.metrics_path,
             'archive_path': plan.archive_path,
             'partition_count': plan.partition_count,
+            'policy_mode': plan.policy_mode,
+            'partition_worker_budget': plan.partition_worker_budget,
+            'load_worker_budget': plan.load_worker_budget,
+            'merge_worker_budget': plan.merge_worker_budget,
+            'scratch_soft_cap_bytes': plan.scratch_soft_cap_bytes,
             'partition_states': partition_states,
             'counters': dict(plan.counters),
             'created_at': plan.created_at,
@@ -101,7 +106,9 @@ class Command(BaseCommand):
         self.stdout.write(
             (
                 'provider={provider} source_version={source_version} run_id={run_id} '
-                'stage={stage} status={status} partitions={partitions} states={states} '
+                'stage={stage} status={status} '
+                'policy={policy} budgets=partition:{partition_budget},load:{load_budget},merge:{merge_budget} '
+                'partitions={partitions} states={states} '
                 'rows_parsed={rows_parsed} rows_staged={rows_staged} session_rows_loaded={session_rows_loaded} '
                 'chunks_written={chunks_written} chunks_loaded={chunks_loaded} rows_merged={rows_merged} '
                 'rows_deduplicated={rows_deduplicated} unresolved={rows_unresolved} malformed={rows_malformed} '
@@ -112,6 +119,10 @@ class Command(BaseCommand):
                 run_id=plan.run_id,
                 stage=plan.stage,
                 status=plan.status,
+                policy=plan.policy_mode,
+                partition_budget=plan.partition_worker_budget,
+                load_budget=plan.load_worker_budget,
+                merge_budget=plan.merge_worker_budget,
                 partitions=plan.partition_count,
                 states=','.join(f'{state}:{count}' for state, count in sorted(partition_states.items())),
                 rows_parsed=int(plan.counters.get('rows_parsed') or 0),

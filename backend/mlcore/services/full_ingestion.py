@@ -45,6 +45,9 @@ PROGRESS_COUNTER_FIELDS = (
     'artifacts_discovered',
     'artifacts_partitioned',
     'input_bytes_partitioned',
+    'chunk_bytes_written',
+    'spool_bytes_estimated',
+    'spooled_members_in_flight',
     'rows_parsed',
     'rows_staged',
     'session_rows_loaded',
@@ -68,6 +71,12 @@ LISTENBRAINZ_EVENT_LEDGER_BUILD_TABLE = 'mlcore_listenbrainz_event_ledger_build'
 LISTENBRAINZ_EVENT_LEDGER_BACKUP_TABLE = 'mlcore_listenbrainz_event_ledger_old'
 LISTENBRAINZ_SESSION_TRACK_BUILD_TABLE = 'mlcore_listenbrainz_session_track_build'
 LISTENBRAINZ_SESSION_TRACK_BACKUP_TABLE = 'mlcore_listenbrainz_session_track_old'
+FULL_INGESTION_POLICY_INTERACTIVE = 'interactive'
+FULL_INGESTION_POLICY_THROUGHPUT = 'throughput'
+FULL_INGESTION_POLICY_CHOICES = (
+    FULL_INGESTION_POLICY_INTERACTIVE,
+    FULL_INGESTION_POLICY_THROUGHPUT,
+)
 _LISTENBRAINZ_EXTRACT_IDENTITY_SNAPSHOT: ListenBrainzIdentitySnapshot | None = None
 _LISTENBRAINZ_EXTRACT_PARTITION_ROOT: str = ''
 _LISTENBRAINZ_EXTRACT_RUN_ID: str = ''
@@ -121,6 +130,7 @@ class FullIngestionMergeResult:
 @dataclass(frozen=True)
 class ListenBrainzMemberChunkResult:
     member_token: str
+    spool_size_bytes: int
     counters: dict[str, int]
     chunk_manifests_by_partition: dict[str, list[dict[str, int | str]]]
 
@@ -138,11 +148,17 @@ class FullIngestionPlan:
     partition_root: str
     log_root: str
     manifest_path: str
+    control_path: str
     metrics_path: str
     partition_count: int
     partition_workers: int
     load_workers: int
     merge_workers: int
+    policy_mode: str
+    partition_worker_budget: int
+    load_worker_budget: int
+    merge_worker_budget: int
+    scratch_soft_cap_bytes: int
     total_estimated_uncompressed_bytes: int
     source_ingestion_run_id: str
     stage: str
@@ -257,6 +273,19 @@ def configured_full_ingestion_load_workers() -> int:
 
 def configured_full_ingestion_merge_workers() -> int:
     return max(1, int(getattr(settings, 'MLCORE_FULL_INGESTION_MERGE_WORKERS', 4)))
+
+
+def configured_full_ingestion_default_policy_mode() -> str:
+    value = str(
+        getattr(settings, 'MLCORE_FULL_INGESTION_DEFAULT_POLICY_MODE', FULL_INGESTION_POLICY_INTERACTIVE)
+    ).strip().casefold()
+    if value not in FULL_INGESTION_POLICY_CHOICES:
+        return FULL_INGESTION_POLICY_INTERACTIVE
+    return value
+
+
+def configured_full_ingestion_scratch_soft_cap_bytes() -> int:
+    return max(1, int(getattr(settings, 'MLCORE_FULL_INGESTION_SCRATCH_SOFT_CAP_BYTES', 500 * 1024**3)))
 
 
 def configured_full_ingestion_target_chunk_rows() -> int:
@@ -439,6 +468,19 @@ def full_ingestion_manifest_path(
     ) / 'full-ingestion-manifest.json'
 
 
+def full_ingestion_control_path(
+    *,
+    provider: str,
+    source_version: str,
+    scratch_root: str | Path | None = None,
+) -> Path:
+    return full_ingestion_run_root(
+        provider=provider,
+        source_version=source_version,
+        scratch_root=scratch_root,
+    ) / 'control.json'
+
+
 def full_ingestion_partition_state_counts(
     plan: FullIngestionPlan,
 ) -> dict[str, int]:
@@ -446,6 +488,19 @@ def full_ingestion_partition_state_counts(
     for partition in plan.partitions:
         counts[partition.state] = counts.get(partition.state, 0) + 1
     return counts
+
+
+def _default_worker_budget(configured_workers: int, *, policy_mode: str, interactive_cap: int) -> int:
+    if policy_mode == FULL_INGESTION_POLICY_THROUGHPUT:
+        return max(1, configured_workers)
+    return max(1, min(configured_workers, interactive_cap))
+
+
+def _normalize_policy_mode(policy_mode: str | None) -> str:
+    normalized = str(policy_mode or '').strip().casefold()
+    if normalized not in FULL_INGESTION_POLICY_CHOICES:
+        return configured_full_ingestion_default_policy_mode()
+    return normalized
 
 
 def partition_index_for_path(relative_path: str, *, partition_count: int) -> int:
@@ -498,6 +553,22 @@ def build_full_ingestion_plan(
     )
     resolved_load_workers = max(1, int(load_workers or configured_full_ingestion_load_workers()))
     resolved_merge_workers = max(1, int(merge_workers or configured_full_ingestion_merge_workers()))
+    resolved_policy_mode = configured_full_ingestion_default_policy_mode()
+    resolved_partition_budget = _default_worker_budget(
+        resolved_partition_workers,
+        policy_mode=resolved_policy_mode,
+        interactive_cap=8,
+    )
+    resolved_load_budget = _default_worker_budget(
+        resolved_load_workers,
+        policy_mode=resolved_policy_mode,
+        interactive_cap=2,
+    )
+    resolved_merge_budget = _default_worker_budget(
+        resolved_merge_workers,
+        policy_mode=resolved_policy_mode,
+        interactive_cap=1,
+    )
     resolved_metrics_path = (
         Path(metrics_path)
         if metrics_path is not None
@@ -545,11 +616,23 @@ def build_full_ingestion_plan(
         partition_root=str(resolved_run_root / 'partitions'),
         log_root=str(resolved_run_root / 'logs'),
         manifest_path=str(manifest_path),
+        control_path=str(
+            full_ingestion_control_path(
+                provider=ingestion_provider.provider,
+                source_version=resolved_source_version,
+                scratch_root=resolved_scratch_root,
+            )
+        ),
         metrics_path=str(resolved_metrics_path or ''),
         partition_count=resolved_partition_count,
         partition_workers=resolved_partition_workers,
         load_workers=resolved_load_workers,
         merge_workers=resolved_merge_workers,
+        policy_mode=resolved_policy_mode,
+        partition_worker_budget=resolved_partition_budget,
+        load_worker_budget=resolved_load_budget,
+        merge_worker_budget=resolved_merge_budget,
+        scratch_soft_cap_bytes=configured_full_ingestion_scratch_soft_cap_bytes(),
         total_estimated_uncompressed_bytes=total_estimated_uncompressed_bytes,
         source_ingestion_run_id='',
         stage=FULL_INGESTION_STAGE_PLANNED,
@@ -575,12 +658,20 @@ def full_ingestion_plan_to_dict(plan: FullIngestionPlan) -> dict[str, Any]:
         'partition_root': plan.partition_root,
         'log_root': plan.log_root,
         'manifest_path': plan.manifest_path,
+        'control_path': plan.control_path,
         'metrics_path': plan.metrics_path,
         'partition_count': plan.partition_count,
         'worker_config': {
             'partition_workers': plan.partition_workers,
             'load_workers': plan.load_workers,
             'merge_workers': plan.merge_workers,
+        },
+        'runtime_control': {
+            'policy_mode': plan.policy_mode,
+            'partition_worker_budget': plan.partition_worker_budget,
+            'load_worker_budget': plan.load_worker_budget,
+            'merge_worker_budget': plan.merge_worker_budget,
+            'scratch_soft_cap_bytes': plan.scratch_soft_cap_bytes,
         },
         'total_estimated_uncompressed_bytes': plan.total_estimated_uncompressed_bytes,
         'source_ingestion_run_id': plan.source_ingestion_run_id,
@@ -620,6 +711,7 @@ def load_full_ingestion_plan(manifest_path: str | Path) -> FullIngestionPlan:
         for partition in payload.get('partitions', [])
     ]
     worker_config = dict(payload.get('worker_config') or {})
+    runtime_control = dict(payload.get('runtime_control') or {})
     return FullIngestionPlan(
         run_id=str(payload['run_id']),
         provider=str(payload['provider']),
@@ -632,11 +724,47 @@ def load_full_ingestion_plan(manifest_path: str | Path) -> FullIngestionPlan:
         partition_root=str(payload['partition_root']),
         log_root=str(payload['log_root']),
         manifest_path=str(payload['manifest_path']),
+        control_path=str(
+            payload.get('control_path')
+            or full_ingestion_control_path(
+                provider=str(payload['provider']),
+                source_version=str(payload['source_version']),
+                scratch_root=str(payload['scratch_root']),
+            )
+        ),
         metrics_path=str(payload.get('metrics_path') or ''),
         partition_count=int(payload['partition_count']),
         partition_workers=int(worker_config.get('partition_workers') or 0),
         load_workers=int(worker_config.get('load_workers') or 0),
         merge_workers=int(worker_config.get('merge_workers') or 0),
+        policy_mode=_normalize_policy_mode(runtime_control.get('policy_mode')),
+        partition_worker_budget=int(
+            runtime_control.get('partition_worker_budget')
+            or _default_worker_budget(
+                int(worker_config.get('partition_workers') or 1),
+                policy_mode=_normalize_policy_mode(runtime_control.get('policy_mode')),
+                interactive_cap=8,
+            )
+        ),
+        load_worker_budget=int(
+            runtime_control.get('load_worker_budget')
+            or _default_worker_budget(
+                int(worker_config.get('load_workers') or 1),
+                policy_mode=_normalize_policy_mode(runtime_control.get('policy_mode')),
+                interactive_cap=2,
+            )
+        ),
+        merge_worker_budget=int(
+            runtime_control.get('merge_worker_budget')
+            or _default_worker_budget(
+                int(worker_config.get('merge_workers') or 1),
+                policy_mode=_normalize_policy_mode(runtime_control.get('policy_mode')),
+                interactive_cap=1,
+            )
+        ),
+        scratch_soft_cap_bytes=int(
+            runtime_control.get('scratch_soft_cap_bytes') or configured_full_ingestion_scratch_soft_cap_bytes()
+        ),
         total_estimated_uncompressed_bytes=int(payload.get('total_estimated_uncompressed_bytes') or 0),
         source_ingestion_run_id=str(payload.get('source_ingestion_run_id') or ''),
         stage=str(payload['stage']),
@@ -645,6 +773,161 @@ def load_full_ingestion_plan(manifest_path: str | Path) -> FullIngestionPlan:
         updated_at=str(payload['updated_at']),
         counters=counters,
         partitions=partitions,
+    )
+
+
+def read_full_ingestion_control(plan: FullIngestionPlan) -> dict[str, Any]:
+    control_path = Path(plan.control_path)
+    if not control_path.exists():
+        return {
+            'policy_mode': plan.policy_mode,
+            'partition_worker_budget': plan.partition_worker_budget,
+            'load_worker_budget': plan.load_worker_budget,
+            'merge_worker_budget': plan.merge_worker_budget,
+            'scratch_soft_cap_bytes': plan.scratch_soft_cap_bytes,
+        }
+    return json.loads(control_path.read_text(encoding='utf-8'))
+
+
+def write_full_ingestion_control(
+    plan: FullIngestionPlan,
+    *,
+    policy_mode: str | None = None,
+    partition_worker_budget: int | None = None,
+    load_worker_budget: int | None = None,
+    merge_worker_budget: int | None = None,
+    scratch_soft_cap_bytes: int | None = None,
+) -> Path:
+    payload = {
+        'policy_mode': _normalize_policy_mode(policy_mode or plan.policy_mode),
+        'partition_worker_budget': max(
+            1,
+            min(
+                plan.partition_workers,
+                int(partition_worker_budget or plan.partition_worker_budget),
+            ),
+        ),
+        'load_worker_budget': max(
+            1,
+            min(
+                plan.load_workers,
+                int(load_worker_budget or plan.load_worker_budget),
+            ),
+        ),
+        'merge_worker_budget': max(
+            1,
+            min(
+                plan.merge_workers,
+                int(merge_worker_budget or plan.merge_worker_budget),
+            ),
+        ),
+        'scratch_soft_cap_bytes': max(
+            1,
+            int(scratch_soft_cap_bytes or plan.scratch_soft_cap_bytes),
+        ),
+    }
+    control_path = Path(plan.control_path)
+    control_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = control_path.with_name(control_path.name + '.tmp')
+    temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    temp_path.replace(control_path)
+    return control_path
+
+
+def sync_full_ingestion_runtime_control(plan: FullIngestionPlan) -> FullIngestionPlan:
+    payload = read_full_ingestion_control(plan)
+    return replace(
+        plan,
+        policy_mode=_normalize_policy_mode(payload.get('policy_mode')),
+        partition_worker_budget=max(
+            1,
+            min(plan.partition_workers, int(payload.get('partition_worker_budget') or plan.partition_worker_budget)),
+        ),
+        load_worker_budget=max(
+            1,
+            min(plan.load_workers, int(payload.get('load_worker_budget') or plan.load_worker_budget)),
+        ),
+        merge_worker_budget=max(
+            1,
+            min(plan.merge_workers, int(payload.get('merge_worker_budget') or plan.merge_worker_budget)),
+        ),
+        scratch_soft_cap_bytes=max(
+            1,
+            int(payload.get('scratch_soft_cap_bytes') or plan.scratch_soft_cap_bytes),
+        ),
+    )
+
+
+def apply_full_ingestion_backpressure(plan: FullIngestionPlan) -> FullIngestionPlan:
+    control_payload = read_full_ingestion_control(plan)
+    policy_mode = _normalize_policy_mode(control_payload.get('policy_mode'))
+    configured_partition_budget = _default_worker_budget(
+        plan.partition_workers,
+        policy_mode=policy_mode,
+        interactive_cap=8,
+    )
+    configured_load_budget = _default_worker_budget(
+        plan.load_workers,
+        policy_mode=policy_mode,
+        interactive_cap=2,
+    )
+    configured_merge_budget = _default_worker_budget(
+        plan.merge_workers,
+        policy_mode=policy_mode,
+        interactive_cap=1,
+    )
+    scratch_soft_cap_bytes = max(
+        1,
+        int(control_payload.get('scratch_soft_cap_bytes') or plan.scratch_soft_cap_bytes),
+    )
+    scratch_estimated_bytes = int(plan.counters.get('chunk_bytes_written') or 0) + int(
+        plan.counters.get('spool_bytes_estimated') or 0
+    )
+
+    partition_budget = max(
+        1,
+        min(
+            plan.partition_workers,
+            int(control_payload.get('partition_worker_budget') or configured_partition_budget),
+        ),
+    )
+    load_budget = max(
+        1,
+        min(
+            plan.load_workers,
+            int(control_payload.get('load_worker_budget') or configured_load_budget),
+        ),
+    )
+    merge_budget = max(
+        1,
+        min(
+            plan.merge_workers,
+            int(control_payload.get('merge_worker_budget') or configured_merge_budget),
+        ),
+    )
+
+    if scratch_estimated_bytes >= scratch_soft_cap_bytes:
+        partition_budget = max(1, min(partition_budget, max(1, configured_partition_budget // 2)))
+        load_budget = max(1, min(load_budget, max(1, configured_load_budget - 1)))
+    elif scratch_estimated_bytes <= int(scratch_soft_cap_bytes * 0.8):
+        partition_budget = min(plan.partition_workers, max(partition_budget, configured_partition_budget))
+        load_budget = min(plan.load_workers, max(load_budget, configured_load_budget))
+
+    write_full_ingestion_control(
+        plan,
+        policy_mode=policy_mode,
+        partition_worker_budget=partition_budget,
+        load_worker_budget=load_budget,
+        merge_worker_budget=merge_budget,
+        scratch_soft_cap_bytes=scratch_soft_cap_bytes,
+    )
+    return replace(
+        plan,
+        policy_mode=policy_mode,
+        partition_worker_budget=partition_budget,
+        load_worker_budget=load_budget,
+        merge_worker_budget=merge_budget,
+        scratch_soft_cap_bytes=scratch_soft_cap_bytes,
     )
 
 
@@ -659,6 +942,7 @@ def initialize_full_ingestion_plan(plan: FullIngestionPlan, *, force: bool = Fal
 
     Path(plan.partition_root).mkdir(parents=True, exist_ok=True)
     Path(plan.log_root).mkdir(parents=True, exist_ok=True)
+    write_full_ingestion_control(plan)
     write_full_ingestion_plan(plan)
     write_full_ingestion_metrics(plan)
     return plan
@@ -761,6 +1045,7 @@ def execute_full_ingestion_copy_stage(
     *,
     force: bool = False,
 ) -> FullIngestionPlan:
+    plan = sync_full_ingestion_runtime_control(plan)
     if any(partition.state not in ('partitioned', 'loaded') for partition in plan.partitions):
         raise ValueError('Copy stage requires all partitions to be extracted first.')
 
@@ -808,7 +1093,7 @@ def execute_full_ingestion_copy_stage(
         future_to_partition: dict[Any, str] = {}
         partition_iter = iter(pending_partition_keys)
         with ThreadPoolExecutor(max_workers=max(1, plan.load_workers)) as executor:
-            for _ in range(min(max(1, plan.load_workers), len(pending_partition_keys))):
+            for _ in range(min(max(1, plan.load_worker_budget), len(pending_partition_keys))):
                 partition_key = next(partition_iter, None)
                 if partition_key is None:
                     break
@@ -818,6 +1103,7 @@ def execute_full_ingestion_copy_stage(
             while future_to_partition:
                 done, _ = wait(future_to_partition.keys(), return_when=FIRST_COMPLETED)
                 for future in done:
+                    running_plan = apply_full_ingestion_backpressure(running_plan)
                     partition_key = future_to_partition.pop(future)
                     try:
                         _, result = future.result()
@@ -848,7 +1134,10 @@ def execute_full_ingestion_copy_stage(
                     _persist_full_ingestion_state(running_plan)
 
                     next_partition_key = next(partition_iter, None)
-                    if next_partition_key is not None:
+                    if next_partition_key is not None and len(future_to_partition) < max(
+                        1,
+                        min(plan.load_workers, running_plan.load_worker_budget),
+                    ):
                         next_future = executor.submit(_load_partition_lane, next_partition_key)
                         future_to_partition[next_future] = next_partition_key
     except Exception:
@@ -1087,6 +1376,9 @@ def write_full_ingestion_metrics(plan: FullIngestionPlan) -> Path | None:
         else updated_at
     )
     elapsed_seconds = max(0.0, (elapsed_reference - created_at).total_seconds())
+    scratch_estimated_bytes = int(plan.counters.get('chunk_bytes_written') or 0) + int(
+        plan.counters.get('spool_bytes_estimated') or 0
+    )
 
     lines = [
         '# HELP mlcore_full_ingestion_active Whether a full dataset ingestion run is currently active.',
@@ -1106,7 +1398,8 @@ def write_full_ingestion_metrics(plan: FullIngestionPlan) -> Path | None:
             f'source_version="{_escape_label(plan.source_version)}",'
             f'run_id="{_escape_label(plan.run_id)}",'
             f'status="{_escape_label(plan.status)}",'
-            f'stage="{_escape_label(plan.stage)}"'
+            f'stage="{_escape_label(plan.stage)}",'
+            f'policy="{_escape_label(plan.policy_mode)}"'
             '} 1'
         ),
         '# HELP mlcore_full_ingestion_partition_count Total planned hash partitions for the full ingestion run.',
@@ -1202,6 +1495,50 @@ def write_full_ingestion_metrics(plan: FullIngestionPlan) -> Path | None:
                 f'run_id="{_escape_label(plan.run_id)}",role="merge"'
                 '} '
                 f'{plan.merge_workers}'
+            ),
+            '# HELP mlcore_full_ingestion_worker_budget Active worker budgets by role.',
+            '# TYPE mlcore_full_ingestion_worker_budget gauge',
+            (
+                'mlcore_full_ingestion_worker_budget{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}",'
+                'role="partition"'
+                '} '
+                f'{plan.partition_worker_budget}'
+            ),
+            (
+                'mlcore_full_ingestion_worker_budget{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}",'
+                'role="load"'
+                '} '
+                f'{plan.load_worker_budget}'
+            ),
+            (
+                'mlcore_full_ingestion_worker_budget{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}",'
+                'role="merge"'
+                '} '
+                f'{plan.merge_worker_budget}'
+            ),
+            '# HELP mlcore_full_ingestion_scratch_soft_cap_bytes Active soft cap for estimated scratch usage.',
+            '# TYPE mlcore_full_ingestion_scratch_soft_cap_bytes gauge',
+            (
+                'mlcore_full_ingestion_scratch_soft_cap_bytes{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}"'
+                '} '
+                f'{plan.scratch_soft_cap_bytes}'
+            ),
+            '# HELP mlcore_full_ingestion_scratch_estimated_bytes Estimated active scratch bytes for the run.',
+            '# TYPE mlcore_full_ingestion_scratch_estimated_bytes gauge',
+            (
+                'mlcore_full_ingestion_scratch_estimated_bytes{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}"'
+                '} '
+                f'{scratch_estimated_bytes}'
             ),
         ]
     )
@@ -1469,12 +1806,14 @@ def _process_listenbrainz_spooled_member(
 
     return ListenBrainzMemberChunkResult(
         member_token=member_token,
+        spool_size_bytes=Path(spool_path).stat().st_size,
         counters=counters,
         chunk_manifests_by_partition=chunk_manifests_by_partition,
     )
 
 
 def extract_listenbrainz_archive(plan: FullIngestionPlan) -> FullIngestionPlan:
+    plan = sync_full_ingestion_runtime_control(plan)
     identity_snapshot = build_listenbrainz_identity_snapshot()
     chunk_target_rows = configured_full_ingestion_target_chunk_rows()
     counters = dict(plan.counters)
@@ -1489,12 +1828,25 @@ def extract_listenbrainz_archive(plan: FullIngestionPlan) -> FullIngestionPlan:
 
     def _record_member_result(result: ListenBrainzMemberChunkResult) -> None:
         nonlocal counters, running_plan
+        running_plan = apply_full_ingestion_backpressure(running_plan)
         counters['rows_parsed'] = int(counters.get('rows_parsed') or 0) + int(result.counters['rows_parsed'])
         counters['rows_resolved'] = int(counters.get('rows_resolved') or 0) + int(result.counters['rows_resolved'])
         counters['rows_unresolved'] = int(counters.get('rows_unresolved') or 0) + int(result.counters['rows_unresolved'])
         counters['rows_malformed'] = int(counters.get('rows_malformed') or 0) + int(result.counters['rows_malformed'])
+        counters['spool_bytes_estimated'] = max(
+            0,
+            int(counters.get('spool_bytes_estimated') or 0) - int(result.spool_size_bytes),
+        )
+        counters['spooled_members_in_flight'] = max(
+            0,
+            int(counters.get('spooled_members_in_flight') or 0) - 1,
+        )
         for partition_key, chunk_manifests in result.chunk_manifests_by_partition.items():
             partition_chunk_manifests[partition_key].extend(chunk_manifests)
+            counters['chunks_written'] = int(counters.get('chunks_written') or 0) + len(chunk_manifests)
+            counters['chunk_bytes_written'] = int(counters.get('chunk_bytes_written') or 0) + sum(
+                int(chunk_manifest.get('size_bytes') or 0) for chunk_manifest in chunk_manifests
+            )
         spool_path = spool_root / f'{result.member_token}.listens'
         if spool_path.exists():
             spool_path.unlink()
@@ -1538,6 +1890,9 @@ def extract_listenbrainz_archive(plan: FullIngestionPlan) -> FullIngestionPlan:
             spool_path = spool_root / f'{member_token}.listens'
             with extracted, spool_path.open('wb') as spool_handle:
                 shutil.copyfileobj(extracted, spool_handle, length=1024 * 1024)
+            spool_size_bytes = spool_path.stat().st_size
+            counters['spool_bytes_estimated'] = int(counters.get('spool_bytes_estimated') or 0) + spool_size_bytes
+            counters['spooled_members_in_flight'] = int(counters.get('spooled_members_in_flight') or 0) + 1
 
             future = executor.submit(
                 _process_listenbrainz_spooled_member_in_worker,
@@ -1547,7 +1902,10 @@ def extract_listenbrainz_archive(plan: FullIngestionPlan) -> FullIngestionPlan:
             )
             future_to_member[future] = member_token
 
-            while len(future_to_member) >= max_in_flight:
+            while len(future_to_member) >= max(
+                1,
+                min(max_in_flight, running_plan.partition_worker_budget),
+            ):
                 done, _ = wait(future_to_member.keys(), return_when=FIRST_COMPLETED)
                 for done_future in done:
                     future_to_member.pop(done_future, None)
