@@ -189,8 +189,12 @@ class FullIngestionPlanningTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(extracted.counters['artifacts_discovered'], 2)
         self.assertEqual(extracted.counters['artifacts_partitioned'], 2)
         self.assertEqual(extracted.counters['rows_parsed'], 3)
-        self.assertEqual(extracted.counters['rows_resolved'], 0)
-        self.assertEqual(extracted.counters['rows_unresolved'], 3)
+        self.assertEqual(extracted.counters['rows_with_mbid_candidate'], 0)
+        self.assertEqual(extracted.counters['rows_with_spotify_candidate'], 3)
+        self.assertEqual(extracted.counters['rows_with_no_candidate'], 0)
+        self.assertEqual(extracted.counters['rows_resolved'], 3)
+        self.assertEqual(extracted.counters['rows_resolved_by_spotify'], 3)
+        self.assertEqual(extracted.counters['rows_unresolved'], 0)
         self.assertEqual(extracted.counters['rows_malformed'], 0)
         self.assertEqual(extracted.counters['chunks_written'], 3)
         self.assertGreaterEqual(extracted.counters['chunk_bytes_written'], 1)
@@ -285,6 +289,7 @@ class FullIngestionPlanningTests(FullIngestionMixin, TransactionTestCase):
         self.assertIn('provider=listenbrainz', output)
         self.assertIn('stage=partition', output)
         self.assertIn('rows_parsed=3', output)
+        self.assertIn('candidates=mbid:0,spotify:3,none:0', output)
         self.assertIn('chunks_written=', output)
 
     def test_control_command_switches_policy_and_budgets(self):
@@ -370,8 +375,9 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(loaded.stage, 'copy')
         self.assertEqual(loaded.status, 'running')
         self.assertEqual(loaded.counters['rows_parsed'], 3)
+        self.assertEqual(loaded.counters['rows_with_spotify_candidate'], 3)
         self.assertEqual(loaded.counters['rows_staged'], 3)
-        self.assertEqual(loaded.counters['session_rows_loaded'], 1)
+        self.assertEqual(loaded.counters['session_rows_loaded'], 3)
         self.assertGreaterEqual(loaded.counters['chunks_loaded'], 2)
         self.assertEqual(loaded.counters['partitions_loaded'], 4)
         self.assertTrue(all(partition.state == 'loaded' for partition in loaded.partitions))
@@ -388,7 +394,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
             )
             session_load_rows = cursor.fetchone()[0]
         self.assertEqual(event_load_rows, 3)
-        self.assertEqual(session_load_rows, 1)
+        self.assertEqual(session_load_rows, 3)
 
         populated_partition = next(
             partition for partition in loaded.partitions if partition.actual_artifact_count > 0
@@ -444,20 +450,22 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(merged.status, 'succeeded')
         self.assertEqual(merged.counters['rows_merged'], 3)
         self.assertEqual(merged.counters['rows_deduplicated'], 0)
-        self.assertEqual(merged.counters['rows_resolved'], 1)
-        self.assertEqual(merged.counters['rows_unresolved'], 2)
+        self.assertEqual(merged.counters['rows_resolved'], 3)
+        self.assertEqual(merged.counters['rows_resolved_by_spotify'], 3)
+        self.assertEqual(merged.counters['rows_unresolved'], 0)
         self.assertEqual(merged.counters['partitions_merged'], 4)
         self.assertTrue(merged.source_ingestion_run_id)
 
         self.assertEqual(ListenBrainzEventLedger.objects.count(), 3)
-        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 1)
+        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 3)
+        self.assertEqual(ListenBrainzEventLedger.objects.filter(canonical_item__isnull=False).count(), 3)
         self.assertEqual(ListenBrainzEventLedger.objects.filter(track__isnull=False).count(), 1)
 
         source_run = SourceIngestionRun.objects.get(pk=merged.source_ingestion_run_id)
         self.assertEqual(source_run.status, 'succeeded')
         self.assertEqual(source_run.source_row_count, 3)
         self.assertEqual(source_run.imported_row_count, 3)
-        self.assertEqual(source_run.unresolved_row_count, 2)
+        self.assertEqual(source_run.unresolved_row_count, 0)
         self.assertEqual(source_run.metadata['full_ingestion_run_id'], merged.run_id)
 
         with connection.cursor() as cursor:
@@ -512,7 +520,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(completed.counters['rows_parsed'], 3)
         self.assertEqual(completed.counters['rows_staged'], 3)
         self.assertEqual(completed.counters['rows_merged'], 3)
-        self.assertEqual(completed.counters['session_rows_loaded'], 1)
+        self.assertEqual(completed.counters['session_rows_loaded'], 3)
         self.assertEqual(completed.counters['partitions_loaded'], 4)
         self.assertEqual(completed.counters['partitions_merged'], 4)
 

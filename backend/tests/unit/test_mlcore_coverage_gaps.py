@@ -27,6 +27,7 @@ from mlcore.models import (
     ModelPromotion,
     SourceIngestionRun,
 )
+from mlcore.services.canonical_items import bulk_ensure_canonical_items_for_tracks
 from mlcore.services.cooccurrence import (
     BEHAVIOR_SOURCE_LISTENBRAINZ,
     BEHAVIOR_SOURCE_SEARCH_HISTORY,
@@ -53,8 +54,10 @@ def _mk_album(name='A'):
 
 
 def _mk_listenbrainz_session_track(run, *, track, session_hint, played_at):
+    canonical_item = bulk_ensure_canonical_items_for_tracks([track])[track.juke_id]
     return ListenBrainzSessionTrack.objects.create(
         import_run=run,
+        canonical_item=canonical_item,
         track=track,
         session_key=hashlib.sha256(session_hint.encode('utf-8')).digest(),
         first_played_at=played_at,
@@ -218,12 +221,13 @@ class TrackFeatureRowsM2MTests(TestCase):
         album = _mk_album()
         album.artists.add(artist_a, artist_b)
         t = create_track(name='T', album=album, track_number=1, duration_ms=1000)
+        canonical_id = bulk_ensure_canonical_items_for_tracks([t])[t.juke_id].pk
 
-        rows = _track_feature_rows([t.juke_id])
+        rows = _track_feature_rows([canonical_id])
         artist_ids = {r['artist_id'] for r in rows}
         self.assertEqual(artist_ids, {artist_a.pk, artist_b.pk})
         # All rows for same track → same juke_id, same album_id
-        self.assertEqual({r['juke_id'] for r in rows}, {t.juke_id})
+        self.assertEqual({r['juke_id'] for r in rows}, {canonical_id})
         self.assertEqual({r['album_id'] for r in rows}, {album.pk})
 
     def test_multi_genre_artist_emits_multiple_rows(self):
@@ -234,8 +238,9 @@ class TrackFeatureRowsM2MTests(TestCase):
         album = _mk_album()
         album.artists.add(artist)
         t = create_track(name='T', album=album, track_number=1, duration_ms=1000)
+        canonical_id = bulk_ensure_canonical_items_for_tracks([t])[t.juke_id].pk
 
-        rows = _track_feature_rows([t.juke_id])
+        rows = _track_feature_rows([canonical_id])
         genre_ids = {r['genre_id'] for r in rows}
         self.assertEqual(genre_ids, {jazz.pk, funk.pk})
 
@@ -243,7 +248,8 @@ class TrackFeatureRowsM2MTests(TestCase):
         # Album with no artists → LEFT JOIN yields nulls
         album = _mk_album()
         t = create_track(name='T', album=album, track_number=1, duration_ms=1000)
-        rows = _track_feature_rows([t.juke_id])
+        canonical_id = bulk_ensure_canonical_items_for_tracks([t])[t.juke_id].pk
+        rows = _track_feature_rows([canonical_id])
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]['album_id'], album.pk)
         self.assertIsNone(rows[0]['artist_id'])
@@ -263,9 +269,12 @@ class TrackFeatureRowsM2MTests(TestCase):
         alb_cand.artists.add(artist_shared, artist_other)  # multi-artist
         t_seed = create_track(name='S', album=alb_seed, track_number=1, duration_ms=1000)
         t_cand = create_track(name='C', album=alb_cand, track_number=1, duration_ms=1000)
+        canonical = bulk_ensure_canonical_items_for_tracks([t_seed, t_cand])
+        t_seed_id = canonical[t_seed.juke_id].pk
+        t_cand_id = canonical[t_cand.juke_id].pk
 
-        ranked = MetadataRanker().rank(seeds=(t_seed.juke_id,), exclude={t_seed.juke_id}, limit=10)
-        self.assertIn(t_cand.juke_id, ranked)
+        ranked = MetadataRanker().rank(seeds=(t_seed_id,), exclude={t_seed_id}, limit=10)
+        self.assertIn(t_cand_id, ranked)
 
 
 # --- _latest_shared_dataset_hash most-recent semantics ---

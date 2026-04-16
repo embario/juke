@@ -23,6 +23,7 @@ from mlcore.models import (
     SourceIngestionRun,
     TrainingRun,
 )
+from mlcore.services.canonical_items import bulk_ensure_canonical_items_for_tracks
 from mlcore.services.cooccurrence import BEHAVIOR_SOURCE_LISTENBRAINZ, train_cooccurrence
 from mlcore.services.evaluation import (
     METRIC_COLD_RECALL,
@@ -244,14 +245,19 @@ class BuildLOODatasetFromBehaviorSourcesTests(TestCase):
     def _mk_session_track(self, session_hint, track):
         session_key = hashlib.sha256(session_hint.encode('utf-8')).digest()
         played_at = datetime.datetime(2026, 3, 22, 12, 0, tzinfo=datetime.UTC)
+        canonical_item = bulk_ensure_canonical_items_for_tracks([track])[track.juke_id]
         return ListenBrainzSessionTrack.objects.create(
             import_run=self.run,
+            canonical_item=canonical_item,
             track=track,
             session_key=session_key,
             first_played_at=played_at,
             last_played_at=played_at,
             play_count=1,
         )
+
+    def _canonical_id(self, track):
+        return bulk_ensure_canonical_items_for_tracks([track])[track.juke_id].pk
 
     def test_builds_trials_from_listenbrainz_source(self):
         self._mk_session_track('lb-session-1', self.t1)
@@ -260,7 +266,7 @@ class BuildLOODatasetFromBehaviorSourcesTests(TestCase):
         ds = build_loo_dataset(sources=[BEHAVIOR_SOURCE_LISTENBRAINZ], split='all')
 
         self.assertEqual(len(ds.trials), 2)
-        self.assertEqual({trial.held_out for trial in ds.trials}, {self.t1.juke_id, self.t2.juke_id})
+        self.assertEqual({trial.held_out for trial in ds.trials}, {self._canonical_id(self.t1), self._canonical_id(self.t2)})
 
     def test_default_dataset_builder_includes_listenbrainz_rows(self):
         self._mk_session_track('lb-session-default', self.t1)
@@ -269,7 +275,7 @@ class BuildLOODatasetFromBehaviorSourcesTests(TestCase):
         ds = build_loo_dataset(split='all')
 
         self.assertEqual(len(ds.trials), 2)
-        self.assertEqual({trial.held_out for trial in ds.trials}, {self.t1.juke_id, self.t2.juke_id})
+        self.assertEqual({trial.held_out for trial in ds.trials}, {self._canonical_id(self.t1), self._canonical_id(self.t2)})
 
 
 # --- evaluation driver with fake ranker (no DB) ---
@@ -372,11 +378,15 @@ class MetadataRankerAdapterTests(TestCase):
         t3 = create_track(name='T3', album=album, track_number=3, duration_ms=1000)
 
         ranker = MetadataRanker()
-        ranked = ranker.rank(seeds=(t1.juke_id,), exclude={t1.juke_id}, limit=10)
+        canonical = bulk_ensure_canonical_items_for_tracks([t1, t2, t3])
+        t1_id = canonical[t1.juke_id].pk
+        t2_id = canonical[t2.juke_id].pk
+        t3_id = canonical[t3.juke_id].pk
+        ranked = ranker.rank(seeds=(t1_id,), exclude={t1_id}, limit=10)
 
-        self.assertIn(t2.juke_id, ranked)
-        self.assertIn(t3.juke_id, ranked)
-        self.assertNotIn(t1.juke_id, ranked)
+        self.assertIn(t2_id, ranked)
+        self.assertIn(t3_id, ranked)
+        self.assertNotIn(t1_id, ranked)
 
     def test_unrelated_track_not_recommended(self):
         artist_a = create_artist(name='A')
@@ -388,8 +398,11 @@ class MetadataRankerAdapterTests(TestCase):
         ta = create_track(name='Ta', album=album_a, track_number=1, duration_ms=1000)
         tb = create_track(name='Tb', album=album_b, track_number=1, duration_ms=1000)
 
-        ranked = MetadataRanker().rank(seeds=(ta.juke_id,), exclude={ta.juke_id}, limit=10)
-        self.assertNotIn(tb.juke_id, ranked)
+        canonical = bulk_ensure_canonical_items_for_tracks([ta, tb])
+        ta_id = canonical[ta.juke_id].pk
+        tb_id = canonical[tb.juke_id].pk
+        ranked = MetadataRanker().rank(seeds=(ta_id,), exclude={ta_id}, limit=10)
+        self.assertNotIn(tb_id, ranked)
 
     def test_empty_seeds(self):
         self.assertEqual(MetadataRanker().rank(seeds=(), exclude=set(), limit=10), [])

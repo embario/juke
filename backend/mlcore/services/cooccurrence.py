@@ -3,7 +3,7 @@ Co-occurrence trainer (arch §5.4, §7.2).
 
 Produces symmetric pairwise PMI scores from behavioral baskets and
 persists them to mlcore_item_cooccurrence. A basket is any collection
-of juke_ids observed together (same search session, same playlist, etc).
+of canonical item ids observed together (same search session, same playlist, etc).
 
 PMI(a,b) = log2(P(a,b) / (P(a) * P(b)))
   where P(x)   = count_baskets_containing_x / N
@@ -27,6 +27,7 @@ from uuid import UUID
 
 from catalog.models import SearchHistoryResource, Track
 from mlcore.models import ItemCoOccurrence, ListenBrainzSessionTrack, TrainingRun
+from mlcore.services.canonical_items import bulk_ensure_canonical_items_for_tracks
 
 logger = logging.getLogger(__name__)
 
@@ -186,13 +187,17 @@ def _append_search_history_baskets(
     if not all_pks:
         return source_row_count
 
-    pk_to_juke: dict[int, UUID] = dict(
-        Track.objects.filter(pk__in=all_pks).values_list("pk", "juke_id")
-    )
+    tracks = list(Track.objects.filter(pk__in=all_pks))
+    canonical_by_track_id = bulk_ensure_canonical_items_for_tracks(tracks)
+    pk_to_canonical_item_id: dict[int, UUID] = {
+        track.pk: canonical_by_track_id[track.juke_id].pk
+        for track in tracks
+        if track.juke_id in canonical_by_track_id
+    }
 
     for session_id, pks in session_to_pks.items():
         session_to_jukes[(BEHAVIOR_SOURCE_SEARCH_HISTORY, str(session_id))].update(
-            pk_to_juke[pk] for pk in pks if pk in pk_to_juke
+            pk_to_canonical_item_id[pk] for pk in pks if pk in pk_to_canonical_item_id
         )
 
     return source_row_count
@@ -204,13 +209,15 @@ def _append_listenbrainz_session_track_baskets(
     split_buckets: int,
     session_to_jukes: dict[tuple[str, str | bytes], set[UUID]],
 ) -> int:
-    rows = ListenBrainzSessionTrack.objects.values_list('session_key', 'track_id')
+    rows = ListenBrainzSessionTrack.objects.values_list('session_key', 'canonical_item_id')
     source_row_count = 0
-    for session_key, track_juke_id in rows:
+    for session_key, canonical_item_id in rows:
         if not _is_in_split(session_key, split, split_buckets):
             continue
+        if canonical_item_id is None:
+            continue
         normalized_session_key = session_key.tobytes() if isinstance(session_key, memoryview) else bytes(session_key)
-        session_to_jukes[(BEHAVIOR_SOURCE_LISTENBRAINZ, normalized_session_key)].add(track_juke_id)
+        session_to_jukes[(BEHAVIOR_SOURCE_LISTENBRAINZ, normalized_session_key)].add(canonical_item_id)
         source_row_count += 1
 
     return source_row_count

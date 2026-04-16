@@ -27,7 +27,8 @@ from uuid import UUID
 from django.db.models import Q
 
 from catalog.models import Track
-from mlcore.models import ItemCoOccurrence, ModelEvaluation, TrainingRun
+from mlcore.models import CanonicalItem, ItemCoOccurrence, ModelEvaluation, TrainingRun
+from mlcore.services.canonical_items import bulk_ensure_canonical_items_for_tracks
 from mlcore.services.cooccurrence import (
     _SPLIT_BUCKET_COUNT,
     baskets_from_behavioral_sources,
@@ -178,14 +179,36 @@ def _track_feature_rows(juke_ids: Iterable[UUID]) -> list[dict]:
     Mirror _SEED_FEATURES_SQL: (juke_id, album_id, artist_id, genre_id) rows.
     M2M cross-product is intentional — scorers.score_metadata() unions per track.
     """
-    qs = (
-        Track.objects
-        .filter(juke_id__in=list(juke_ids))
-        .values('juke_id', 'album_id', 'album__artists', 'album__artists__genres')
+    canonical_rows = list(
+        CanonicalItem.objects
+        .filter(pk__in=list(juke_ids), track__isnull=False)
+        .values('id', 'track__album_id', 'track__album__artists', 'track__album__artists__genres')
+    )
+    if canonical_rows:
+        return [
+            {
+                'juke_id': r['id'],
+                'album_id': r['track__album_id'],
+                'artist_id': r['track__album__artists'],
+                'genre_id': r['track__album__artists__genres'],
+            }
+            for r in canonical_rows
+        ]
+
+    tracks = list(Track.objects.filter(juke_id__in=list(juke_ids)))
+    if not tracks:
+        return []
+
+    canonical_by_track_id = bulk_ensure_canonical_items_for_tracks(tracks)
+    qs = Track.objects.filter(juke_id__in=[track.juke_id for track in tracks]).values(
+        'juke_id',
+        'album_id',
+        'album__artists',
+        'album__artists__genres',
     )
     return [
         {
-            'juke_id': r['juke_id'],
+            'juke_id': canonical_by_track_id[r['juke_id']].pk,
             'album_id': r['album_id'],
             'artist_id': r['album__artists'],
             'genre_id': r['album__artists__genres'],
@@ -200,19 +223,27 @@ def _metadata_candidate_rows(album_ids: list, artist_ids: list, genre_ids: list)
     overlaps the seed feature sets. Sentinel -1 from extract_seed_feature_ids()
     matches nothing (no FK is ever -1) so the filter stays valid.
     """
-    qs = (
+    tracks = list(
         Track.objects
         .filter(
             Q(album_id__in=album_ids)
             | Q(album__artists__in=artist_ids)
             | Q(album__artists__genres__in=genre_ids)
         )
+    )
+    if not tracks:
+        return []
+
+    canonical_by_track_id = bulk_ensure_canonical_items_for_tracks(tracks)
+    qs = (
+        Track.objects
+        .filter(pk__in=[track.pk for track in tracks])
         .values('juke_id', 'album_id', 'album__artists', 'album__artists__genres')
         .distinct()
     )
     return [
         {
-            'juke_id': r['juke_id'],
+            'juke_id': canonical_by_track_id[r['juke_id']].pk,
             'album_id': r['album_id'],
             'artist_id': r['album__artists'],
             'genre_id': r['album__artists__genres'],

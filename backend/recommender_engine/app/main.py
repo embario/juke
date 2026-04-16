@@ -302,28 +302,31 @@ class BaselineResponse(BaseModel):
     generated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-# Resolve seed track juke_ids → their artist_ids, album_ids, genre_ids.
-# M2M tables use integer PKs, so we join through catalog_track.
+# Resolve canonical item ids → local track metadata when a bridge exists.
+# This keeps the serving item space aligned with MLCore canonical items while
+# still allowing metadata ranking over the thin local catalog.
 _SEED_FEATURES_SQL = """
     SELECT
-        t.juke_id,
+        ci.id AS juke_id,
         t.album_id,
         aa.artist_id,
         ag.genre_id
-    FROM catalog_track t
+    FROM mlcore_canonical_item ci
+    JOIN catalog_track t ON t.juke_id = ci.track_id
     LEFT JOIN catalog_album_artists aa ON aa.album_id = t.album_id
     LEFT JOIN catalog_artist_genres ag ON ag.artist_id = aa.artist_id
-    WHERE t.juke_id = ANY(%s)
+    WHERE ci.id = ANY(%s)
 """
 
 # Candidates that match ANY seed feature.
 _METADATA_CANDIDATES_SQL = """
     SELECT DISTINCT
-        t.juke_id,
+        ci.id AS juke_id,
         t.album_id,
         aa.artist_id,
         ag.genre_id
-    FROM catalog_track t
+    FROM mlcore_canonical_item ci
+    JOIN catalog_track t ON t.juke_id = ci.track_id
     LEFT JOIN catalog_album_artists aa ON aa.album_id = t.album_id
     LEFT JOIN catalog_artist_genres ag ON ag.artist_id = aa.artist_id
     WHERE t.album_id = ANY(%s)
