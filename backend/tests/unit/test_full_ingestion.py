@@ -1,6 +1,7 @@
 import json
 import tarfile
 import tempfile
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -19,9 +20,17 @@ from mlcore.models import (
 from mlcore.services.full_ingestion import (
     FULL_INGESTION_POLICY_THROUGHPUT,
     LISTENBRAINZ_EVENT_LOAD_TABLE,
+    LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE,
     LISTENBRAINZ_SESSION_LOAD_TABLE,
+    LISTENBRAINZ_SESSION_STAGE_TABLE,
+    LISTENBRAINZ_FINALIZE_PHASE_PARTITION_DRAIN,
+    _create_empty_listenbrainz_event_ledger_build_table,
+    _create_empty_listenbrainz_session_track_build_table,
+    _ensure_listenbrainz_session_stage_table,
+    _finalize_listenbrainz_partition_into_build_tables,
     build_full_ingestion_partition_estimates,
     build_full_ingestion_plan,
+    ensure_full_ingestion_source_run,
     execute_full_ingestion_copy_stage,
     execute_full_ingestion_merge_stage,
     execute_full_ingestion_partition_stage,
@@ -395,6 +404,8 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
             session_load_rows = cursor.fetchone()[0]
         self.assertEqual(event_load_rows, 3)
         self.assertEqual(session_load_rows, 3)
+        self.assertFalse((Path(loaded.run_root) / 'spool').exists())
+        self.assertFalse(any(Path(loaded.partition_root).glob('p*/events')))
 
         populated_partition = next(
             partition for partition in loaded.partitions if partition.actual_artifact_count > 0
@@ -431,6 +442,154 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertIn(f'{LISTENBRAINZ_EVENT_LOAD_TABLE}_run_partition_idx', index_names)
         self.assertIn(f'{LISTENBRAINZ_SESSION_LOAD_TABLE}_run_partition_idx', index_names)
 
+    def test_load_tables_are_rebuilt_when_stale_schema_exists(self):
+        with connection.cursor() as cursor:
+            cursor.execute(f'DROP TABLE IF EXISTS {LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE}')
+            cursor.execute(f'DROP TABLE IF EXISTS {LISTENBRAINZ_SESSION_STAGE_TABLE}')
+            cursor.execute(f'DROP TABLE IF EXISTS {LISTENBRAINZ_SESSION_LOAD_TABLE}')
+            cursor.execute(f'DROP TABLE IF EXISTS {LISTENBRAINZ_EVENT_LOAD_TABLE}')
+            if connection.vendor == 'postgresql':
+                cursor.execute(
+                    f'''
+                    CREATE UNLOGGED TABLE {LISTENBRAINZ_EVENT_LOAD_TABLE} (
+                        run_id uuid NOT NULL,
+                        partition_key varchar(16) NOT NULL,
+                        event_signature bytea NOT NULL,
+                        played_at timestamptz NOT NULL,
+                        session_key bytea NOT NULL,
+                        track_id uuid NULL,
+                        resolution_state smallint NOT NULL,
+                        cold_ref text NOT NULL
+                    )
+                    '''
+                )
+            else:
+                cursor.execute(
+                    f'''
+                    CREATE TABLE {LISTENBRAINZ_EVENT_LOAD_TABLE} (
+                        run_id text NOT NULL,
+                        partition_key text NOT NULL,
+                        event_signature blob NOT NULL,
+                        played_at text NOT NULL,
+                        session_key blob NOT NULL,
+                        track_id text NULL,
+                        resolution_state integer NOT NULL,
+                        cold_ref text NOT NULL
+                    )
+                    '''
+                )
+
+        ensure_listenbrainz_load_tables()
+
+        if connection.vendor == 'postgresql':
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = %s
+                    ORDER BY ordinal_position
+                    """,
+                    [LISTENBRAINZ_EVENT_LOAD_TABLE],
+                )
+                event_columns = [row[0] for row in cursor.fetchall()]
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = %s
+                    ORDER BY ordinal_position
+                    """,
+                    [LISTENBRAINZ_SESSION_LOAD_TABLE],
+                )
+                session_columns = [row[0] for row in cursor.fetchall()]
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = %s
+                    ORDER BY ordinal_position
+                    """,
+                    [LISTENBRAINZ_SESSION_STAGE_TABLE],
+                )
+                stage_columns = [row[0] for row in cursor.fetchall()]
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = %s
+                    ORDER BY ordinal_position
+                    """,
+                    [LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE],
+                )
+                checkpoint_columns = [row[0] for row in cursor.fetchall()]
+        else:
+            with connection.cursor() as cursor:
+                cursor.execute(f"PRAGMA table_info('{LISTENBRAINZ_EVENT_LOAD_TABLE}')")
+                event_columns = [row[1] for row in cursor.fetchall()]
+                cursor.execute(f"PRAGMA table_info('{LISTENBRAINZ_SESSION_LOAD_TABLE}')")
+                session_columns = [row[1] for row in cursor.fetchall()]
+                cursor.execute(f"PRAGMA table_info('{LISTENBRAINZ_SESSION_STAGE_TABLE}')")
+                stage_columns = [row[1] for row in cursor.fetchall()]
+                cursor.execute(f"PRAGMA table_info('{LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE}')")
+                checkpoint_columns = [row[1] for row in cursor.fetchall()]
+
+        self.assertEqual(
+            event_columns,
+            [
+                'run_id',
+                'partition_key',
+                'event_signature',
+                'played_at',
+                'session_key',
+                'canonical_item_id',
+                'canonical_item_type',
+                'canonical_item_key',
+                'track_id',
+                'resolution_state',
+                'cold_ref',
+            ],
+        )
+        self.assertEqual(
+            session_columns,
+            [
+                'run_id',
+                'partition_key',
+                'session_key',
+                'canonical_item_id',
+                'track_id',
+                'first_played_at',
+                'last_played_at',
+                'play_count',
+            ],
+        )
+        self.assertEqual(
+            stage_columns,
+            [
+                'run_id',
+                'partition_key',
+                'session_key',
+                'canonical_item_id',
+                'track_id',
+                'first_played_at',
+                'last_played_at',
+                'play_count',
+            ],
+        )
+        self.assertEqual(
+            checkpoint_columns,
+            [
+                'run_id',
+                'phase',
+                'partition_key',
+                'completed_at',
+            ],
+        )
+
     def test_merge_stage_populates_final_tables_and_cleans_load_tables(self):
         self._create_track(spotify_id='spotify-may')
         archive_path = self._build_archive()
@@ -460,6 +619,11 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(ListenBrainzSessionTrack.objects.count(), 3)
         self.assertEqual(ListenBrainzEventLedger.objects.filter(canonical_item__isnull=False).count(), 3)
         self.assertEqual(ListenBrainzEventLedger.objects.filter(track__isnull=False).count(), 1)
+        self.assertFalse(Path(merged.partition_root).exists())
+        self.assertFalse(Path(merged.log_root).exists())
+        self.assertFalse((Path(merged.run_root) / 'spool').exists())
+        self.assertTrue(Path(merged.manifest_path).exists())
+        self.assertTrue(Path(merged.control_path).exists())
 
         source_run = SourceIngestionRun.objects.get(pk=merged.source_ingestion_run_id)
         self.assertEqual(source_run.status, 'succeeded')
@@ -479,8 +643,14 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
                 [merged.run_id],
             )
             session_load_rows = cursor.fetchone()[0]
+            cursor.execute(
+                f'SELECT count(*) FROM {LISTENBRAINZ_SESSION_STAGE_TABLE} WHERE run_id = %s',
+                [merged.run_id],
+            )
+            session_stage_rows = cursor.fetchone()[0]
         self.assertEqual(event_load_rows, 0)
         self.assertEqual(session_load_rows, 0)
+        self.assertEqual(session_stage_rows, 0)
 
         if connection.vendor == 'postgresql':
             with connection.cursor() as cursor:
@@ -501,6 +671,110 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
                 )
                 shadow_tables_exist = cursor.fetchone()[0]
             self.assertFalse(shadow_tables_exist)
+
+    def test_merge_stage_force_can_rerun_failed_all_merged_state_from_load_tables(self):
+        self._create_track(spotify_id='spotify-may')
+        archive_path = self._build_archive()
+        plan = build_full_ingestion_plan(
+            'listenbrainz',
+            archive_path,
+            scratch_root=self.temp_dir / 'scratch',
+            partition_count=4,
+        )
+
+        initialize_full_ingestion_plan(plan)
+        extracted = execute_full_ingestion_partition_stage(plan)
+        loaded = execute_full_ingestion_copy_stage(extracted)
+        failed_merge_plan = replace(
+            loaded,
+            stage='merge',
+            status='failed',
+            partitions=[replace(partition, state='merged') for partition in loaded.partitions],
+        )
+
+        merged = execute_full_ingestion_merge_stage(failed_merge_plan, force=True)
+
+        self.assertEqual(merged.stage, 'complete')
+        self.assertEqual(merged.status, 'succeeded')
+        self.assertEqual(merged.counters['rows_merged'], 3)
+        self.assertEqual(merged.counters['partitions_merged'], 4)
+        self.assertEqual(ListenBrainzEventLedger.objects.count(), 3)
+        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 3)
+
+    def test_merge_stage_treats_stale_merging_partition_as_retryable_loaded(self):
+        self._create_track(spotify_id='spotify-may')
+        archive_path = self._build_archive()
+        plan = build_full_ingestion_plan(
+            'listenbrainz',
+            archive_path,
+            scratch_root=self.temp_dir / 'scratch',
+            partition_count=4,
+        )
+
+        initialize_full_ingestion_plan(plan)
+        extracted = execute_full_ingestion_partition_stage(plan)
+        loaded = execute_full_ingestion_copy_stage(extracted)
+        retry_partitions = list(loaded.partitions)
+        retry_partitions[0] = replace(retry_partitions[0], state='merging')
+
+        resumed = execute_full_ingestion_merge_stage(
+            replace(loaded, partitions=retry_partitions),
+        )
+
+        self.assertEqual(resumed.stage, 'complete')
+        self.assertEqual(resumed.status, 'succeeded')
+        self.assertEqual(resumed.counters['partitions_merged'], 4)
+
+    def test_merge_stage_resume_skips_checkpointed_partition_drains(self):
+        self._create_track(spotify_id='spotify-may')
+        archive_path = self._build_archive()
+        plan = build_full_ingestion_plan(
+            'listenbrainz',
+            archive_path,
+            scratch_root=self.temp_dir / 'scratch',
+            partition_count=4,
+        )
+
+        initialize_full_ingestion_plan(plan)
+        extracted = execute_full_ingestion_partition_stage(plan)
+        loaded = execute_full_ingestion_copy_stage(extracted)
+        source_run, _ = ensure_full_ingestion_source_run(loaded)
+        first_partition = next(
+            partition for partition in loaded.partitions
+            if partition.actual_artifact_count > 0
+        )
+
+        with connection.cursor() as cursor:
+            _create_empty_listenbrainz_event_ledger_build_table(cursor)
+            _ensure_listenbrainz_session_stage_table(cursor)
+            _create_empty_listenbrainz_session_track_build_table(cursor)
+
+        first_result = _finalize_listenbrainz_partition_into_build_tables(
+            run_id=loaded.run_id,
+            partition_key=first_partition.partition_key,
+            import_run_id=str(source_run.pk),
+        )
+        self.assertGreater(first_result.rows_merged, 0)
+
+        resumed = execute_full_ingestion_merge_stage(loaded)
+
+        self.assertEqual(resumed.stage, 'complete')
+        self.assertEqual(resumed.status, 'succeeded')
+        self.assertEqual(resumed.counters['rows_merged'], 3)
+        self.assertEqual(resumed.counters['partitions_merged'], 4)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f'''
+                SELECT COUNT(*)
+                FROM {LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE}
+                WHERE run_id = %s
+                  AND phase = %s
+                ''',
+                [loaded.run_id, LISTENBRAINZ_FINALIZE_PHASE_PARTITION_DRAIN],
+            )
+            drained_checkpoint_count = cursor.fetchone()[0]
+        self.assertEqual(drained_checkpoint_count, 4)
 
     def test_pipeline_executor_completes_end_to_end(self):
         self._create_track(spotify_id='spotify-may')

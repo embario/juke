@@ -239,19 +239,19 @@ class Command(BaseCommand):
 
         try:
             if options['execute_partition_stage']:
-                plan = execute_full_ingestion_partition_stage(plan)
+                plan = execute_full_ingestion_partition_stage(plan, force=bool(options['force']))
             if options['execute_copy_stage']:
                 if plan.stage == 'planned':
-                    plan = execute_full_ingestion_partition_stage(plan)
-                plan = execute_full_ingestion_copy_stage(plan)
+                    plan = execute_full_ingestion_partition_stage(plan, force=bool(options['force']))
+                plan = execute_full_ingestion_copy_stage(plan, force=bool(options['force']))
             if options['execute_merge_stage']:
                 if plan.stage == 'planned':
-                    plan = execute_full_ingestion_partition_stage(plan)
+                    plan = execute_full_ingestion_partition_stage(plan, force=bool(options['force']))
                 if plan.stage == 'partition':
-                    plan = execute_full_ingestion_copy_stage(plan)
-                plan = execute_full_ingestion_merge_stage(plan)
+                    plan = execute_full_ingestion_copy_stage(plan, force=bool(options['force']))
+                plan = execute_full_ingestion_merge_stage(plan, force=bool(options['force']))
             if options['execute_pipeline']:
-                plan = execute_full_ingestion_pipeline(plan)
+                plan = execute_full_ingestion_pipeline(plan, force=bool(options['force']))
         except ValueError as exc:
             release_full_ingestion_lease(
                 provider=plan.provider,

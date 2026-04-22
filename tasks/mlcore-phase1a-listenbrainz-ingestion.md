@@ -1,7 +1,7 @@
 ---
 id: mlcore-phase1a-listenbrainz-ingestion
 title: ML Core Phase 1a - ListenBrainz dataset ingestion and interaction normalization
-status: in_progress
+status: completed
 priority: p1
 owner: codex
 area: platform
@@ -12,7 +12,7 @@ labels:
   - backend
   - data-ingestion
 complexity: 5
-updated_at: 2026-04-09
+updated_at: 2026-04-22
 ---
 
 ## Goal
@@ -165,7 +165,7 @@ Build a production-safe ingest pipeline for ListenBrainz full + incremental dump
       - `/var/lib/postgresql/tablespaces/juke_mlcore_hot`
       - `/var/lib/postgresql/tablespaces/juke_mlcore_cold`
     - migrations `backend/mlcore/migrations/0008_mlcore_tablespace_split.py` and `backend/mlcore/migrations/0009_reapply_mlcore_tablespace_split.py` create those tablespaces and move compact hot tables plus cold/deprecated ListenBrainz tables into place.
-  - Additional completed on 2026-04-13:
+- Additional completed on 2026-04-13:
     - Implemented a provider-lease guarded v2 full-ingestion engine with:
       - process-based archive extraction via NVMe spooling
       - compact chunk files
@@ -180,6 +180,57 @@ Build a production-safe ingest pipeline for ListenBrainz full + incremental dump
       - scratch artifact ownership should be normalized so host cleanup does not require special handling
     - Follow-up architecture for the next iteration is tracked in:
       - `docs/arch/MLCORE_LISTENBRAINZ_FULL_INGESTION_V3.md`
+- Additional completed on 2026-04-19:
+  - Canonical-item full-ingestion pilot proved the primary ML identity model is now correct for Neptune:
+    - hot training facts no longer require full local catalog hydration
+    - extract/copy/per-partition merge paths work at full-dump scale
+  - Runtime load-table schema reconciliation is now required and implemented:
+    - stale `mlcore_listenbrainz_event_load` tables on long-lived hosts must be dropped/recreated when the canonical-item column set changes
+  - Early scratch cleanup is now required and implemented:
+    - partition chunk `events/` directories and `spool/` are deleted after copy completes successfully
+    - successful runs now also clean the remaining partition/log scratch while preserving manifest/control
+  - Operational finding:
+    - the current finalize path is still not production-safe because hot storage overlap remains too large
+    - the run reached all-partitions-merged state but failed building final hot indexes with `DiskFull` on `juke_mlcore_hot`
+    - measured peak overlap on `/srv/data` included roughly:
+      - `564 GiB` scratch
+      - `429 GiB` event load table
+      - `200 GiB` session delta load table
+      - `50 GiB` canonical item table
+      - `307 GiB` hot shadow training table
+  - The active redesign target is now finalize itself, not extract/copy correctness:
+    - narrow hot stage heap
+    - earlier load-table drain
+    - checkpointed resume for finalize
+    - smaller hot/cold overlap before final index build
+  - Detailed redesign is tracked in:
+    - `docs/arch/MLCORE_LISTENBRAINZ_FULL_INGESTION_V3.md`
+- Additional completed on 2026-04-22:
+  - Completed the full ListenBrainz dump ingestion on Neptune for source version `listenbrainz-dump-2446-20260301-000003-full`.
+  - Finalized the canonical-item hot/cold dataset successfully with:
+    - `rows_parsed=1,751,330,064`
+    - `rows_merged=1,751,330,064`
+    - `resolved=1,751,330,064`
+    - successful swap/checkpoint completion through:
+      - `partition_drain`
+      - `hot_build_partition`
+      - `shadow_indexes`
+      - `swap`
+  - Reclaimed all temporary ingestion workspace after success:
+    - scratch run root reduced to manifest/control residue only
+    - runtime load/stage tables truncated and vacuumed back to near-empty size
+  - Verified final retained dataset footprint:
+    - `mlcore_listenbrainz_event_ledger`: `638 GB` on `juke_mlcore_cold`
+    - `mlcore_listenbrainz_session_track`: `469 GB` on `juke_mlcore_hot`
+    - `mlcore_canonical_item`: `52 GB`
+  - Verified the completed full import metadata in `SourceIngestionRun`:
+    - `status=succeeded`
+    - `source_row_count=1,751,330,064`
+    - `imported_row_count=1,751,330,064`
+    - `canonicalized_row_count=1,751,330,064`
+    - `unresolved_row_count=0`
+- Remaining follow-up work moved out of this task:
+  - `tasks/mlcore-phase1a-full-ingestion-operational-hardening.md`
 - Blocker: none.
 
 ## Dependencies

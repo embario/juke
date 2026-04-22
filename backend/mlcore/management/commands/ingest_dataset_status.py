@@ -109,9 +109,21 @@ class Command(BaseCommand):
                 'stage={stage} status={status} '
                 'policy={policy} budgets=partition:{partition_budget},load:{load_budget},merge:{merge_budget} '
                 'partitions={partitions} states={states} '
-                'rows_parsed={rows_parsed} rows_staged={rows_staged} session_rows_loaded={session_rows_loaded} '
+                'rows_parsed={rows_parsed} '
+                'candidates=mbid:{rows_with_mbid_candidate},'
+                'spotify:{rows_with_spotify_candidate},'
+                'none:{rows_with_no_candidate} '
+                'resolved=total:{rows_resolved},'
+                'mbid:{rows_resolved_by_mbid},'
+                'spotify:{rows_resolved_by_spotify} '
+                'rows_staged={rows_staged} session_rows_loaded={session_rows_loaded} '
                 'chunks_written={chunks_written} chunks_loaded={chunks_loaded} rows_merged={rows_merged} '
                 'rows_deduplicated={rows_deduplicated} unresolved={rows_unresolved} malformed={rows_malformed} '
+                'host=device_util:{host_device_util_milli_pct}milli_pct,'
+                'iowait:{host_iowait_milli_pct}milli_pct,'
+                'mem_avail:{host_available_memory_bytes},'
+                'swap_used:{host_swap_used_bytes},'
+                'scratch_actual:{scratch_actual_bytes} '
                 'manifest={manifest}'
             ).format(
                 provider=plan.provider,
@@ -126,6 +138,12 @@ class Command(BaseCommand):
                 partitions=plan.partition_count,
                 states=','.join(f'{state}:{count}' for state, count in sorted(partition_states.items())),
                 rows_parsed=int(plan.counters.get('rows_parsed') or 0),
+                rows_with_mbid_candidate=int(plan.counters.get('rows_with_mbid_candidate') or 0),
+                rows_with_spotify_candidate=int(plan.counters.get('rows_with_spotify_candidate') or 0),
+                rows_with_no_candidate=int(plan.counters.get('rows_with_no_candidate') or 0),
+                rows_resolved=int(plan.counters.get('rows_resolved') or 0),
+                rows_resolved_by_mbid=int(plan.counters.get('rows_resolved_by_mbid') or 0),
+                rows_resolved_by_spotify=int(plan.counters.get('rows_resolved_by_spotify') or 0),
                 rows_staged=int(plan.counters.get('rows_staged') or 0),
                 session_rows_loaded=int(plan.counters.get('session_rows_loaded') or 0),
                 chunks_written=int(plan.counters.get('chunks_written') or 0),
@@ -134,6 +152,11 @@ class Command(BaseCommand):
                 rows_deduplicated=int(plan.counters.get('rows_deduplicated') or 0),
                 rows_unresolved=int(plan.counters.get('rows_unresolved') or 0),
                 rows_malformed=int(plan.counters.get('rows_malformed') or 0),
+                host_device_util_milli_pct=int(plan.counters.get('host_device_util_milli_pct') or 0),
+                host_iowait_milli_pct=int(plan.counters.get('host_iowait_milli_pct') or 0),
+                host_available_memory_bytes=int(plan.counters.get('host_available_memory_bytes') or 0),
+                host_swap_used_bytes=int(plan.counters.get('host_swap_used_bytes') or 0),
+                scratch_actual_bytes=int(plan.counters.get('scratch_actual_bytes') or 0),
                 manifest=plan.manifest_path,
             )
         )

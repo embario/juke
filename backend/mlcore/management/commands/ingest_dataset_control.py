@@ -79,8 +79,11 @@ class Command(BaseCommand):
                 plan,
                 policy_mode=options.get('policy'),
                 partition_worker_budget=options.get('partition_budget'),
+                partition_worker_budget_cap=options.get('partition_budget'),
                 load_worker_budget=options.get('load_budget'),
+                load_worker_budget_cap=options.get('load_budget'),
                 merge_worker_budget=options.get('merge_budget'),
+                merge_worker_budget_cap=options.get('merge_budget'),
                 scratch_soft_cap_bytes=scratch_soft_cap_bytes,
             )
             plan = sync_full_ingestion_runtime_control(plan)
