@@ -27,40 +27,63 @@ def _canonical_identity_for_track(track) -> tuple[str, str, uuid.UUID]:
 
 def forwards(apps, schema_editor):
     CanonicalItem = apps.get_model('mlcore', 'CanonicalItem')
-    EventLedger = apps.get_model('mlcore', 'ListenBrainzEventLedger')
-    SessionTrack = apps.get_model('mlcore', 'ListenBrainzSessionTrack')
     Track = apps.get_model('catalog', 'Track')
 
-    track_map: dict[uuid.UUID, CanonicalItem] = {}
+    rows_to_create = []
     for track in Track.objects.filter(
         models.Q(listenbrainz_event_ledgers__isnull=False)
         | models.Q(listenbrainz_session_tracks__isnull=False)
     ).distinct():
         item_type, canonical_key, item_id = _canonical_identity_for_track(track)
-        canonical_item, _ = CanonicalItem.objects.get_or_create(
-            canonical_key=canonical_key,
-            defaults={
-                'id': item_id,
-                'item_type': item_type,
-                'track_id': track.juke_id,
-            },
+        rows_to_create.append(
+            CanonicalItem(
+                id=item_id,
+                item_type=item_type,
+                canonical_key=canonical_key,
+                track_id=track.juke_id,
+            )
         )
-        if canonical_item.track_id is None:
-            canonical_item.track_id = track.juke_id
-            canonical_item.save(update_fields=['track'])
-        track_map[track.juke_id] = canonical_item
 
-    for row in EventLedger.objects.filter(track_id__isnull=False):
-        canonical_item = track_map.get(row.track_id)
-        if canonical_item is not None:
-            row.canonical_item_id = canonical_item.pk
-            row.save(update_fields=['canonical_item'])
+    if rows_to_create:
+        CanonicalItem.objects.bulk_create(rows_to_create, ignore_conflicts=True)
 
-    for row in SessionTrack.objects.filter(track_id__isnull=False):
-        canonical_item = track_map.get(row.track_id)
-        if canonical_item is not None:
-            row.canonical_item_id = canonical_item.pk
-            row.save(update_fields=['canonical_item'])
+    existing_items = {
+        item.canonical_key: item
+        for item in CanonicalItem.objects.filter(
+            canonical_key__in=sorted({row.canonical_key for row in rows_to_create})
+        )
+    }
+    items_to_update_by_pk = {}
+    for row in rows_to_create:
+        canonical_item = existing_items.get(row.canonical_key)
+        if canonical_item is not None and canonical_item.track_id is None:
+            canonical_item.track_id = row.track_id
+            items_to_update_by_pk[canonical_item.pk] = canonical_item
+
+    if items_to_update_by_pk:
+        CanonicalItem.objects.bulk_update(list(items_to_update_by_pk.values()), ['track'])
+
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE mlcore_listenbrainz_event_ledger AS ledger
+               SET canonical_item_id = canonical.id
+              FROM mlcore_canonical_item AS canonical
+             WHERE ledger.track_id IS NOT NULL
+               AND ledger.canonical_item_id IS NULL
+               AND canonical.track_id = ledger.track_id
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE mlcore_listenbrainz_session_track AS session_track
+               SET canonical_item_id = canonical.id
+              FROM mlcore_canonical_item AS canonical
+             WHERE session_track.track_id IS NOT NULL
+               AND session_track.canonical_item_id IS NULL
+               AND canonical.track_id = session_track.track_id
+            """
+        )
 
 
 class Migration(migrations.Migration):

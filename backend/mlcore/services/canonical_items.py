@@ -123,11 +123,15 @@ def bulk_ensure_canonical_items(
 
 def bulk_ensure_canonical_items_for_tracks(tracks: Iterable[Track]) -> dict[UUID, CanonicalItem]:
     materialized_tracks = list(tracks)
-    ensured = bulk_ensure_canonical_items(
-        (identity_from_track(track), track.juke_id)
+    track_identities = [
+        (track, identity_from_track(track))
         for track in materialized_tracks
+    ]
+    ensured = bulk_ensure_canonical_items(
+        (identity, track.juke_id)
+        for track, identity in track_identities
     )
     return {
-        track.juke_id: ensured[identity_from_track(track).canonical_key]
-        for track in materialized_tracks
+        track.juke_id: ensured[identity.canonical_key]
+        for track, identity in track_identities
     }
