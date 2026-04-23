@@ -125,7 +125,7 @@ class ListenBrainzImportTests(TestCase):
         self.assertEqual(result.imported_row_count, 2)
         self.assertEqual(result.canonicalized_row_count, 2)
         self.assertEqual(ListenBrainzEventLedger.objects.count(), 2)
-        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 1)
+        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 2)
         self.assertEqual(ListenBrainzRawListen.objects.count(), 0)
         self.assertEqual(NormalizedInteraction.objects.count(), 0)
 
@@ -143,6 +143,7 @@ class ListenBrainzImportTests(TestCase):
             1,
         )
         self.assertEqual(ListenBrainzEventLedger.objects.filter(track_id__isnull=True).count(), 1)
+        self.assertEqual(ListenBrainzEventLedger.objects.filter(canonical_item__isnull=False).count(), 2)
 
     def test_reimport_is_idempotent_and_counts_duplicates(self):
         payload = _listen_payload(
@@ -251,6 +252,7 @@ class ListenBrainzImportTests(TestCase):
         self.assertTrue(snapshots)
         self.assertEqual(snapshots[-1]['source_row_count'], 2)
         self.assertEqual(snapshots[-1]['imported_row_count'], 2)
+        self.assertEqual(snapshots[-1]['unresolved_row_count'], 0)
         self.assertEqual(snapshots[-1]['last_origin'], 'listenbrainz/listens/2026/03/chunk-0001.listens')
         self.assertEqual(snapshots[-1]['last_entry_index'], 1)
 
@@ -273,7 +275,7 @@ class ListenBrainzImportTests(TestCase):
 
         self.assertEqual(result.status, 'succeeded')
         self.assertEqual(ListenBrainzEventLedger.objects.filter(import_run_id=result.run_id).count(), 1)
-        self.assertEqual(ListenBrainzSessionTrack.objects.filter(import_run_id=result.run_id).count(), 0)
+        self.assertEqual(ListenBrainzSessionTrack.objects.filter(import_run_id=result.run_id).count(), 1)
         self.assertEqual(ListenBrainzRawListen.objects.count(), 0)
         self.assertEqual(NormalizedInteraction.objects.count(), 0)
 
@@ -338,7 +340,7 @@ class ListenBrainzImportTests(TestCase):
                 'imported_row_count': 1,
                 'duplicate_row_count': 0,
                 'canonicalized_row_count': 1,
-                'unresolved_row_count': 1,
+                'unresolved_row_count': 0,
                 'malformed_row_count': 0,
             },
         )
@@ -354,7 +356,7 @@ class ListenBrainzImportTests(TestCase):
         self.assertEqual(resumed.source_row_count, 3)
         self.assertEqual(resumed.imported_row_count, 3)
         self.assertEqual(ListenBrainzEventLedger.objects.count(), 3)
-        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 0)
+        self.assertEqual(ListenBrainzSessionTrack.objects.count(), 3)
         self.assertEqual(ListenBrainzRawListen.objects.count(), 0)
         self.assertEqual(NormalizedInteraction.objects.count(), 0)
         resumed_run = SourceIngestionRun.objects.get(pk=resumed.run_id)

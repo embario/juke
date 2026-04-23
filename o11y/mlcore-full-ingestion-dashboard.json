@@ -71,7 +71,7 @@
       },
       "targets": [
         {
-          "expr": "mlcore_full_ingestion_active{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_active{provider=\"$provider\",run_id=~\"$run_id\"}",
           "instant": true,
           "refId": "A"
         }
@@ -113,7 +113,7 @@
       },
       "targets": [
         {
-          "expr": "mlcore_full_ingestion_rows_merged{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_rows_merged{provider=\"$provider\",run_id=~\"$run_id\"}",
           "instant": true,
           "refId": "A"
         }
@@ -155,7 +155,7 @@
       },
       "targets": [
         {
-          "expr": "mlcore_full_ingestion_partitions_merged{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_partitions_merged{provider=\"$provider\",run_id=~\"$run_id\"}",
           "instant": true,
           "refId": "A"
         }
@@ -197,7 +197,7 @@
       },
       "targets": [
         {
-          "expr": "mlcore_full_ingestion_elapsed_seconds{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "time() - mlcore_full_ingestion_created_at_unixtime{provider=\"$provider\",run_id=~\"$run_id\"}",
           "instant": true,
           "refId": "A"
         }
@@ -239,7 +239,7 @@
       },
       "targets": [
         {
-          "expr": "mlcore_full_ingestion_updated_at_unixtime{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_updated_at_unixtime{provider=\"$provider\",run_id=~\"$run_id\"}",
           "instant": true,
           "refId": "A"
         }
@@ -277,22 +277,37 @@
       },
       "targets": [
         {
-          "expr": "mlcore_full_ingestion_rows_parsed{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_rows_parsed{provider=\"$provider\",run_id=~\"$run_id\"}",
           "legendFormat": "parsed",
           "refId": "A"
         },
         {
-          "expr": "mlcore_full_ingestion_rows_staged{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_rows_staged{provider=\"$provider\",run_id=~\"$run_id\"}",
           "legendFormat": "staged",
           "refId": "B"
         },
         {
-          "expr": "mlcore_full_ingestion_rows_merged{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_rows_merged{provider=\"$provider\",run_id=~\"$run_id\"}",
           "legendFormat": "merged",
           "refId": "C"
+        },
+        {
+          "expr": "mlcore_full_ingestion_session_rows_loaded{provider=\"$provider\",run_id=~\"$run_id\"}",
+          "legendFormat": "session rows loaded",
+          "refId": "D"
+        },
+        {
+          "expr": "mlcore_full_ingestion_chunks_written{provider=\"$provider\",run_id=~\"$run_id\"}",
+          "legendFormat": "chunks written",
+          "refId": "E"
+        },
+        {
+          "expr": "mlcore_full_ingestion_chunks_loaded{provider=\"$provider\",run_id=~\"$run_id\"}",
+          "legendFormat": "chunks loaded",
+          "refId": "F"
         }
       ],
-      "title": "Row Progress",
+      "title": "Load Progress",
       "type": "timeseries"
     },
     {
@@ -325,7 +340,7 @@
       },
       "targets": [
         {
-          "expr": "mlcore_full_ingestion_partition_state{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_partition_state{provider=\"$provider\",run_id=~\"$run_id\"}",
           "legendFormat": "{{state}}",
           "refId": "A"
         }
@@ -363,17 +378,17 @@
       },
       "targets": [
         {
-          "expr": "mlcore_full_ingestion_rows_deduplicated{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_rows_deduplicated{provider=\"$provider\",run_id=~\"$run_id\"}",
           "legendFormat": "deduplicated",
           "refId": "A"
         },
         {
-          "expr": "mlcore_full_ingestion_rows_unresolved{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_rows_unresolved{provider=\"$provider\",run_id=~\"$run_id\"}",
           "legendFormat": "unresolved",
           "refId": "B"
         },
         {
-          "expr": "mlcore_full_ingestion_rows_malformed{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_rows_malformed{provider=\"$provider\",run_id=~\"$run_id\"}",
           "legendFormat": "malformed",
           "refId": "C"
         }
@@ -403,7 +418,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "mlcore_full_ingestion_info{provider=\"$provider\",run_id=\"$run_id\"}",
+          "expr": "mlcore_full_ingestion_info{provider=\"$provider\",run_id=~\"$run_id\"}",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -460,30 +475,31 @@
       },
       {
         "current": {
-          "selected": false,
-          "text": "",
-          "value": ""
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
         },
         "datasource": {
           "type": "prometheus",
           "uid": "Prometheus"
         },
-        "definition": "label_values(mlcore_full_ingestion_info{provider=\"$provider\"}, run_id)",
+        "definition": "label_values(mlcore_full_ingestion_active{provider=\"$provider\"}, run_id)",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Run ID",
         "multi": false,
         "name": "run_id",
         "options": [],
         "query": {
-          "query": "label_values(mlcore_full_ingestion_info{provider=\"$provider\"}, run_id)",
+          "query": "label_values(mlcore_full_ingestion_active{provider=\"$provider\"}, run_id)",
           "refId": "Prometheus-run"
         },
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 3,
-        "type": "query"
+        "type": "query",
+        "allValue": ".*"
       }
     ]
   },

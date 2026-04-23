@@ -1,6 +1,7 @@
 from django.contrib import admin, messages
 
 from mlcore.models import (
+    CanonicalItem,
     CorpusManifest,
     ListenBrainzEventLedger,
     ListenBrainzRawListen,
@@ -70,12 +71,26 @@ class ListenBrainzRawListenAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(CanonicalItem)
+class CanonicalItemAdmin(admin.ModelAdmin):
+    list_display = ('canonical_key', 'item_type', 'track', 'created_at')
+    list_filter = ('item_type',)
+    search_fields = ('canonical_key', 'track__name', 'track__spotify_id')
+    readonly_fields = ('id', 'canonical_key', 'item_type', 'track', 'created_at', 'updated_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(ListenBrainzEventLedger)
 class ListenBrainzEventLedgerAdmin(admin.ModelAdmin):
-    list_display = ('played_at', 'track', 'resolution_state', 'short_event_signature', 'short_session_key')
+    list_display = ('played_at', 'canonical_item', 'track', 'resolution_state', 'short_event_signature', 'short_session_key')
     list_filter = ('resolution_state', 'import_run__source_version')
     readonly_fields = (
-        'id', 'import_run', 'played_at', 'track', 'resolution_state', 'cold_ref',
+        'id', 'import_run', 'played_at', 'canonical_item', 'track', 'resolution_state', 'cold_ref',
         'event_signature_hex', 'session_key_hex', 'created_at',
     )
 
@@ -94,10 +109,10 @@ class ListenBrainzEventLedgerAdmin(admin.ModelAdmin):
 
 @admin.register(ListenBrainzSessionTrack)
 class ListenBrainzSessionTrackAdmin(admin.ModelAdmin):
-    list_display = ('track', 'play_count', 'first_played_at', 'last_played_at', 'short_session_key')
+    list_display = ('canonical_item', 'track', 'play_count', 'first_played_at', 'last_played_at', 'short_session_key')
     list_filter = ('import_run__source_version',)
     readonly_fields = (
-        'id', 'import_run', 'track', 'play_count', 'first_played_at',
+        'id', 'import_run', 'canonical_item', 'track', 'play_count', 'first_played_at',
         'last_played_at', 'session_key_hex', 'created_at',
     )
 

@@ -13,6 +13,12 @@ This document orients AI agents to the entire repository. Each major subproject 
 - Follow `tasks/README.md` for task lifecycle, status labels, and handoff conventions.
 - Add or update a task file in `tasks/` when handing off substantial in-progress work to another agent.
 
+## GitHub Hygiene
+
+- When opening or updating a pull request, explicitly determine which GitHub issues the PR completes and add the appropriate closing keywords in the PR body, for example `Closes #123`.
+- Do not leave issue linkage implicit. If work is only partially complete or is a follow-up, use a non-closing reference such as `Refs #123` instead of a closing keyword.
+- If a completed task is already represented by a closed synced issue, do not add a redundant closing reference for it; only add closing references for still-open issues the PR will close on merge.
+
 ## High-Level Architecture
 
 | Layer | Tech | Purpose |

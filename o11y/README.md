@@ -9,16 +9,25 @@ Current contents:
   Prometheus textfile metrics emitted by `ingest_dataset_full` through Neptune's
   existing `node_exporter` textfile collector.
 
+The current ListenBrainz engine shape behind that dashboard is:
+
+- one archive reader that spools monthly members to NVMe scratch
+- bounded extractor processes that parse and compact rows into hash-chunk files
+- lean cold/hot load tables fed by `COPY`
+- set-based finalization that builds replacement hot/cold tables and swaps them
+  into place atomically under the provider lease
+
 What the dashboard covers:
 
 - active run state
 - merged row count
 - merged partition count
 - elapsed wall-clock time
-- row progress across parse, stage, and merge
+- load progress across parse, compact event load, session-delta load, chunk production, and finalize
 - partition state distribution
 - quality counters for deduplicated, unresolved, and malformed rows
 - run metadata labels from `mlcore_full_ingestion_info`
+- lease-backed run selection via `provider` + active `run_id`
 
 Operational note:
 

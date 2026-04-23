@@ -28,6 +28,11 @@ from mlcore.models import (
     ListenBrainzSessionTrack,
     SourceIngestionRun,
 )
+from mlcore.services.canonical_items import (
+    CanonicalItemIdentity,
+    bulk_ensure_canonical_items,
+    identity_from_listenbrainz_candidates,
+)
 from mlcore.services.corpus import LicensePolicy
 
 logger = logging.getLogger(__name__)
@@ -103,9 +108,10 @@ class ResumeCandidate:
 @dataclass
 class SessionTrackAggregate:
     session_key: bytes
-    track_juke_id: UUID
+    canonical_item_id: UUID
     first_played_at: datetime
     last_played_at: datetime
+    track_juke_id: UUID | None = None
     play_count: int = 1
 
 
@@ -493,9 +499,27 @@ def _flush_batch(
             ledger_rows: list[ListenBrainzEventLedger] = []
             session_track_aggregates: dict[tuple[bytes, UUID], SessionTrackAggregate] = {}
             unresolved = 0
+            resolved_payloads: list[tuple[ParsedListen, UUID | None, CanonicalItemIdentity | None]] = []
+            identity_assignments: list[tuple[CanonicalItemIdentity, UUID | None]] = []
             for parsed in new_listens:
                 track_juke_id = resolve_track_juke_id(parsed.track_identifier_candidates)
-                if track_juke_id is None:
+                identity = identity_from_listenbrainz_candidates(
+                    recording_mbid=str(parsed.recording_mbid or ''),
+                    spotify_id=str(parsed.track_identifier_candidates.get('spotify_id') or ''),
+                    recording_msid=parsed.recording_msid,
+                )
+                resolved_payloads.append((parsed, track_juke_id, identity))
+                if identity is not None:
+                    identity_assignments.append((identity, track_juke_id))
+
+            canonical_items_by_key = bulk_ensure_canonical_items(identity_assignments)
+            for parsed, track_juke_id, identity in resolved_payloads:
+                canonical_item = (
+                    canonical_items_by_key.get(identity.canonical_key)
+                    if identity is not None
+                    else None
+                )
+                if canonical_item is None:
                     unresolved += 1
                 ledger_rows.append(
                     ListenBrainzEventLedger(
@@ -503,27 +527,31 @@ def _flush_batch(
                         event_signature=parsed.source_event_signature,
                         played_at=parsed.played_at,
                         session_key=parsed.session_key,
+                        canonical_item=canonical_item,
                         track_id=track_juke_id,
-                        resolution_state=1 if track_juke_id is not None else 0,
+                        resolution_state=1 if canonical_item is not None else 0,
                     )
                 )
-                if track_juke_id is None:
+                if canonical_item is None:
                     continue
 
-                aggregate_key = (parsed.session_key, track_juke_id)
+                aggregate_key = (parsed.session_key, canonical_item.pk)
                 aggregate = session_track_aggregates.get(aggregate_key)
                 if aggregate is None:
                     session_track_aggregates[aggregate_key] = SessionTrackAggregate(
                         session_key=parsed.session_key,
-                        track_juke_id=track_juke_id,
+                        canonical_item_id=canonical_item.pk,
                         first_played_at=parsed.played_at,
                         last_played_at=parsed.played_at,
+                        track_juke_id=track_juke_id,
                     )
                     continue
                 if parsed.played_at < aggregate.first_played_at:
                     aggregate.first_played_at = parsed.played_at
                 if parsed.played_at > aggregate.last_played_at:
                     aggregate.last_played_at = parsed.played_at
+                if aggregate.track_juke_id is None and track_juke_id is not None:
+                    aggregate.track_juke_id = track_juke_id
                 aggregate.play_count += 1
 
             ListenBrainzEventLedger.objects.bulk_create(ledger_rows)
@@ -555,13 +583,13 @@ def _upsert_session_tracks(
         return
 
     session_keys = list({aggregate.session_key for aggregate in aggregates.values()})
-    track_ids = list({aggregate.track_juke_id for aggregate in aggregates.values()})
+    canonical_item_ids = list({aggregate.canonical_item_id for aggregate in aggregates.values()})
     existing_rows = ListenBrainzSessionTrack.objects.filter(
         session_key__in=session_keys,
-        track_id__in=track_ids,
+        canonical_item_id__in=canonical_item_ids,
     )
     existing_by_key = {
-        (_as_binary(row.session_key), row.track_id): row
+        (_as_binary(row.session_key), row.canonical_item_id): row
         for row in existing_rows
     }
 
@@ -574,6 +602,7 @@ def _upsert_session_tracks(
                 ListenBrainzSessionTrack(
                     import_run=run,
                     session_key=aggregate.session_key,
+                    canonical_item_id=aggregate.canonical_item_id,
                     track_id=aggregate.track_juke_id,
                     first_played_at=aggregate.first_played_at,
                     last_played_at=aggregate.last_played_at,
@@ -587,6 +616,8 @@ def _upsert_session_tracks(
         if aggregate.last_played_at > existing.last_played_at:
             existing.last_played_at = aggregate.last_played_at
         existing.play_count += aggregate.play_count
+        if existing.track_id is None and aggregate.track_juke_id is not None:
+            existing.track_id = aggregate.track_juke_id
         rows_to_update.append(existing)
 
     if rows_to_create:
@@ -594,7 +625,7 @@ def _upsert_session_tracks(
     if rows_to_update:
         ListenBrainzSessionTrack.objects.bulk_update(
             rows_to_update,
-            ['first_played_at', 'last_played_at', 'play_count'],
+            ['track', 'first_played_at', 'last_played_at', 'play_count'],
         )
 
 

@@ -8,6 +8,7 @@ from django.test import TestCase
 
 from catalog.models import SearchHistory, SearchHistoryResource
 from mlcore.models import ItemCoOccurrence, ListenBrainzSessionTrack, SourceIngestionRun, TrainingRun
+from mlcore.services.canonical_items import bulk_ensure_canonical_items_for_tracks
 from mlcore.services.cooccurrence import (
     BEHAVIOR_SOURCE_LISTENBRAINZ,
     BEHAVIOR_SOURCE_SEARCH_HISTORY,
@@ -207,8 +208,10 @@ class BasketsFromSearchHistoryTests(TestCase):
     def _mk_session_track(self, run, *, session_hint, track):
         session_key = hashlib.sha256(session_hint.encode('utf-8')).digest()
         played_at = datetime.datetime(2026, 3, 22, 12, 0, tzinfo=datetime.UTC)
+        canonical_item = bulk_ensure_canonical_items_for_tracks([track])[track.juke_id]
         return ListenBrainzSessionTrack.objects.create(
             import_run=run,
+            canonical_item=canonical_item,
             track=track,
             session_key=session_key,
             first_played_at=played_at,
@@ -216,16 +219,19 @@ class BasketsFromSearchHistoryTests(TestCase):
             play_count=1,
         )
 
+    def _canonical_id(self, track):
+        return bulk_ensure_canonical_items_for_tracks([track])[track.juke_id].pk
+
     def test_extracts_baskets_grouped_by_session(self):
         self._mk_session([self.t1, self.t2])
         self._mk_session([self.t2, self.t3])
         baskets = baskets_from_search_history()
         self.assertEqual(len(baskets), 2)
-        # Each basket contains juke_ids (UUIDs), not PKs
+        # Each basket contains canonical item ids (UUIDs), not PKs
         all_ids = {jid for basket in baskets for jid in basket}
-        self.assertIn(self.t1.juke_id, all_ids)
-        self.assertIn(self.t2.juke_id, all_ids)
-        self.assertIn(self.t3.juke_id, all_ids)
+        self.assertIn(self._canonical_id(self.t1), all_ids)
+        self.assertIn(self._canonical_id(self.t2), all_ids)
+        self.assertIn(self._canonical_id(self.t3), all_ids)
 
     def test_skips_sessions_below_min_size(self):
         self._mk_session([self.t1])          # singleton — skip
@@ -276,7 +282,10 @@ class BasketsFromSearchHistoryTests(TestCase):
 
         baskets = baskets_from_behavioral_sources(sources=[BEHAVIOR_SOURCE_LISTENBRAINZ])
 
-        self.assertEqual(baskets, [[self.t1.juke_id, self.t2.juke_id]])
+        self.assertEqual(
+            baskets,
+            [[*sorted([self._canonical_id(self.t1), self._canonical_id(self.t2)], key=str)]],
+        )
 
     def test_blended_sources_include_internal_and_external_sessions(self):
         self._mk_session([self.t1, self.t2])
@@ -289,8 +298,8 @@ class BasketsFromSearchHistoryTests(TestCase):
         )
 
         self.assertEqual(len(baskets), 2)
-        self.assertIn([self.t1.juke_id, self.t2.juke_id], baskets)
-        self.assertIn([self.t2.juke_id, self.t3.juke_id], baskets)
+        self.assertIn(sorted([self._canonical_id(self.t1), self._canonical_id(self.t2)], key=str), baskets)
+        self.assertIn(sorted([self._canonical_id(self.t2), self._canonical_id(self.t3)], key=str), baskets)
 
     def test_default_behavior_sources_are_blended(self):
         self._mk_session([self.t1, self.t2])
@@ -301,8 +310,8 @@ class BasketsFromSearchHistoryTests(TestCase):
         baskets = baskets_from_behavioral_sources(split='all')
 
         self.assertEqual(len(baskets), 2)
-        self.assertIn([self.t1.juke_id, self.t2.juke_id], baskets)
-        self.assertIn([self.t2.juke_id, self.t3.juke_id], baskets)
+        self.assertIn(sorted([self._canonical_id(self.t1), self._canonical_id(self.t2)], key=str), baskets)
+        self.assertIn(sorted([self._canonical_id(self.t2), self._canonical_id(self.t3)], key=str), baskets)
 
     def test_train_from_listenbrainz_source_only(self):
         run = self._mk_listenbrainz_run()
@@ -323,9 +332,11 @@ class BasketsFromSearchHistoryTests(TestCase):
         self.assertEqual(result.baskets_processed, 2)
         self.assertEqual(result.pairs_written, 3)  # (t1,t2), (t1,t3), (t2,t3)
         # t1,t2 co-occur twice; others once
+        t1_id = self._canonical_id(self.t1)
+        t2_id = self._canonical_id(self.t2)
         pair_12 = ItemCoOccurrence.objects.get(
-            item_a_juke_id=min(self.t1.juke_id, self.t2.juke_id, key=str),
-            item_b_juke_id=max(self.t1.juke_id, self.t2.juke_id, key=str),
+            item_a_juke_id=min(t1_id, t2_id, key=str),
+            item_b_juke_id=max(t1_id, t2_id, key=str),
         )
         self.assertEqual(pair_12.co_count, 2)
         self.assertEqual(pair_12.training_run_id, result.training_run_id)
@@ -347,21 +358,24 @@ class BasketsFromSearchHistoryTests(TestCase):
 
         self.assertEqual(result.baskets_processed, expected_t12_baskets + (sessions_t23.id % 10 != 0))
         self.assertEqual(result.pairs_written, expected_pairs)
+        t1_id = self._canonical_id(self.t1)
+        t2_id = self._canonical_id(self.t2)
+        t3_id = self._canonical_id(self.t3)
         pair_12 = ItemCoOccurrence.objects.get(
-            item_a_juke_id=min(self.t1.juke_id, self.t2.juke_id, key=str),
-            item_b_juke_id=max(self.t1.juke_id, self.t2.juke_id, key=str),
+            item_a_juke_id=min(t1_id, t2_id, key=str),
+            item_b_juke_id=max(t1_id, t2_id, key=str),
         )
         self.assertEqual(pair_12.co_count, expected_t12_baskets)
         if sessions_t23.id % 10 == 0:
             self.assertFalse(
                 ItemCoOccurrence.objects.filter(
-                    item_a_juke_id=min(self.t2.juke_id, self.t3.juke_id, key=str),
-                    item_b_juke_id=max(self.t2.juke_id, self.t3.juke_id, key=str),
+                    item_a_juke_id=min(t2_id, t3_id, key=str),
+                    item_b_juke_id=max(t2_id, t3_id, key=str),
                 ).exists()
             )
         else:
             pair_23 = ItemCoOccurrence.objects.get(
-                item_a_juke_id=min(self.t2.juke_id, self.t3.juke_id, key=str),
-                item_b_juke_id=max(self.t2.juke_id, self.t3.juke_id, key=str),
+                item_a_juke_id=min(t2_id, t3_id, key=str),
+                item_b_juke_id=max(t2_id, t3_id, key=str),
             )
             self.assertEqual(pair_23.co_count, 1)

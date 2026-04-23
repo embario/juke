@@ -27,6 +27,7 @@ from django.test import TestCase, override_settings
 
 from catalog.models import SearchHistory, SearchHistoryResource
 from mlcore.models import ItemCoOccurrence, ModelEvaluation
+from mlcore.services.canonical_items import bulk_ensure_canonical_items_for_tracks
 from mlcore.services.cooccurrence import train_cooccurrence
 from mlcore.services.evaluation import (
     METRIC_COVERAGE,
@@ -118,13 +119,14 @@ class MLCorePipelineTests(TestCase):
         self.assertEqual(result.items_seen, 5)
 
         # The (A0T0, A0T1) pair should have the highest co_count (3 sessions together).
-        t00, t01 = self.tracks[0][0].juke_id, self.tracks[0][1].juke_id
+        t00 = self._canonical_id(self.tracks[0][0])
+        t01 = self._canonical_id(self.tracks[0][1])
         lo, hi = (t00, t01) if str(t00) < str(t01) else (t01, t00)
         row = ItemCoOccurrence.objects.get(item_a_juke_id=lo, item_b_juke_id=hi)
         self.assertEqual(row.co_count, 3)
 
         # Cross-album pairs exist but are weak (co_count=1)
-        t10 = self.tracks[1][0].juke_id
+        t10 = self._canonical_id(self.tracks[1][0])
         cross = ItemCoOccurrence.objects.filter(
             item_a_juke_id__in=[t00, t10], item_b_juke_id__in=[t00, t10],
         ).get()
@@ -135,11 +137,11 @@ class MLCorePipelineTests(TestCase):
         # 6 baskets of 2 (→2 trials each) + 1 basket of 3 (→3 trials) = 15
         self.assertEqual(len(ds.trials), 15)
         # A2T0 appears in exactly one basket → cold at default threshold
-        t20 = self.tracks[2][0].juke_id
+        t20 = self._canonical_id(self.tracks[2][0])
         cold_held_outs = {t.held_out for t in ds.trials if t.is_cold}
         self.assertIn(t20, cold_held_outs)
         # A0T0 appears in 6 of 7 baskets → definitely not cold
-        t00 = self.tracks[0][0].juke_id
+        t00 = self._canonical_id(self.tracks[0][0])
         self.assertNotIn(t00, {t.held_out for t in ds.trials if t.is_cold})
         # Hash is stable
         ds2 = build_loo_dataset()
@@ -264,3 +266,7 @@ class MLCorePipelineTests(TestCase):
         self.assertEqual(promo.status, 'blocked')
         with self.assertRaises(PromotionError):
             approve_promotion(promo, self.staff)
+
+    @classmethod
+    def _canonical_id(cls, track):
+        return bulk_ensure_canonical_items_for_tracks([track])[track.juke_id].pk

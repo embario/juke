@@ -34,6 +34,13 @@ LISTENBRAINZ_RESOLUTION_STATE_CHOICES = (
     (1, 'Resolved'),
 )
 
+CANONICAL_ITEM_TYPE_CHOICES = (
+    ('recording_mbid', 'Recording MBID'),
+    ('spotify_track', 'Spotify Track'),
+    ('recording_msid', 'Recording MSID'),
+    ('catalog_track', 'Catalog Track'),
+)
+
 
 def _binary_to_hex(value):
     if isinstance(value, memoryview):
@@ -207,6 +214,61 @@ class DatasetShardIngestionRun(models.Model):
         return f"{self.provider}:{self.source_version}:{self.shard_key}:{self.status}"
 
 
+class FullIngestionLease(models.Model):
+    """Exclusive provider-level lease for long-running full dataset ingestions."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=64, unique=True)
+    holder_type = models.CharField(max_length=32, default='full_ingestion')
+    holder_run_id = models.CharField(max_length=64, blank=True, default='')
+    source_version = models.CharField(max_length=255, blank=True, default='')
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    metadata = models.JSONField(default=dict, blank=True)
+    acquired_at = models.DateTimeField(auto_now_add=True)
+    heartbeat_at = models.DateTimeField(auto_now=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mlcore_full_ingestion_lease'
+        indexes = [
+            models.Index(fields=['status'], name='mlcore_fil_status_c3a27d_idx'),
+            models.Index(fields=['heartbeat_at'], name='mlcore_fil_heartbe_207655_idx'),
+        ]
+        ordering = ['provider']
+
+    def __str__(self):
+        return f"{self.provider}:{self.status}:{self.holder_run_id or '-'}"
+
+
+class CanonicalItem(models.Model):
+    """MLCore-native item identity independent of local catalog hydration."""
+
+    id = models.UUIDField(primary_key=True, editable=False)
+    item_type = models.CharField(max_length=32, choices=CANONICAL_ITEM_TYPE_CHOICES)
+    canonical_key = models.CharField(max_length=512, unique=True)
+    track = models.ForeignKey(
+        'catalog.Track',
+        to_field='juke_id',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='canonical_items',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mlcore_canonical_item'
+        indexes = [
+            models.Index(fields=['item_type'], name='mlcore_ci_item_ty_ef87b5_idx'),
+            models.Index(fields=['track'], name='mlcore_ci_track_i_79f9ca_idx'),
+        ]
+        ordering = ['item_type', 'canonical_key']
+
+    def __str__(self):
+        return self.canonical_key
+
+
 class ListenBrainzEventLedger(models.Model):
     """Compact event-level ledger for ListenBrainz replay, dedupe, and audit."""
 
@@ -219,6 +281,13 @@ class ListenBrainzEventLedger(models.Model):
     event_signature = models.BinaryField(max_length=32, unique=True)
     played_at = models.DateTimeField(db_index=True)
     session_key = models.BinaryField(max_length=32, db_index=True)
+    canonical_item = models.ForeignKey(
+        CanonicalItem,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='listenbrainz_event_ledgers',
+    )
     track = models.ForeignKey(
         'catalog.Track',
         to_field='juke_id',
@@ -238,6 +307,7 @@ class ListenBrainzEventLedger(models.Model):
         db_table = 'mlcore_listenbrainz_event_ledger'
         indexes = [
             models.Index(fields=['import_run'], name='mlcore_lbe_import__e9179a_idx'),
+            models.Index(fields=['canonical_item'], name='mlcore_lbe_canonic_9067f9_idx'),
             models.Index(fields=['track'], name='mlcore_lbe_track_i_4c8647_idx'),
             models.Index(fields=['resolution_state'], name='mlcore_lbe_resolut_8e2ae0_idx'),
         ]
@@ -256,7 +326,7 @@ class ListenBrainzEventLedger(models.Model):
 
 
 class ListenBrainzSessionTrack(models.Model):
-    """Compact hot-path training facts keyed by ListenBrainz session and track."""
+    """Compact hot-path training facts keyed by ListenBrainz session and canonical item."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     import_run = models.ForeignKey(
@@ -267,10 +337,17 @@ class ListenBrainzSessionTrack(models.Model):
         related_name='listenbrainz_session_tracks',
     )
     session_key = models.BinaryField(max_length=32, db_index=True)
+    canonical_item = models.ForeignKey(
+        CanonicalItem,
+        on_delete=models.CASCADE,
+        related_name='listenbrainz_session_tracks',
+    )
     track = models.ForeignKey(
         'catalog.Track',
         to_field='juke_id',
-        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name='listenbrainz_session_tracks',
     )
     first_played_at = models.DateTimeField()
@@ -280,8 +357,9 @@ class ListenBrainzSessionTrack(models.Model):
 
     class Meta:
         db_table = 'mlcore_listenbrainz_session_track'
-        unique_together = ('session_key', 'track')
+        unique_together = ('session_key', 'canonical_item')
         indexes = [
+            models.Index(fields=['canonical_item'], name='mlcore_lst_canonic_78087f_idx'),
             models.Index(fields=['track'], name='mlcore_lst_track_i_5d5e20_idx'),
             models.Index(fields=['import_run'], name='mlcore_lst_import__6d7bf6_idx'),
             models.Index(fields=['last_played_at'], name='mlcore_lst_last_pl_4a4ec9_idx'),
@@ -293,7 +371,7 @@ class ListenBrainzSessionTrack(models.Model):
         return _binary_to_hex(self.session_key)
 
     def __str__(self):
-        return f"{self.session_key_hex[:12]}:{self.track_id}"
+        return f"{self.session_key_hex[:12]}:{self.canonical_item_id}"
 
 
 class ListenBrainzRawListen(models.Model):
@@ -407,9 +485,9 @@ class TrainingRun(models.Model):
 
 class ItemCoOccurrence(models.Model):
     """
-    Symmetric pairwise co-occurrence counts + PMI scores for catalog items
-    (arch §5.4). Keys are opaque juke_id UUIDs — track-level by convention
-    in Phase 1, but the store is item-agnostic.
+    Symmetric pairwise co-occurrence counts + PMI scores for MLCore canonical
+    items (arch §5.4). Keys are opaque UUIDs and need not correspond 1:1 with
+    a local catalog.Track row.
 
     Pairs are stored canonically with item_a_juke_id < item_b_juke_id
     (lexicographic) so each unordered pair has exactly one row. Readers
