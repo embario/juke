@@ -6,8 +6,11 @@ from django.core.management.base import BaseCommand, CommandError
 
 from mlcore.services.full_ingestion import (
     configured_full_ingestion_scratch_root,
+    full_ingestion_cleanup_status,
+    full_ingestion_finalize_status,
     full_ingestion_manifest_path,
     full_ingestion_partition_state_counts,
+    full_ingestion_runtime_residue_counts,
     get_full_ingestion_provider,
     load_full_ingestion_plan,
 )
@@ -77,6 +80,9 @@ class Command(BaseCommand):
             raise CommandError(f'No full-ingestion manifest found at {manifest_path}.') from exc
 
         partition_states = full_ingestion_partition_state_counts(plan)
+        finalize_status = full_ingestion_finalize_status(plan)
+        cleanup_status = full_ingestion_cleanup_status(plan)
+        runtime_residue = full_ingestion_runtime_residue_counts(plan)
         payload = {
             'provider': plan.provider,
             'source_version': plan.source_version,
@@ -94,6 +100,11 @@ class Command(BaseCommand):
             'merge_worker_budget': plan.merge_worker_budget,
             'scratch_soft_cap_bytes': plan.scratch_soft_cap_bytes,
             'partition_states': partition_states,
+            'finalize': finalize_status,
+            'cleanup': {
+                **cleanup_status,
+                **runtime_residue,
+            },
             'counters': dict(plan.counters),
             'created_at': plan.created_at,
             'updated_at': plan.updated_at,
@@ -119,6 +130,16 @@ class Command(BaseCommand):
                 'rows_staged={rows_staged} session_rows_loaded={session_rows_loaded} '
                 'chunks_written={chunks_written} chunks_loaded={chunks_loaded} rows_merged={rows_merged} '
                 'rows_deduplicated={rows_deduplicated} unresolved={rows_unresolved} malformed={rows_malformed} '
+                'finalize=phase:{finalize_phase},drained:{drained_partitions}/{partitions},'
+                'hot_build:{hot_built_partitions}/{partitions},'
+                'drain_backlog:{drain_backlog_partitions},'
+                'hot_gap:{hot_build_gap_partitions},'
+                'indexes:{shadow_indexes_complete},swap:{swap_completed} '
+                'cleanup=partition_root:{partition_root_exists},logs:{log_root_exists},'
+                'spool:{spool_exists},events:{partition_event_artifacts_present},'
+                'run_residue:{run_root_residue_bytes},'
+                'event_load_rows:{event_load_rows},session_load_rows:{session_load_rows},'
+                'session_stage_rows:{session_stage_rows},checkpoints:{finalize_checkpoint_rows} '
                 'host=device_util:{host_device_util_milli_pct}milli_pct,'
                 'iowait:{host_iowait_milli_pct}milli_pct,'
                 'mem_avail:{host_available_memory_bytes},'
@@ -152,6 +173,22 @@ class Command(BaseCommand):
                 rows_deduplicated=int(plan.counters.get('rows_deduplicated') or 0),
                 rows_unresolved=int(plan.counters.get('rows_unresolved') or 0),
                 rows_malformed=int(plan.counters.get('rows_malformed') or 0),
+                finalize_phase=str(finalize_status['phase']),
+                drained_partitions=int(finalize_status['drained_partitions']),
+                hot_built_partitions=int(finalize_status['hot_built_partitions']),
+                drain_backlog_partitions=int(finalize_status['drain_backlog_partitions']),
+                hot_build_gap_partitions=int(finalize_status['hot_build_gap_partitions']),
+                shadow_indexes_complete=int(bool(finalize_status['shadow_indexes_complete'])),
+                swap_completed=int(bool(finalize_status['swap_completed'])),
+                partition_root_exists=int(bool(cleanup_status['partition_root_exists'])),
+                log_root_exists=int(bool(cleanup_status['log_root_exists'])),
+                spool_exists=int(bool(cleanup_status['spool_exists'])),
+                partition_event_artifacts_present=int(bool(cleanup_status['partition_event_artifacts_present'])),
+                run_root_residue_bytes=int(cleanup_status['run_root_residue_bytes']),
+                event_load_rows=int(runtime_residue['event_load_rows']),
+                session_load_rows=int(runtime_residue['session_load_rows']),
+                session_stage_rows=int(runtime_residue['session_stage_rows']),
+                finalize_checkpoint_rows=int(runtime_residue['finalize_checkpoint_rows']),
                 host_device_util_milli_pct=int(plan.counters.get('host_device_util_milli_pct') or 0),
                 host_iowait_milli_pct=int(plan.counters.get('host_iowait_milli_pct') or 0),
                 host_available_memory_bytes=int(plan.counters.get('host_available_memory_bytes') or 0),

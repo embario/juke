@@ -535,6 +535,112 @@ def full_ingestion_partition_state_counts(
     return counts
 
 
+def full_ingestion_finalize_status(plan: FullIngestionPlan) -> dict[str, int | str | bool]:
+    partition_total = len(plan.partitions)
+    succeeded = plan.stage == FULL_INGESTION_STAGE_COMPLETE and plan.status == FULL_INGESTION_STATUS_SUCCEEDED
+    drained_partitions = partition_total if succeeded else int(plan.counters.get('partitions_merged') or 0)
+    hot_built_partitions = partition_total if succeeded else min(
+        partition_total,
+        int(plan.counters.get('hot_build_partitions_completed') or 0),
+    )
+    hot_build_complete = succeeded or int(plan.counters.get('hot_build_complete') or 0) == 1
+    shadow_indexes_complete = succeeded or int(plan.counters.get('shadow_indexes_complete') or 0) == 1
+    swap_completed = succeeded or int(plan.counters.get('swap_completed') or 0) == 1
+
+    if succeeded:
+        finalize_phase = 'complete'
+    elif plan.stage != FULL_INGESTION_STAGE_MERGE:
+        finalize_phase = 'not_started'
+    elif swap_completed:
+        finalize_phase = 'cleanup'
+    elif shadow_indexes_complete:
+        finalize_phase = 'swap'
+    elif hot_build_complete:
+        finalize_phase = 'shadow_indexes'
+    elif drained_partitions < partition_total and hot_built_partitions < drained_partitions:
+        finalize_phase = 'partition_drain_and_hot_build'
+    elif drained_partitions < partition_total:
+        finalize_phase = 'partition_drain'
+    elif hot_built_partitions < partition_total:
+        finalize_phase = 'hot_build'
+    else:
+        finalize_phase = 'shadow_indexes'
+
+    return {
+        'phase': finalize_phase,
+        'partitions_total': partition_total,
+        'drained_partitions': drained_partitions,
+        'drain_backlog_partitions': max(0, partition_total - drained_partitions),
+        'hot_built_partitions': hot_built_partitions,
+        'hot_build_backlog_partitions': max(0, partition_total - hot_built_partitions),
+        'hot_build_gap_partitions': max(0, drained_partitions - hot_built_partitions),
+        'cold_build_complete': succeeded or int(plan.counters.get('cold_build_complete') or 0) == 1,
+        'hot_stage_complete': succeeded or int(plan.counters.get('hot_stage_complete') or 0) == 1,
+        'hot_build_complete': hot_build_complete,
+        'shadow_indexes_complete': shadow_indexes_complete,
+        'swap_completed': swap_completed,
+    }
+
+
+def full_ingestion_cleanup_status(plan: FullIngestionPlan) -> dict[str, int | bool]:
+    run_root = Path(plan.run_root)
+    partition_root = Path(plan.partition_root)
+    log_root = Path(plan.log_root)
+    spool_root = run_root / 'spool'
+    event_artifacts_present = False
+    if partition_root.exists():
+        for partition in plan.partitions:
+            if (partition_root / partition.partition_key / 'events').exists():
+                event_artifacts_present = True
+                break
+
+    return {
+        'run_root_exists': run_root.exists(),
+        'manifest_exists': Path(plan.manifest_path).exists(),
+        'control_exists': Path(plan.control_path).exists(),
+        'partition_root_exists': partition_root.exists(),
+        'log_root_exists': log_root.exists(),
+        'spool_exists': spool_root.exists(),
+        'partition_event_artifacts_present': event_artifacts_present,
+        'run_root_residue_bytes': int(plan.counters.get('scratch_actual_bytes') or 0),
+    }
+
+
+def full_ingestion_runtime_residue_counts(plan: FullIngestionPlan) -> dict[str, int]:
+    counts = {
+        'event_load_rows': 0,
+        'session_load_rows': 0,
+        'session_stage_rows': 0,
+        'finalize_checkpoint_rows': 0,
+    }
+    with connection.cursor() as cursor:
+        if _relation_exists(cursor, LISTENBRAINZ_EVENT_LOAD_TABLE):
+            cursor.execute(
+                f'SELECT COUNT(*) FROM {LISTENBRAINZ_EVENT_LOAD_TABLE} WHERE run_id = %s',
+                [plan.run_id],
+            )
+            counts['event_load_rows'] = int(cursor.fetchone()[0] or 0)
+        if _relation_exists(cursor, LISTENBRAINZ_SESSION_LOAD_TABLE):
+            cursor.execute(
+                f'SELECT COUNT(*) FROM {LISTENBRAINZ_SESSION_LOAD_TABLE} WHERE run_id = %s',
+                [plan.run_id],
+            )
+            counts['session_load_rows'] = int(cursor.fetchone()[0] or 0)
+        if _relation_exists(cursor, LISTENBRAINZ_SESSION_STAGE_TABLE):
+            cursor.execute(
+                f'SELECT COUNT(*) FROM {LISTENBRAINZ_SESSION_STAGE_TABLE} WHERE run_id = %s',
+                [plan.run_id],
+            )
+            counts['session_stage_rows'] = int(cursor.fetchone()[0] or 0)
+        if _relation_exists(cursor, LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE):
+            cursor.execute(
+                f'SELECT COUNT(*) FROM {LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE} WHERE run_id = %s',
+                [plan.run_id],
+            )
+            counts['finalize_checkpoint_rows'] = int(cursor.fetchone()[0] or 0)
+    return counts
+
+
 def _default_worker_budget(configured_workers: int, *, policy_mode: str, interactive_cap: int) -> int:
     if policy_mode == FULL_INGESTION_POLICY_THROUGHPUT:
         return max(1, configured_workers)
@@ -1550,6 +1656,7 @@ def execute_full_ingestion_merge_stage(
         },
         partitions=finalized_partitions,
     )
+    reclaim_full_ingestion_runtime_tables(completed_plan)
     completed_plan = cleanup_full_ingestion_scratch(completed_plan)
     _persist_full_ingestion_state(completed_plan)
     finalize_full_ingestion_source_run(source_ingestion_run, completed_plan)
@@ -1610,6 +1717,36 @@ def cleanup_full_ingestion_scratch(plan: FullIngestionPlan) -> FullIngestionPlan
             'scratch_actual_bytes': _estimate_directory_size(Path(plan.run_root)),
         },
     )
+
+
+def reclaim_full_ingestion_runtime_tables(plan: FullIngestionPlan) -> None:
+    with connection.cursor() as cursor:
+        existing_tables = [
+            table
+            for table in (
+                LISTENBRAINZ_EVENT_LOAD_TABLE,
+                LISTENBRAINZ_SESSION_LOAD_TABLE,
+                LISTENBRAINZ_SESSION_STAGE_TABLE,
+                LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE,
+            )
+            if _relation_exists(cursor, table)
+        ]
+        if not existing_tables:
+            return
+        if connection.vendor == 'postgresql':
+            cursor.execute(f'TRUNCATE TABLE {", ".join(existing_tables)}')
+            return
+        for table in existing_tables:
+            if table == LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE:
+                cursor.execute(
+                    f'DELETE FROM {table} WHERE run_id = %s',
+                    [plan.run_id],
+                )
+            else:
+                cursor.execute(
+                    f'DELETE FROM {table} WHERE run_id = %s',
+                    [plan.run_id],
+                )
 
 
 def full_ingestion_copy_manifest_path(
@@ -1736,6 +1873,8 @@ def write_full_ingestion_metrics(plan: FullIngestionPlan) -> Path | None:
     scratch_estimated_bytes = int(plan.counters.get('chunk_bytes_written') or 0) + int(
         plan.counters.get('spool_bytes_estimated') or 0
     )
+    finalize_status = full_ingestion_finalize_status(plan)
+    cleanup_status = full_ingestion_cleanup_status(plan)
 
     lines = [
         '# HELP mlcore_full_ingestion_active Whether a full dataset ingestion run is currently active.',
@@ -1896,6 +2035,50 @@ def write_full_ingestion_metrics(plan: FullIngestionPlan) -> Path | None:
                 f'run_id="{_escape_label(plan.run_id)}"'
                 '} '
                 f'{scratch_estimated_bytes}'
+            ),
+            '# HELP mlcore_full_ingestion_finalize_phase Current finalize subphase for the full ingestion run.',
+            '# TYPE mlcore_full_ingestion_finalize_phase gauge',
+            (
+                'mlcore_full_ingestion_finalize_phase{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}",'
+                f'phase="{_escape_label(str(finalize_status["phase"]))}"'
+                '} 1'
+            ),
+            '# HELP mlcore_full_ingestion_finalize_backlog_partitions Remaining finalize backlog grouped by backlog type.',
+            '# TYPE mlcore_full_ingestion_finalize_backlog_partitions gauge',
+            (
+                'mlcore_full_ingestion_finalize_backlog_partitions{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}",'
+                'backlog="drain"'
+                '} '
+                f'{int(finalize_status["drain_backlog_partitions"])}'
+            ),
+            (
+                'mlcore_full_ingestion_finalize_backlog_partitions{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}",'
+                'backlog="hot_build"'
+                '} '
+                f'{int(finalize_status["hot_build_backlog_partitions"])}'
+            ),
+            (
+                'mlcore_full_ingestion_finalize_backlog_partitions{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}",'
+                'backlog="hot_build_gap"'
+                '} '
+                f'{int(finalize_status["hot_build_gap_partitions"])}'
+            ),
+            '# HELP mlcore_full_ingestion_cleanup_residue_bytes Residual bytes left under the run root after cleanup.',
+            '# TYPE mlcore_full_ingestion_cleanup_residue_bytes gauge',
+            (
+                'mlcore_full_ingestion_cleanup_residue_bytes{'
+                f'provider="{_escape_label(plan.provider)}",'
+                f'run_id="{_escape_label(plan.run_id)}"'
+                '} '
+                f'{int(cleanup_status["run_root_residue_bytes"])}'
             ),
         ]
     )
@@ -2836,6 +3019,8 @@ def finalize_full_ingestion_source_run(
     source_ingestion_run: SourceIngestionRun,
     plan: FullIngestionPlan,
 ) -> None:
+    finalize_status = full_ingestion_finalize_status(plan)
+    cleanup_status = full_ingestion_cleanup_status(plan)
     source_ingestion_run.status = 'succeeded'
     source_ingestion_run.imported_row_count = int(plan.counters.get('rows_merged') or 0)
     source_ingestion_run.duplicate_row_count = int(plan.counters.get('rows_deduplicated') or 0)
@@ -2850,6 +3035,8 @@ def finalize_full_ingestion_source_run(
         'full_ingestion_run_id': plan.run_id,
         'partitions_loaded': int(plan.counters.get('partitions_loaded') or 0),
         'partitions_merged': int(plan.counters.get('partitions_merged') or 0),
+        'finalize_phase': str(finalize_status['phase']),
+        'run_root_residue_bytes': int(cleanup_status['run_root_residue_bytes']),
     }
     source_ingestion_run.save(
         update_fields=[

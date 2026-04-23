@@ -1,7 +1,7 @@
 ---
 id: mlcore-phase1a-full-ingestion-operational-hardening
 title: ML Core Phase 1a Follow-up - Full ingestion operational hardening
-status: in_progress
+status: completed
 priority: p1
 owner: codex
 area: platform
@@ -61,5 +61,22 @@ Turn the now-successful ListenBrainz full-ingestion path into a repeatable, supp
   - canonical identity table `mlcore_canonical_item`
 - Architecture background:
   - `docs/arch/MLCORE_LISTENBRAINZ_FULL_INGESTION_V3.md`
+- Operator runbook:
+  - `docs/arch/MLCORE_LISTENBRAINZ_FULL_INGESTION_RUNBOOK.md`
 - Preceding completed task:
   - `tasks/mlcore-phase1a-listenbrainz-ingestion.md`
+
+## Completed Work
+
+- Added explicit finalize subphase reporting and backlog visibility to:
+  - `ingest_dataset_status`
+  - Prometheus metrics emitted by the full-ingestion engine
+- Normalized successful-run cleanup so the runtime ListenBrainz load/stage/checkpoint tables are truncated back to minimal size.
+- Preserved tiny manifest/control residue while removing large partition/log scratch.
+- Added `verify_full_ingestion_dataset` for lightweight downstream training-readiness checks against the finished canonical-item hot dataset.
+- Wrote the Neptune runbook covering:
+  - start
+  - resume
+  - runtime throttle changes
+  - post-run cleanup verification
+  - downstream readiness verification
