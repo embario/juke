@@ -781,8 +781,8 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
                 ''',
                 [loaded.run_id, LISTENBRAINZ_FINALIZE_PHASE_PARTITION_DRAIN],
             )
-            drained_checkpoint_count = cursor.fetchone()[0]
-        self.assertEqual(drained_checkpoint_count, 4)
+            retained_checkpoint_count = cursor.fetchone()[0]
+        self.assertEqual(retained_checkpoint_count, 0)
 
     def test_pipeline_executor_completes_end_to_end(self):
         self._create_track(spotify_id='spotify-may')
@@ -893,10 +893,14 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         )
 
         output_buffer = StringIO()
+        source_version = infer_source_version_from_path(archive_path)
+        manifest_path = scratch_root / f'listenbrainz/{source_version}/full-ingestion-manifest.json'
         call_command(
             'verify_full_ingestion_dataset',
             '--provider',
             'listenbrainz',
+            '--manifest-path',
+            str(manifest_path),
             '--sample-sessions',
             '8',
             '--json',

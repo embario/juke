@@ -3033,6 +3033,7 @@ def finalize_full_ingestion_source_run(
         **source_ingestion_run.metadata,
         'stage': 'completed',
         'full_ingestion_run_id': plan.run_id,
+        'manifest_path': plan.manifest_path,
         'partitions_loaded': int(plan.counters.get('partitions_loaded') or 0),
         'partitions_merged': int(plan.counters.get('partitions_merged') or 0),
         'finalize_phase': str(finalize_status['phase']),

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 from django.db.models import Count
 
-from mlcore.models import CanonicalItem, ListenBrainzSessionTrack
+from mlcore.models import CanonicalItem, ListenBrainzSessionTrack, SourceIngestionRun
 from mlcore.services.cooccurrence import compute_pmi_table
 from mlcore.services.evaluation import build_loo_dataset
 from mlcore.services.full_ingestion import (
@@ -78,13 +79,39 @@ class Command(BaseCommand):
         if not manifest_path:
             if not source_version:
                 configured_archive_path = archive_path or ingestion_provider.configured_archive_path() or ''
-                if not configured_archive_path:
-                    raise CommandError(
-                        'source-version or archive-path is required when manifest-path is not provided.'
+                if configured_archive_path:
+                    source_version = ingestion_provider.infer_source_version(configured_archive_path)
+                else:
+                    candidate_runs = list(
+                        SourceIngestionRun.objects
+                        .filter(source=provider, status='succeeded', metadata__stage='completed')
+                        .order_by('-completed_at', '-started_at')[:25]
                     )
-                source_version = ingestion_provider.infer_source_version(configured_archive_path)
+                    latest_run = None
+                    latest_manifest_mtime = -1.0
+                    for candidate_run in candidate_runs:
+                        candidate_manifest_path = str(candidate_run.metadata.get('manifest_path') or '').strip()
+                        if not candidate_manifest_path:
+                            continue
+                        try:
+                            candidate_manifest_mtime = Path(candidate_manifest_path).stat().st_mtime
+                        except OSError:
+                            continue
+                        if latest_run is None or candidate_manifest_mtime > latest_manifest_mtime:
+                            latest_run = candidate_run
+                            latest_manifest_mtime = candidate_manifest_mtime
+                    if latest_run is None and candidate_runs:
+                        latest_run = candidate_runs[0]
+                    if latest_run is None:
+                        raise CommandError(
+                            'source-version or archive-path is required when manifest-path is not provided '
+                            'and no completed full ingestion run can be discovered.'
+                        )
+                    source_version = latest_run.source_version
+                    manifest_path = str(latest_run.metadata.get('manifest_path') or '').strip()
             manifest_path = str(
-                full_ingestion_manifest_path(
+                manifest_path
+                or full_ingestion_manifest_path(
                     provider=provider,
                     source_version=source_version,
                     scratch_root=str(options['scratch_root'] or '').strip() or None,
