@@ -279,7 +279,7 @@ class ListenBrainzRemoteSyncTests(TestCase):
 
     @mock.patch('mlcore.services.listenbrainz_source.import_listenbrainz_dump')
     @mock.patch('mlcore.services.listenbrainz_source.urlopen')
-    def test_sync_logs_in_flight_incremental_skips(self, mock_urlopen, mock_import):
+    def test_sync_noops_while_incremental_is_already_in_flight(self, mock_urlopen, mock_import):
         SourceIngestionRun.objects.create(
             source='listenbrainz',
             import_mode='full',
@@ -297,14 +297,6 @@ class ListenBrainzRemoteSyncTests(TestCase):
             checksum='checksum',
             status='running',
         )
-        mock_urlopen.side_effect = self._urlopen_side_effect({
-            'https://ftp.example/listenbrainz/fullexport/': b'''
-                <a href="listenbrainz-dump-2446-20260301-000003-full/">full</a>
-            ''',
-            'https://ftp.example/listenbrainz/incremental/': b'''
-                <a href="listenbrainz-dump-2447-20260302-000003-incremental/">inc-1</a>
-            ''',
-        })
         mock_import.side_effect = lambda dump_path, **kwargs: self._import_result()
 
         with self.assertLogs('mlcore.services.listenbrainz_source', level='INFO') as captured:
@@ -315,10 +307,19 @@ class ListenBrainzRemoteSyncTests(TestCase):
             )
 
         self.assertEqual(result.status, 'noop')
+        self.assertEqual(result.downloaded_paths, [])
+        self.assertEqual(result.incremental_source_versions, [])
+        self.assertEqual(
+            result.skipped_source_versions,
+            ['listenbrainz-dump-2447-20260302-000003-incremental'],
+        )
         self.assertIn(
-            'skipping incremental=listenbrainz-dump-2447-20260302-000003-incremental because it is already in flight',
+            'listenbrainz remote sync nooping because imports are already in flight='
+            'listenbrainz-dump-2447-20260302-000003-incremental',
             '\n'.join(captured.output),
         )
+        mock_import.assert_not_called()
+        mock_urlopen.assert_not_called()
 
     @mock.patch('mlcore.services.listenbrainz_source.import_listenbrainz_dump')
     @mock.patch('mlcore.services.listenbrainz_source.urlopen')

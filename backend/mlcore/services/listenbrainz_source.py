@@ -188,6 +188,29 @@ def sync_listenbrainz_remote_dumps(
     in_flight_versions = _canonical_source_versions(in_flight_rows)
     skipped_versions = sorted(in_flight_versions)
 
+    if in_flight_versions:
+        logger.info(
+            'listenbrainz remote sync nooping because imports are already in flight=%s',
+            ','.join(skipped_versions),
+        )
+        result = RemoteSyncResult(
+            status='noop',
+            policy_classification=policy,
+            full_source_version=None,
+            incremental_source_versions=[],
+            downloaded_paths=[],
+            skipped_source_versions=skipped_versions,
+        )
+        logger.info(
+            'listenbrainz remote sync completed status=%s imported_full=%s imported_incrementals=%d downloads=%d skipped=%d',
+            result.status,
+            result.full_source_version or '-',
+            len(result.incremental_source_versions),
+            len(result.downloaded_paths),
+            len(result.skipped_source_versions),
+        )
+        return result
+
     imported_full_source_version: str | None = None
     imported_incrementals: list[str] = []
     downloaded_paths: list[str] = []

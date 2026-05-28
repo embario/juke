@@ -1,7 +1,7 @@
 ---
 id: mlcore-phase1a-listenbrainz-ingestion
 title: ML Core Phase 1a - ListenBrainz dataset ingestion and interaction normalization
-status: completed
+status: done
 priority: p1
 owner: codex
 area: platform
@@ -12,7 +12,7 @@ labels:
   - backend
   - data-ingestion
 complexity: 5
-updated_at: 2026-04-22
+updated_at: 2026-04-25
 ---
 
 ## Goal
