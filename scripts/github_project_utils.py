@@ -92,6 +92,14 @@ def canonicalize(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
+def is_missing_owner_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "could not resolve to a user with the login" in message
+        or "could not resolve to an organization with the login" in message
+    )
+
+
 def find_project_id(client: GitHubClient, login: str, project_title: str) -> str:
     query_user = """
     query($login: String!, $after: String) {
@@ -129,7 +137,12 @@ def find_project_id(client: GitHubClient, login: str, project_title: str) -> str
     for query, root_key in ((query_user, "user"), (query_org, "organization")):
         cursor: str | None = None
         while True:
-            data = client.graphql(query, {"login": login, "after": cursor})
+            try:
+                data = client.graphql(query, {"login": login, "after": cursor})
+            except GitHubError as exc:
+                if is_missing_owner_error(exc):
+                    break
+                raise
             container = data.get(root_key)
             if not isinstance(container, dict):
                 break

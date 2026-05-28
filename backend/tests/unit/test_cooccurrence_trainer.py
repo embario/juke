@@ -7,7 +7,16 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from catalog.models import SearchHistory, SearchHistoryResource
-from mlcore.models import ItemCoOccurrence, ListenBrainzSessionTrack, SourceIngestionRun, TrainingRun
+from mlcore.models import (
+    CoOccurrenceTrainingBasket,
+    CoOccurrenceTrainingBucket,
+    CoOccurrenceTrainingPair,
+    CoOccurrenceTrainingSessionItem,
+    ItemCoOccurrence,
+    ListenBrainzSessionTrack,
+    SourceIngestionRun,
+    TrainingRun,
+)
 from mlcore.services.canonical_items import bulk_ensure_canonical_items_for_tracks
 from mlcore.services.cooccurrence import (
     BEHAVIOR_SOURCE_LISTENBRAINZ,
@@ -324,6 +333,14 @@ class BasketsFromSearchHistoryTests(TestCase):
         self.assertEqual(result.source_row_count, 2)
         self.assertEqual(result.pairs_written, 1)
         self.assertEqual(ItemCoOccurrence.objects.count(), 1)
+        self.assertEqual(CoOccurrenceTrainingBasket.objects.count(), 1)
+        self.assertEqual(CoOccurrenceTrainingSessionItem.objects.count(), 2)
+        self.assertEqual(CoOccurrenceTrainingPair.objects.count(), 0)
+        self.assertEqual(CoOccurrenceTrainingBucket.objects.count(), 128)
+        self.assertEqual(
+            CoOccurrenceTrainingBucket.objects.filter(status='succeeded').count(),
+            128,
+        )
 
     def test_end_to_end_train_from_history(self):
         self._mk_session([self.t1, self.t2])

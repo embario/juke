@@ -29,6 +29,14 @@ INGESTION_MODE_CHOICES = (
     ('incremental', 'Incremental'),
 )
 
+TRAINING_BUCKET_STATUS_CHOICES = (
+    ('pending', 'Pending'),
+    ('running', 'Running'),
+    ('succeeded', 'Succeeded'),
+    ('failed', 'Failed'),
+    ('assumed_succeeded', 'Assumed succeeded'),
+)
+
 LISTENBRAINZ_RESOLUTION_STATE_CHOICES = (
     (0, 'Unresolved'),
     (1, 'Resolved'),
@@ -502,6 +510,7 @@ class ItemCoOccurrence(models.Model):
         TrainingRun,
         null=True,
         blank=True,
+        db_index=False,
         on_delete=models.SET_NULL,
         related_name='cooccurrence_rows',
     )
@@ -509,14 +518,116 @@ class ItemCoOccurrence(models.Model):
     class Meta:
         db_table = 'mlcore_item_cooccurrence'
         unique_together = ('item_a_juke_id', 'item_b_juke_id')
-        indexes = [
-            models.Index(fields=['item_a_juke_id']),
-            models.Index(fields=['item_b_juke_id']),
-            models.Index(fields=['training_run']),
-        ]
 
     def __str__(self):
         return f"co({self.item_a_juke_id}, {self.item_b_juke_id})={self.co_count}"
+
+
+class CoOccurrenceTrainingBucket(models.Model):
+    """Progress row for one bucket of a bucketed co-occurrence training run."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    training_run = models.ForeignKey(
+        TrainingRun,
+        on_delete=models.CASCADE,
+        related_name='cooccurrence_buckets',
+    )
+    source = models.CharField(max_length=64)
+    algorithm_version = models.CharField(max_length=64)
+    bucket_count = models.IntegerField()
+    bucket_index = models.IntegerField()
+    status = models.CharField(
+        max_length=24,
+        choices=TRAINING_BUCKET_STATUS_CHOICES,
+        default='pending',
+    )
+    rows_written = models.IntegerField(default=0)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = 'mlcore_cooccurrence_training_bucket'
+        unique_together = ('training_run', 'bucket_count', 'bucket_index')
+        indexes = [
+            models.Index(fields=['training_run', 'status'], name='mlcore_ctb_run_stat_idx'),
+            models.Index(fields=['source', 'algorithm_version'], name='mlcore_ctb_src_alg_idx'),
+            models.Index(fields=['bucket_count', 'bucket_index'], name='mlcore_ctb_bucket_idx'),
+        ]
+        ordering = ['training_run', 'bucket_index']
+
+    def __str__(self):
+        return f"{self.training_run_id}:{self.bucket_index}/{self.bucket_count}:{self.status}"
+
+
+class CoOccurrenceTrainingBasket(models.Model):
+    """Durable eligible ListenBrainz basket staging for a co-occurrence run."""
+
+    training_run = models.ForeignKey(
+        TrainingRun,
+        db_index=False,
+        on_delete=models.CASCADE,
+        related_name='cooccurrence_training_baskets',
+    )
+    source = models.CharField(max_length=64)
+    algorithm_version = models.CharField(max_length=64)
+    bucket_count = models.IntegerField()
+    bucket_index = models.IntegerField()
+    session_key = models.BinaryField(max_length=32)
+    item_count = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_cooccurrence_training_basket'
+        indexes = [
+            models.Index(fields=['training_run', 'session_key'], name='mlcore_ctbs_run_session_idx'),
+        ]
+
+
+class CoOccurrenceTrainingSessionItem(models.Model):
+    """Durable basket item staging used for bucket-local pair generation."""
+
+    training_run = models.ForeignKey(
+        TrainingRun,
+        db_index=False,
+        on_delete=models.CASCADE,
+        related_name='cooccurrence_training_session_items',
+    )
+    bucket_count = models.IntegerField()
+    bucket_index = models.IntegerField()
+    session_key = models.BinaryField(max_length=32)
+    item_id = models.UUIDField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_cooccurrence_training_session_item'
+        indexes = [
+            models.Index(fields=['training_run', 'bucket_index', 'session_key'], name='mlcore_ctsi_run_bkt_sess_idx'),
+        ]
+
+
+class CoOccurrenceTrainingPair(models.Model):
+    """Append-only staged pair counts; merged into ItemCoOccurrence once."""
+
+    training_run = models.ForeignKey(
+        TrainingRun,
+        db_index=False,
+        on_delete=models.CASCADE,
+        related_name='cooccurrence_training_pairs',
+    )
+    bucket_count = models.IntegerField()
+    bucket_index = models.IntegerField()
+    item_a_juke_id = models.UUIDField()
+    item_b_juke_id = models.UUIDField()
+    co_count = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_cooccurrence_training_pair'
+        indexes = [
+            models.Index(fields=['training_run', 'bucket_index'], name='mlcore_ctp_run_bucket_idx'),
+        ]
 
 
 class ModelEvaluation(models.Model):

@@ -300,6 +300,8 @@ class FullIngestionPlanningTests(FullIngestionMixin, TransactionTestCase):
         self.assertIn('rows_parsed=3', output)
         self.assertIn('candidates=mbid:0,spotify:3,none:0', output)
         self.assertIn('chunks_written=', output)
+        self.assertIn('finalize=phase:not_started', output)
+        self.assertIn('cleanup=partition_root:1', output)
 
     def test_control_command_switches_policy_and_budgets(self):
         archive_path = self._build_archive()
@@ -648,9 +650,15 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
                 [merged.run_id],
             )
             session_stage_rows = cursor.fetchone()[0]
+            cursor.execute(
+                f'SELECT count(*) FROM {LISTENBRAINZ_FINALIZE_CHECKPOINT_TABLE} WHERE run_id = %s',
+                [merged.run_id],
+            )
+            finalize_checkpoint_rows = cursor.fetchone()[0]
         self.assertEqual(event_load_rows, 0)
         self.assertEqual(session_load_rows, 0)
         self.assertEqual(session_stage_rows, 0)
+        self.assertEqual(finalize_checkpoint_rows, 0)
 
         if connection.vendor == 'postgresql':
             with connection.cursor() as cursor:
@@ -773,8 +781,8 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
                 ''',
                 [loaded.run_id, LISTENBRAINZ_FINALIZE_PHASE_PARTITION_DRAIN],
             )
-            drained_checkpoint_count = cursor.fetchone()[0]
-        self.assertEqual(drained_checkpoint_count, 4)
+            retained_checkpoint_count = cursor.fetchone()[0]
+        self.assertEqual(retained_checkpoint_count, 0)
 
     def test_pipeline_executor_completes_end_to_end(self):
         self._create_track(spotify_id='spotify-may')
@@ -828,6 +836,85 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(payload['counters']['partitions_merged'], 4)
         self.assertIn('completed provider=listenbrainz', output_buffer.getvalue())
 
+    def test_status_command_json_includes_finalize_and_cleanup_summary(self):
+        self._create_track(spotify_id='spotify-may')
+        archive_path = self._build_archive()
+        scratch_root = self.temp_dir / 'scratch'
+        call_command(
+            'ingest_dataset_full',
+            '--provider',
+            'listenbrainz',
+            '--archive-path',
+            str(archive_path),
+            '--scratch-root',
+            str(scratch_root),
+            '--partition-count',
+            '4',
+            '--execute-pipeline',
+        )
+
+        output_buffer = StringIO()
+        call_command(
+            'ingest_dataset_status',
+            '--provider',
+            'listenbrainz',
+            '--archive-path',
+            str(archive_path),
+            '--scratch-root',
+            str(scratch_root),
+            '--json',
+            stdout=output_buffer,
+        )
+        payload = json.loads(output_buffer.getvalue())
+        self.assertEqual(payload['finalize']['phase'], 'complete')
+        self.assertEqual(payload['finalize']['drained_partitions'], 4)
+        self.assertEqual(payload['cleanup']['event_load_rows'], 0)
+        self.assertEqual(payload['cleanup']['session_load_rows'], 0)
+        self.assertEqual(payload['cleanup']['session_stage_rows'], 0)
+        self.assertEqual(payload['cleanup']['finalize_checkpoint_rows'], 0)
+        self.assertFalse(payload['cleanup']['partition_root_exists'])
+        self.assertFalse(payload['cleanup']['log_root_exists'])
+
+    def test_verify_full_ingestion_dataset_command_reports_training_readiness(self):
+        self._create_track(spotify_id='spotify-may')
+        archive_path = self._build_archive()
+        scratch_root = self.temp_dir / 'scratch'
+        call_command(
+            'ingest_dataset_full',
+            '--provider',
+            'listenbrainz',
+            '--archive-path',
+            str(archive_path),
+            '--scratch-root',
+            str(scratch_root),
+            '--partition-count',
+            '4',
+            '--execute-pipeline',
+        )
+
+        output_buffer = StringIO()
+        source_version = infer_source_version_from_path(archive_path)
+        manifest_path = scratch_root / f'listenbrainz/{source_version}/full-ingestion-manifest.json'
+        call_command(
+            'verify_full_ingestion_dataset',
+            '--provider',
+            'listenbrainz',
+            '--manifest-path',
+            str(manifest_path),
+            '--sample-sessions',
+            '8',
+            '--json',
+            stdout=output_buffer,
+        )
+        payload = json.loads(output_buffer.getvalue())
+        self.assertTrue(payload['ready'])
+        self.assertEqual(payload['imported_row_count'], 3)
+        self.assertEqual(payload['canonicalized_row_count'], 3)
+        self.assertEqual(payload['unresolved_row_count'], 0)
+        self.assertGreaterEqual(payload['sample_sessions_loaded'], 1)
+        self.assertGreater(payload['sample_pairs'], 0)
+        self.assertGreater(payload['sample_trials'], 0)
+
     def test_lease_blocks_legacy_tasks_and_remote_sync(self):
         FullIngestionLease.objects.create(
             provider='listenbrainz',
@@ -865,6 +952,8 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         metrics_text = metrics_path.read_text(encoding='utf-8')
         self.assertIn('mlcore_full_ingestion_active{provider="listenbrainz"', metrics_text)
         self.assertIn('stage="complete"', metrics_text)
+        self.assertIn('mlcore_full_ingestion_finalize_phase{provider="listenbrainz"', metrics_text)
+        self.assertIn('phase="complete"', metrics_text)
 
     def test_metrics_writer_uses_wall_clock_elapsed_for_running_status(self):
         archive_path = self._build_archive()

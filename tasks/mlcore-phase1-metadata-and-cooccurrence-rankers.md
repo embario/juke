@@ -12,7 +12,7 @@ labels:
   - backend
   - recommender
 complexity: 5
-updated_at: 2026-03-06
+updated_at: 2026-05-28
 ---
 
 ## Goal
@@ -69,3 +69,41 @@ Deliver production-usable non-embedding baselines for metadata graph and cooccur
   - **Conflicting-rights check** (Risks above) — **not addressed** in Phase 1. The cross-row `CorpusManifest` checksum reconciliation matters for the *audio corpus* (Phase 2 OpenL3 ingestion), not for behavioral `SearchHistory` data which has no `CorpusManifest` gate. Carry this risk forward to `mlcore-phase2-openl3-embeddings-and-content-retrieval.md`.
   - **PMI smoothing** — deferred. Unsmoothed PMI overweights rare pairs. Fine for a baseline; revisit if cooccurrence wins promotion on real data and the long-tail recommendations look noisy.
 - Blockers: none.
+
+## Current Operational Handoff - 2026-05-28
+
+- The completed ListenBrainz hot dataset is now being used for full-scale cooccurrence training rather than only test-scale `SearchHistoryResource` baskets.
+- Uncommitted implementation in `backend/mlcore/services/cooccurrence.py` adds a ListenBrainz-only SQL training path with:
+  - deterministic training hash tied to latest successful ListenBrainz ingestion state
+  - 128 pair buckets
+  - durable bucket progress rows in `mlcore_cooccurrence_training_bucket`
+  - durable basket/session/pair staging tables
+  - `--resume-run-id`, `--start-bucket`, and `--resume` support in `train_cooccurrence`
+- The Neptune database has migrations through `mlcore.0018_trim_cooccurrence_staging_fk_indexes` applied.
+- Latest observed full-scale run:
+  - `TrainingRun.id=157bbf43-e842-46da-9f8a-d627d798044d`
+  - created `2026-04-25T22:52:15Z`
+  - `baskets_processed=235,951,375`
+  - `items_seen=103,823,472`
+  - `source_row_count=1,226,175,648`
+  - `pairs_written=1,703,139,363`
+  - bucket metadata: 116 `succeeded`, 12 `assumed_succeeded`
+  - staging tables are empty after merge
+  - `mlcore_item_cooccurrence` is about `284 GB` by PostgreSQL relation metadata
+- Remaining before calling this Phase 1 path fully validated:
+  - run a fresh full ListenBrainz-only cooccurrence training job from the current `mlcore_listenbrainz_session_track` snapshot now that incremental sync has been paused
+  - run/evaluate the recommender candidates against the new cooccurrence training run
+  - decide whether the 12 `assumed_succeeded` buckets are acceptable operationally or whether a clean 128/128 bucket run is required before promotion
+  - update PR/issue linkage when this work is published
+- Verification on 2026-05-28:
+  - `docker compose exec backend python manage.py test tests.unit.test_listenbrainz_source_sync`
+  - `docker compose exec backend python manage.py test tests.unit.test_cooccurrence_trainer`
+- Operational setup for the next cooccurrence run:
+  - incremental ListenBrainz sync has been intentionally paused
+  - no Celery tasks are active and Redis `mlcore` queue length is `0`
+  - worker consumption of the `mlcore` queue is disabled via `celery control cancel_consumer mlcore`
+  - the current latest successful ListenBrainz source version remains `listenbrainz-dump-2501-20260422-000004-incremental`
+  - recommended clean training command:
+    `docker compose exec backend python manage.py train_cooccurrence --source listenbrainz --split train --split-buckets 10`
+  - do not resume the older `TrainingRun.id=157bbf43-e842-46da-9f8a-d627d798044d` if the goal is a clean/current 128-bucket result
+  - after training/evaluation, re-enable queued MLCore work with `docker compose exec worker celery -A settings.celery control add_consumer mlcore`
