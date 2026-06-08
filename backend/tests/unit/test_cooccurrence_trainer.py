@@ -335,7 +335,7 @@ class BasketsFromSearchHistoryTests(TestCase):
         self.assertEqual(ItemCoOccurrence.objects.count(), 1)
         self.assertEqual(CoOccurrenceTrainingBasket.objects.count(), 1)
         self.assertEqual(CoOccurrenceTrainingSessionItem.objects.count(), 2)
-        self.assertEqual(CoOccurrenceTrainingPair.objects.count(), 0)
+        self.assertEqual(CoOccurrenceTrainingPair.objects.count(), 1)
         self.assertEqual(CoOccurrenceTrainingBucket.objects.count(), 128)
         self.assertEqual(
             CoOccurrenceTrainingBucket.objects.filter(status='succeeded').count(),
