@@ -1,6 +1,7 @@
 from django.contrib import admin, messages
 
 from mlcore.models import (
+    CanonicalItemAlias,
     CanonicalItem,
     CorpusManifest,
     ListenBrainzEventLedger,
@@ -85,6 +86,23 @@ class CanonicalItemAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(CanonicalItemAlias)
+class CanonicalItemAliasAdmin(admin.ModelAdmin):
+    list_display = ('source', 'resource_type', 'source_id', 'canonical_item', 'status', 'updated_at')
+    list_filter = ('source', 'resource_type', 'status')
+    search_fields = ('source_id', 'canonical_item__canonical_key')
+    readonly_fields = (
+        'id', 'canonical_item', 'source', 'resource_type', 'source_id', 'confidence',
+        'source_version', 'status', 'metadata', 'created_at', 'updated_at',
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(ListenBrainzEventLedger)
 class ListenBrainzEventLedgerAdmin(admin.ModelAdmin):
     list_display = ('played_at', 'canonical_item', 'track', 'resolution_state', 'short_event_signature', 'short_session_key')
@@ -146,11 +164,19 @@ class NormalizedInteractionAdmin(admin.ModelAdmin):
 
 @admin.register(ModelEvaluation)
 class ModelEvaluationAdmin(admin.ModelAdmin):
-    list_display = ('candidate_label', 'metric_name', 'metric_value', 'short_hash', 'created_at')
+    list_display = (
+        'candidate_label', 'metric_name', 'metric_value', 'n_baskets',
+        'n_trials', 'n_cold_trials', 'evaluation_started_at', 'short_hash',
+        'created_at',
+    )
     list_filter = ('candidate_label', 'metric_name')
     search_fields = ('candidate_label', 'dataset_hash')
-    readonly_fields = ('candidate_label', 'metric_name', 'metric_value', 'dataset_hash',
-                       'model_id', 'created_at')
+    readonly_fields = (
+        'candidate_label', 'metric_name', 'metric_value', 'dataset_hash',
+        'n_baskets', 'n_trials', 'n_cold_trials', 'evaluation_started_at',
+        'evaluation_elapsed_seconds', 'evaluation_trials_per_second',
+        'model_id', 'training_run', 'created_at',
+    )
 
     def short_hash(self, obj):
         return obj.dataset_hash[:12]

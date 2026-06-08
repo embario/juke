@@ -36,6 +36,18 @@ class RecommenderClientTests(SimpleTestCase):
                 client.fetch_recommendations({'artists': ['Tool']})
 
     @mock.patch('recommender.services.client._request')
+    def test_resolve_items_posts_expected_payload(self, mock_request):
+        mock_request.return_value = {'items': []}
+        items = [
+            {'source': 'spotify', 'resource_type': 'track', 'source_id': 'sp-track'},
+        ]
+
+        result = client.resolve_items(items)
+
+        self.assertEqual(result, {'items': []})
+        mock_request.assert_called_once_with('/resolve', {'items': items})
+
+    @mock.patch('recommender.services.client._request')
     def test_build_vector_from_names_uses_text_embeddings(self, mock_request):
         mock_request.return_value = {'embedding': [0.1, 0.2]}
 

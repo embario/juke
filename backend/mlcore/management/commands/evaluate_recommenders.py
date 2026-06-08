@@ -11,6 +11,7 @@ from mlcore.services.cooccurrence import (
 )
 from mlcore.services.evaluation import (
     DEFAULT_COLD_THRESHOLD,
+    DEFAULT_EVALUATION_BATCH_SIZE,
     DEFAULT_K,
     RANKERS,
     run_offline_evaluation,
@@ -41,6 +42,34 @@ class Command(BaseCommand):
             '--no-persist', action='store_true',
             help='Compute and print metrics without writing ModelEvaluation rows.',
         )
+        parser.add_argument(
+            '--max-baskets',
+            type=int,
+            default=None,
+            help='Evaluate a deterministic prefix sample of eligible baskets instead of materializing the full split.',
+        )
+        parser.add_argument(
+            '--max-basket-items',
+            type=int,
+            default=None,
+            help='Exclude evaluation baskets with more than this many distinct items.',
+        )
+        parser.add_argument(
+            '--skip-hash-check',
+            action='store_true',
+            help='Skip recomputing the current training hash before evaluation.',
+        )
+        parser.add_argument(
+            '--batch-size',
+            type=int,
+            default=DEFAULT_EVALUATION_BATCH_SIZE,
+            help='Number of leave-one-out trials to score per database fetch batch.',
+        )
+        parser.add_argument(
+            '--metrics-path',
+            default=None,
+            help='Optional Prometheus textfile path for evaluation progress metrics.',
+        )
 
     def handle(self, *args, **options):
         labels = options.get('rankers')
@@ -58,7 +87,7 @@ class Command(BaseCommand):
                         'No cooccurrence training run found. Run train_cooccurrence() before evaluating the cooccurrence ranker.'
                     )
                 )
-            else:
+            elif not options['skip_hash_check'] and options['max_baskets'] is None:
                 current_baskets, _ = baskets_from_behavioral_sources_with_count(
                     split='train',
                     split_buckets=_SPLIT_BUCKET_COUNT,
@@ -81,6 +110,10 @@ class Command(BaseCommand):
             split='test',
             sources=sources,
             cooccurrence_training_run=cooccurrence_training_run,
+            max_baskets=options['max_baskets'],
+            max_basket_items=options['max_basket_items'],
+            batch_size=options['batch_size'],
+            metrics_path=options['metrics_path'],
             persist=not options['no_persist'],
         )
 

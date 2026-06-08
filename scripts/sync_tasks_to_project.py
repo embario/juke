@@ -337,12 +337,6 @@ def main() -> int:
     for token_env, token in token_candidates:
         candidate_client = GitHubClient(token, user_agent="juke-task-sync")
         try:
-            candidate_project_id, candidate_project_fields = load_project(
-                candidate_client, gh_owner, gh_project_title
-            )
-            candidate_project_item_map = fetch_project_issue_item_map(
-                candidate_client, candidate_project_id
-            )
             candidate_existing_issues = index_existing_task_issues(
                 candidate_client, gh_owner, gh_repo
             )
@@ -355,6 +349,33 @@ def main() -> int:
                 file=sys.stderr,
             )
             continue
+
+        candidate_project_id = ""
+        candidate_project_fields: dict[str, ProjectField] = {}
+        candidate_project_item_map: dict[str, str] = {}
+        try:
+            candidate_project_id, candidate_project_fields = load_project(
+                candidate_client, gh_owner, gh_project_title
+            )
+            candidate_project_item_map = fetch_project_issue_item_map(
+                candidate_client, candidate_project_id
+            )
+        except GitHubError as exc:
+            if is_auth_error(exc):
+                last_auth_error = exc
+                print(
+                    f"WARNING: {token_env} can access issues but cannot access "
+                    f'the "{gh_project_title}" project; task issues will sync '
+                    "without project updates.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f'WARNING: Could not load project "{gh_project_title}" '
+                    f"with {token_env}: {exc}. Task issues will sync without "
+                    "project updates.",
+                    file=sys.stderr,
+                )
 
         client = candidate_client
         project_id = candidate_project_id
@@ -443,6 +464,10 @@ def main() -> int:
             existing_issues_by_path[rel_path] = existing
             if stable_task_key:
                 existing_issues_by_stable_key[stable_task_key] = existing
+
+            if not project_id:
+                synced_count += 1
+                continue
 
             item_id = project_item_map.get(issue_node_id)
             if not item_id:

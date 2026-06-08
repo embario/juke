@@ -29,6 +29,11 @@ def fetch_recommendations(profile: Dict[str, Any]) -> Dict[str, Any]:
     return _request('/recommend', profile)
 
 
+def resolve_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Resolve external music identities to MLCore canonical item IDs."""
+    return _request('/resolve', {'items': items})
+
+
 def generate_embedding(resource_type: str, attributes: Dict[str, Any]) -> Dict[str, Any]:
     payload = {
         'resource_type': resource_type,

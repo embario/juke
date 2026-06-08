@@ -133,19 +133,6 @@ def main() -> int:
     for token_env, token in token_candidates:
         client = GitHubClient(token, user_agent="juke-pr-task-status-sync")
         try:
-            project_id = find_project_id(client, owner, project_title)
-            fields = load_project_fields(client, project_id)
-            status_field = fields.get(canonicalize("Status"))
-            if not status_field:
-                raise GitHubError(f"Project field 'Status' not found in '{project_title}'.")
-
-            option_id, resolved_name = pick_option_id(status_field, target_status)
-            if not option_id:
-                raise GitHubError(
-                    f"Status option '{target_status}' not found. Available: "
-                    f"{available_options(status_field)}"
-                )
-
             issues = fetch_pr_closing_issues(client, owner, repo, pr_number)
             task_issues = [issue for issue in issues if is_task_issue(issue)]
             unique_task_issues: dict[str, dict[str, Any]] = {}
@@ -163,6 +150,19 @@ def main() -> int:
             if not unique_task_issues:
                 print(f"No valid linked task issue node IDs found for PR #{pr_number}.")
                 return 0
+
+            project_id = find_project_id(client, owner, project_title)
+            fields = load_project_fields(client, project_id)
+            status_field = fields.get(canonicalize("Status"))
+            if not status_field:
+                raise GitHubError(f"Project field 'Status' not found in '{project_title}'.")
+
+            option_id, resolved_name = pick_option_id(status_field, target_status)
+            if not option_id:
+                raise GitHubError(
+                    f"Status option '{target_status}' not found. Available: "
+                    f"{available_options(status_field)}"
+                )
 
             project_item_map = fetch_project_issue_item_map(client, project_id)
             updated = 0
@@ -215,6 +215,13 @@ def main() -> int:
                     file=sys.stderr,
                 )
                 continue
+            if "could not find project titled" in str(exc).lower():
+                print(
+                    f'WARNING: Could not load project "{project_title}" for owner '
+                    f"{owner}; linked task statuses will not be updated.",
+                    file=sys.stderr,
+                )
+                return 0
             print(f"ERROR: {exc}", file=sys.stderr)
             return 1
 
