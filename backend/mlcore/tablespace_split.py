@@ -11,7 +11,6 @@ HOT_TABLES = (
     'mlcore_source_ingestion_run',
     'mlcore_dataset_orchestration_run',
     'mlcore_dataset_shard_ingestion_run',
-    'mlcore_listenbrainz_session_track',
     'mlcore_training_run',
     'mlcore_item_cooccurrence',
     'mlcore_model_evaluation',
@@ -19,7 +18,11 @@ HOT_TABLES = (
 )
 
 COLD_TABLES = (
+    'mlcore_cooccurrence_training_basket',
+    'mlcore_cooccurrence_training_session_item',
+    'mlcore_cooccurrence_training_pair',
     'mlcore_listenbrainz_event_ledger',
+    'mlcore_listenbrainz_session_track',
     'mlcore_listenbrainz_raw_listen',
     'mlcore_normalized_interaction',
 )

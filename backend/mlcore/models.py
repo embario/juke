@@ -49,6 +49,12 @@ CANONICAL_ITEM_TYPE_CHOICES = (
     ('catalog_track', 'Catalog Track'),
 )
 
+CANONICAL_ITEM_ALIAS_STATUS_CHOICES = (
+    ('active', 'Active'),
+    ('retired', 'Retired'),
+    ('conflict', 'Conflict'),
+)
+
 
 def _binary_to_hex(value):
     if isinstance(value, memoryview):
@@ -277,6 +283,44 @@ class CanonicalItem(models.Model):
         return self.canonical_key
 
 
+class CanonicalItemAlias(models.Model):
+    """External provider identity that resolves to one MLCore canonical item."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    canonical_item = models.ForeignKey(
+        CanonicalItem,
+        on_delete=models.CASCADE,
+        related_name='aliases',
+    )
+    source = models.CharField(max_length=64)
+    resource_type = models.CharField(max_length=64)
+    source_id = models.CharField(max_length=512)
+    confidence = models.FloatField(default=1.0)
+    source_version = models.CharField(max_length=255, blank=True, default='')
+    status = models.CharField(max_length=16, choices=CANONICAL_ITEM_ALIAS_STATUS_CHOICES, default='active')
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mlcore_canonical_item_alias'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['source', 'resource_type', 'source_id'],
+                name='mlcore_cia_source_resource_source_id_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['canonical_item'], name='mlcore_cia_canonic_7d4fe3_idx'),
+            models.Index(fields=['source', 'resource_type', 'source_id'], name='mlcore_cia_lookup_117b92_idx'),
+            models.Index(fields=['status'], name='mlcore_cia_status_6e75d3_idx'),
+        ]
+        ordering = ['source', 'resource_type', 'source_id']
+
+    def __str__(self):
+        return f'{self.source}:{self.resource_type}:{self.source_id}'
+
+
 class ListenBrainzEventLedger(models.Model):
     """Compact event-level ledger for ListenBrainz replay, dedupe, and audit."""
 
@@ -365,6 +409,7 @@ class ListenBrainzSessionTrack(models.Model):
 
     class Meta:
         db_table = 'mlcore_listenbrainz_session_track'
+        db_tablespace = 'juke_mlcore_cold'
         unique_together = ('session_key', 'canonical_item')
         indexes = [
             models.Index(fields=['canonical_item'], name='mlcore_lst_canonic_78087f_idx'),
@@ -471,11 +516,11 @@ class TrainingRun(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ranker_label = models.CharField(max_length=64)
     training_hash = models.CharField(max_length=64, db_index=True)
-    baskets_processed = models.IntegerField()
+    baskets_processed = models.BigIntegerField()
     baskets_skipped = models.IntegerField()
-    items_seen = models.IntegerField()
-    pairs_written = models.IntegerField()
-    source_row_count = models.IntegerField()
+    items_seen = models.BigIntegerField()
+    pairs_written = models.BigIntegerField()
+    source_row_count = models.BigIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -517,6 +562,7 @@ class ItemCoOccurrence(models.Model):
 
     class Meta:
         db_table = 'mlcore_item_cooccurrence'
+        db_tablespace = 'juke_mlcore_hot'
         unique_together = ('item_a_juke_id', 'item_b_juke_id')
 
     def __str__(self):
@@ -580,6 +626,7 @@ class CoOccurrenceTrainingBasket(models.Model):
 
     class Meta:
         db_table = 'mlcore_cooccurrence_training_basket'
+        db_tablespace = 'juke_mlcore_cold'
         indexes = [
             models.Index(fields=['training_run', 'session_key'], name='mlcore_ctbs_run_session_idx'),
         ]
@@ -602,6 +649,7 @@ class CoOccurrenceTrainingSessionItem(models.Model):
 
     class Meta:
         db_table = 'mlcore_cooccurrence_training_session_item'
+        db_tablespace = 'juke_mlcore_cold'
         indexes = [
             models.Index(fields=['training_run', 'bucket_index', 'session_key'], name='mlcore_ctsi_run_bkt_sess_idx'),
         ]
@@ -625,6 +673,7 @@ class CoOccurrenceTrainingPair(models.Model):
 
     class Meta:
         db_table = 'mlcore_cooccurrence_training_pair'
+        db_tablespace = 'juke_mlcore_cold'
         indexes = [
             models.Index(fields=['training_run', 'bucket_index'], name='mlcore_ctp_run_bucket_idx'),
         ]
@@ -641,6 +690,12 @@ class ModelEvaluation(models.Model):
     metric_name = models.CharField(max_length=64)
     metric_value = models.FloatField()
     dataset_hash = models.CharField(max_length=64, db_index=True)
+    n_baskets = models.BigIntegerField(default=0)
+    n_trials = models.BigIntegerField(default=0)
+    n_cold_trials = models.BigIntegerField(default=0)
+    evaluation_started_at = models.DateTimeField(null=True, blank=True)
+    evaluation_elapsed_seconds = models.FloatField(null=True, blank=True)
+    evaluation_trials_per_second = models.FloatField(null=True, blank=True)
     training_run = models.ForeignKey(
         TrainingRun,
         null=True,
