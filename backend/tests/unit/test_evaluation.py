@@ -147,6 +147,7 @@ class BuildLOODatasetTests(SimpleTestCase):
         a, b, c = _uid(1), _uid(2), _uid(3)
         ds = build_loo_dataset(baskets=[[a, b, c]])
         self.assertEqual(len(ds.trials), 3)
+        self.assertEqual(ds.n_baskets, 1)
         held_outs = {t.held_out for t in ds.trials}
         self.assertEqual(held_outs, {a, b, c})
         # Each trial's seeds = basket minus held_out
@@ -422,6 +423,26 @@ class CoOccurrenceRankerAdapterTests(TestCase):
         ranked = CoOccurrenceRanker().rank(seeds=(seed,), exclude={seed}, limit=10)
         self.assertEqual(ranked, [hi, lo])  # pmi desc
 
+    def test_batched_evaluation_matches_ranker_path(self):
+        seed = _uid(2)
+        lo = _uid(1)
+        hi = _uid(3)
+        ItemCoOccurrence.objects.create(item_a_juke_id=lo, item_b_juke_id=seed, pmi_score=0.5, co_count=1)
+        ItemCoOccurrence.objects.create(item_a_juke_id=seed, item_b_juke_id=hi, pmi_score=1.5, co_count=2)
+        dataset = Dataset(
+            trials=[
+                Trial(seeds=(seed,), held_out=hi, is_cold=False),
+                Trial(seeds=(seed,), held_out=lo, is_cold=True),
+            ],
+            dataset_hash='b' * 64,
+        )
+
+        result = evaluate_ranker(CoOccurrenceRanker(), dataset, k=10, catalog_size=10, batch_size=1)
+
+        self.assertEqual(result.n_trials, 2)
+        self.assertEqual(result.n_cold_trials, 1)
+        self.assertEqual(result.metrics[METRIC_RECALL], 1.0)
+
     def test_no_neighbours(self):
         self.assertEqual(CoOccurrenceRanker().rank(seeds=(_uid(1),), exclude=set(), limit=10), [])
 
@@ -433,6 +454,7 @@ class PersistEvaluationTests(TestCase):
         result = EvaluationResult(
             candidate_label='metadata',
             dataset_hash='h' * 64,
+            n_baskets=2,
             n_trials=5,
             n_cold_trials=1,
             metrics={METRIC_RECALL: 0.4, METRIC_NDCG: 0.3, METRIC_COVERAGE: 0.2, METRIC_COLD_RECALL: 0.1},
@@ -443,6 +465,9 @@ class PersistEvaluationTests(TestCase):
         self.assertEqual(row.candidate_label, 'metadata')
         self.assertEqual(row.dataset_hash, 'h' * 64)
         self.assertEqual(row.metric_value, 0.4)
+        self.assertEqual(row.n_baskets, 2)
+        self.assertEqual(row.n_trials, 5)
+        self.assertEqual(row.n_cold_trials, 1)
         self.assertIsNone(row.model_id)
 
     def test_writes_training_run_for_cooccurrence_metrics(self):
