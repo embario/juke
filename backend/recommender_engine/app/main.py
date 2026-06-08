@@ -13,7 +13,10 @@ from pydantic import BaseModel, Field
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from app.scorers import extract_seed_feature_ids, score_cooccurrence, score_metadata
+try:
+    from app.scorers import extract_seed_feature_ids, score_cooccurrence, score_metadata
+except ModuleNotFoundError:  # pragma: no cover - supports Django test imports
+    from recommender_engine.app.scorers import extract_seed_feature_ids, score_cooccurrence, score_metadata
 
 MODEL_VERSION = os.environ.get('RECOMMENDER_MODEL_VERSION', 'v1.0.0')
 VECTOR_DIM = int(os.environ.get('RECOMMENDER_VECTOR_DIM', '32'))
@@ -79,6 +82,32 @@ class RecommendationResponse(BaseModel):
     artists: List[RecommendationItem] = Field(default_factory=list)
     albums: List[RecommendationItem] = Field(default_factory=list)
     tracks: List[RecommendationItem] = Field(default_factory=list)
+    model_version: str = MODEL_VERSION
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ResolveRequestItem(BaseModel):
+    source: str
+    resource_type: str
+    source_id: str
+
+
+class ResolveRequest(BaseModel):
+    items: List[ResolveRequestItem] = Field(..., min_length=1)
+
+
+class ResolveResponseItem(BaseModel):
+    source: str
+    resource_type: str
+    source_id: str
+    canonical_item_id: UUID | None = None
+    status: str
+    canonical_key: str = ''
+    item_type: str = ''
+
+
+class ResolveResponse(BaseModel):
+    items: List[ResolveResponseItem]
     model_version: str = MODEL_VERSION
     generated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -345,9 +374,104 @@ _COOCCURRENCE_SQL = """
     WHERE item_b_juke_id = ANY(%s)
 """
 
+_RESOLVE_ALIASES_SQL = """
+    WITH requested(source, resource_type, source_id) AS (
+        SELECT *
+        FROM unnest(%s::text[], %s::text[], %s::text[])
+    )
+    SELECT
+        alias.source,
+        alias.resource_type,
+        alias.source_id,
+        alias.status,
+        alias.canonical_item_id,
+        canonical.canonical_key,
+        canonical.item_type
+    FROM mlcore_canonical_item_alias alias
+    JOIN mlcore_canonical_item canonical ON canonical.id = alias.canonical_item_id
+    JOIN requested
+      ON requested.source = alias.source
+     AND requested.resource_type = alias.resource_type
+     AND requested.source_id = alias.source_id
+"""
+
 
 def _as_item(s) -> BaselineItem:
     return BaselineItem(juke_id=s.juke_id, score=s.score, components=s.components)
+
+
+def _normalize_resolve_item(item: ResolveRequestItem) -> tuple[str, str, str] | None:
+    source = str(item.source or '').strip().lower()
+    resource_type = str(item.resource_type or '').strip().lower()
+    source_id = str(item.source_id or '').strip()
+    if not source or not resource_type or not source_id:
+        return None
+    return source, resource_type, source_id
+
+
+def _resolve_status(row: Dict[str, Any] | None) -> str:
+    if row is None:
+        return 'unresolved'
+    status = row.get('status')
+    if status == 'active':
+        return 'resolved'
+    if status == 'conflict':
+        return 'conflict'
+    return 'unresolved'
+
+
+@app.post('/resolve', response_model=ResolveResponse)
+def resolve(request: ResolveRequest):
+    normalized_items: list[tuple[int, tuple[str, str, str] | None]] = [
+        (index, _normalize_resolve_item(item))
+        for index, item in enumerate(request.items)
+    ]
+    valid_keys = sorted({key for _, key in normalized_items if key is not None})
+    rows_by_key: dict[tuple[str, str, str], Dict[str, Any]] = {}
+
+    if valid_keys:
+        rows = _run_query(
+            _RESOLVE_ALIASES_SQL,
+            [
+                [key[0] for key in valid_keys],
+                [key[1] for key in valid_keys],
+                [key[2] for key in valid_keys],
+            ],
+        )
+        requested = set(valid_keys)
+        for row in rows:
+            key = (row['source'], row['resource_type'], row['source_id'])
+            if key in requested:
+                rows_by_key[key] = row
+
+    response_items: list[ResolveResponseItem] = []
+    for index, key in normalized_items:
+        original = request.items[index]
+        if key is None:
+            response_items.append(
+                ResolveResponseItem(
+                    source=str(original.source or '').strip().lower(),
+                    resource_type=str(original.resource_type or '').strip().lower(),
+                    source_id=str(original.source_id or '').strip(),
+                    status='invalid',
+                )
+            )
+            continue
+
+        row = rows_by_key.get(key)
+        response_items.append(
+            ResolveResponseItem(
+                source=key[0],
+                resource_type=key[1],
+                source_id=key[2],
+                canonical_item_id=row.get('canonical_item_id') if row else None,
+                status=_resolve_status(row),
+                canonical_key=row.get('canonical_key') if row else '',
+                item_type=row.get('item_type') if row else '',
+            )
+        )
+
+    return ResolveResponse(items=response_items, generated_at=datetime.utcnow())
 
 
 @app.post('/engine/recommend/metadata', response_model=BaselineResponse)
