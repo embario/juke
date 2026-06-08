@@ -107,3 +107,62 @@ Deliver production-usable non-embedding baselines for metadata graph and cooccur
     `docker compose exec backend python manage.py train_cooccurrence --source listenbrainz --split train --split-buckets 10`
   - do not resume the older `TrainingRun.id=157bbf43-e842-46da-9f8a-d627d798044d` if the goal is a clean/current 128-bucket result
   - after training/evaluation, re-enable queued MLCore work with `docker compose exec worker celery -A settings.celery control add_consumer mlcore`
+
+## Current Operational Handoff - 2026-05-30
+
+- Resumed cooccurrence validation work on Neptune.
+- Brought up only `db`, `redis`, and `backend`; intentionally did not start `worker` or `beat` so queued MLCore sync work cannot consume while the clean training run is active.
+- Redis `mlcore` queue length is `3`; all three queued messages are `mlcore.tasks.sync_listenbrainz_remote`.
+- Confirmed the latest pre-existing cooccurrence run is still `157bbf43-e842-46da-9f8a-d627d798044d` with 116 `succeeded` buckets and 12 `assumed_succeeded` buckets.
+- Confirmed no persisted `ModelEvaluation` rows exist yet for `candidate_label='cooccurrence'`.
+- Confirmed staging tables are empty by relation metadata and `mlcore_item_cooccurrence` remains about `284 GB`.
+- Started a clean/current ListenBrainz-only training run as a one-off Compose container, not through Celery:
+  - container: `juke-cooccurrence-train`
+  - container id: `a027857d665e33dc9a024927e94fa2a1e8883dea508277e1d4ce07673b836595`
+  - command: `docker compose run -d --name juke-cooccurrence-train backend python manage.py train_cooccurrence --source listenbrainz --split train --split-buckets 10`
+  - new `TrainingRun.id=3c96bdf9-81c2-4b2a-8dfb-d1068e806fd8`
+  - new training hash prefix: `2b21751dbd3e`
+  - initial state: all 128 bucket rows `pending`; active DB query is inserting `mlcore_cooccurrence_training_basket`
+- Next:
+  - Monitor `juke-cooccurrence-train` and DB progress until basket/session staging finishes and bucket processing starts.
+  - Do not start `worker`/`beat` or re-enable queued MLCore sync until training/evaluation is complete.
+  - After training completes, evaluate with ListenBrainz-backed trials and decide promotion readiness.
+- Added Neptune monitoring for the active training run:
+  - textfile exporter script: `/srv/monitoring/scripts/mlcore-cooccurrence-training-export.sh`
+  - textfile output: `/srv/monitoring/node-exporter/textfile/mlcore_cooccurrence_training.prom`
+  - monitoring compose service: `mlcore-cooccurrence-textfile-exporter`
+  - Grafana dashboard: `/srv/monitoring/grafana/dashboards/mlcore-cooccurrence-training.json`
+  - dashboard URL: `http://100.110.159.98:3000/d/mlcore-cooccurrence-training/mlcore-cooccurrence-training`
+  - verified `mlcore_cooccurrence_export_success=1` and `node_textfile_scrape_error=0`
+
+## Current Operational Handoff - 2026-06-07
+
+- Full cooccurrence training completed for `TrainingRun.id=3c96bdf9-81c2-4b2a-8dfb-d1068e806fd8`.
+- Hot/cold storage split is active:
+  - `mlcore_item_cooccurrence` remains in hot storage for ML serving.
+  - `mlcore_listenbrainz_session_track` and cooccurrence staging tables are in cold storage.
+- Added batched cooccurrence evaluation progress metrics:
+  - textfile output: `/srv/monitoring/node-exporter/textfile/mlcore_evaluation.prom`
+  - metric prefix: `mlcore_evaluation_*`
+- Added MLCore table/tablespace textfile exporter:
+  - script: `scripts/mlcore_tablespace_metrics.sh`
+  - textfile output: `/srv/monitoring/node-exporter/textfile/mlcore_tablespace.prom`
+  - metric prefixes: `mlcore_table_*`, `mlcore_tablespace_mlcore_*`
+- Updated and deployed the repo Grafana dashboard source:
+  - source: `o11y/mlcore-full-ingestion-dashboard.json`
+  - live copy: `/srv/monitoring/grafana/dashboards/mlcore-full-ingestion-dashboard.json`
+- Applied migration `mlcore.0023_model_evaluation_trial_counts` so future `ModelEvaluation` metric rows carry `n_trials` and `n_cold_trials`.
+- Verification:
+  - `docker compose exec -T backend python manage.py check`
+  - `docker compose exec -T backend python manage.py test tests.unit.test_evaluation --keepdb`
+- A persisted 10k-basket staged evaluation is running in the backend container:
+  - backend PID: `511`
+  - log: `/tmp/mlcore_eval_10k.log`
+  - command: `python manage.py evaluate_recommenders --ranker cooccurrence --source listenbrainz --max-baskets 10000 --max-basket-items 25 --skip-hash-check --batch-size 5 --metrics-path /srv/monitoring/node-exporter/textfile/mlcore_evaluation.prom`
+  - dataset hash: `cd5b3f81eed208e12b7c3f844b9c3b4e6078e5719c711781e970b7300e2ecdfe`
+  - trials: `52,394`
+  - cold trials: `51,953`
+- Next:
+  - Watch `mlcore_evaluation_progress_fraction`, `mlcore_evaluation_eta_seconds`, and `/tmp/mlcore_eval_10k.log`.
+  - When complete, inspect the latest `mlcore_model_evaluation` rows grouped by `dataset_hash`.
+  - If the 10k-basket result is stable and runtime is acceptable, launch a larger staged eval with the same `--batch-size 5` and `--max-basket-items 25` settings.

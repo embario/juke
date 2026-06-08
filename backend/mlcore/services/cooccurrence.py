@@ -27,6 +27,7 @@ from uuid import UUID
 
 from catalog.models import SearchHistoryResource, Track
 from django.db import connection, transaction
+from django.utils import timezone
 from mlcore.models import (
     ItemCoOccurrence,
     ListenBrainzSessionTrack,
@@ -356,8 +357,18 @@ def _train_cooccurrence_listenbrainz_sql(
 
     staging_counts_sql = """
         SELECT
-            (SELECT COUNT(*)::integer FROM mlcore_cooccurrence_training_basket WHERE training_run_id = %s),
-            (SELECT COUNT(*)::integer FROM mlcore_cooccurrence_training_session_item WHERE training_run_id = %s)
+            EXISTS (
+                SELECT 1
+                FROM mlcore_cooccurrence_training_basket
+                WHERE training_run_id = %s
+                LIMIT 1
+            ),
+            EXISTS (
+                SELECT 1
+                FROM mlcore_cooccurrence_training_session_item
+                WHERE training_run_id = %s
+                LIMIT 1
+            )
     """
     clear_staging_sql = [
         "DELETE FROM mlcore_cooccurrence_training_pair WHERE training_run_id = %s",
@@ -462,7 +473,7 @@ def _train_cooccurrence_listenbrainz_sql(
             NOW()
         FROM pair_counts
     """
-    merge_staged_pairs_sql = """
+    merge_staged_pair_bucket_sql = """
         INSERT INTO mlcore_item_cooccurrence (
             item_a_juke_id,
             item_b_juke_id,
@@ -474,13 +485,14 @@ def _train_cooccurrence_listenbrainz_sql(
         SELECT
             item_a_juke_id,
             item_b_juke_id,
-            SUM(co_count)::integer,
+            co_count,
             0.0,
             %s,
             NOW()
         FROM mlcore_cooccurrence_training_pair
         WHERE training_run_id = %s
-        GROUP BY item_a_juke_id, item_b_juke_id
+          AND bucket_count = %s
+          AND bucket_index = %s
         ON CONFLICT (item_a_juke_id, item_b_juke_id)
         DO UPDATE SET
             co_count = mlcore_item_cooccurrence.co_count + EXCLUDED.co_count,
@@ -488,49 +500,108 @@ def _train_cooccurrence_listenbrainz_sql(
             updated_at = EXCLUDED.updated_at,
             training_run_id = EXCLUDED.training_run_id
     """
-    delete_staged_pairs_sql = "DELETE FROM mlcore_cooccurrence_training_pair WHERE training_run_id = %s"
-    update_pmi_sql = """
-        WITH basket_total AS (
-            SELECT COUNT(*)::double precision AS basket_count
-            FROM mlcore_cooccurrence_training_basket
-            WHERE training_run_id = %s
-        ),
-        item_counts AS (
-            SELECT
-                item_id,
-                COUNT(*)::double precision AS item_count
-            FROM mlcore_cooccurrence_training_session_item
-            WHERE training_run_id = %s
-            GROUP BY item_id
+    merged_bucket_count_sql = """
+        SELECT COUNT(*)::integer
+        FROM mlcore_cooccurrence_training_bucket
+        WHERE training_run_id = %s
+          AND bucket_count = %s
+          AND metadata ? 'merged_at'
+    """
+    unmerged_bucket_indices_sql = """
+        SELECT bucket_index
+        FROM mlcore_cooccurrence_training_bucket
+        WHERE training_run_id = %s
+          AND bucket_count = %s
+          AND status IN ('succeeded', 'assumed_succeeded')
+          AND NOT (metadata ? 'merged_at')
+        ORDER BY bucket_index
+    """
+    mark_bucket_merged_sql = """
+        UPDATE mlcore_cooccurrence_training_bucket
+        SET metadata = metadata || jsonb_build_object(
+            'merged_at', %s,
+            'merged_rows', %s
         )
+        WHERE training_run_id = %s
+          AND bucket_count = %s
+          AND bucket_index = %s
+    """
+    pmi_bucket_count_sql = """
+        SELECT COUNT(*)::integer
+        FROM mlcore_cooccurrence_training_bucket
+        WHERE training_run_id = %s
+          AND bucket_count = %s
+          AND metadata ? 'pmi_at'
+    """
+    unpmi_bucket_indices_sql = """
+        SELECT bucket_index
+        FROM mlcore_cooccurrence_training_bucket
+        WHERE training_run_id = %s
+          AND bucket_count = %s
+          AND status IN ('succeeded', 'assumed_succeeded')
+          AND metadata ? 'merged_at'
+          AND NOT (metadata ? 'pmi_at')
+        ORDER BY bucket_index
+    """
+    mark_bucket_pmi_sql = """
+        UPDATE mlcore_cooccurrence_training_bucket
+        SET metadata = metadata || jsonb_build_object(
+            'pmi_at', %s,
+            'pmi_rows', %s
+        )
+        WHERE training_run_id = %s
+          AND bucket_count = %s
+          AND bucket_index = %s
+    """
+    pmi_id_bounds_sql = """
+        SELECT COALESCE(MIN(id), 0)::bigint, COALESCE(MAX(id), 0)::bigint
+        FROM mlcore_item_cooccurrence
+        WHERE training_run_id = %s
+    """
+    drop_pmi_item_counts_sql = "DROP TABLE IF EXISTS pg_temp.mlcore_pmi_item_count"
+    create_pmi_item_counts_sql = """
+        CREATE TEMP TABLE mlcore_pmi_item_count ON COMMIT PRESERVE ROWS AS
+        SELECT
+            item_id,
+            COUNT(*)::double precision AS item_count
+        FROM mlcore_cooccurrence_training_session_item
+        WHERE training_run_id = %s
+        GROUP BY item_id
+    """
+    index_pmi_item_counts_sql = """
+        CREATE UNIQUE INDEX mlcore_pmi_item_count_item_id_idx
+        ON mlcore_pmi_item_count (item_id)
+    """
+    analyze_pmi_item_counts_sql = "ANALYZE mlcore_pmi_item_count"
+    update_pmi_bucket_sql = """
         UPDATE mlcore_item_cooccurrence ic
         SET
             pmi_score = (
                 LN(
-                    (ic.co_count / bt.basket_count)
-                    / ((ia.item_count / bt.basket_count) * (ib.item_count / bt.basket_count))
+                    (ic.co_count / %s::double precision)
+                    / ((ia.item_count / %s::double precision) * (ib.item_count / %s::double precision))
                 ) / LN(2.0)
             )::double precision,
             training_run_id = %s,
             updated_at = NOW()
-        FROM item_counts ia
-        JOIN item_counts ib
+        FROM pg_temp.mlcore_pmi_item_count ia
+        JOIN pg_temp.mlcore_pmi_item_count ib
           ON TRUE
-        CROSS JOIN basket_total bt
         WHERE ia.item_id = ic.item_a_juke_id
           AND ib.item_id = ic.item_b_juke_id
           AND ic.training_run_id = %s
+          AND ic.id >= %s
+          AND ic.id < %s
     """
-    pairs_count_sql = "SELECT COUNT(*)::integer FROM mlcore_item_cooccurrence WHERE training_run_id = %s"
-
+    delete_staged_pairs_sql = "DELETE FROM mlcore_cooccurrence_training_pair WHERE training_run_id = %s"
     with connection.cursor() as cursor:
         cursor.execute("SET work_mem = %s", [SQL_TRAINING_WORK_MEM])
         cursor.execute("SET maintenance_work_mem = %s", [SQL_TRAINING_MAINTENANCE_WORK_MEM])
         cursor.execute("SET max_parallel_workers_per_gather = %s", [SQL_TRAINING_MAX_PARALLEL_WORKERS])
         cursor.execute(staging_counts_sql, [str(run.pk), str(run.pk)])
-        staged_baskets, staged_items = cursor.fetchone()
+        staged_baskets_present, staged_items_present = cursor.fetchone()
 
-    if staged_baskets == 0 or staged_items == 0:
+    if not staged_baskets_present or not staged_items_present:
         with transaction.atomic():
             with connection.cursor() as cursor:
                 cursor.execute("SET work_mem = %s", [SQL_TRAINING_WORK_MEM])
@@ -552,12 +623,19 @@ def _train_cooccurrence_listenbrainz_sql(
                 )
                 cursor.execute(create_session_item_staging_sql, [str(run.pk)])
         baskets_skipped = 0
+        with connection.cursor() as cursor:
+            cursor.execute(counts_sql, [str(run.pk), str(run.pk), str(run.pk)])
+            baskets_processed, source_row_count, items_seen = cursor.fetchone()
     else:
         baskets_skipped = 0
-
-    with connection.cursor() as cursor:
-        cursor.execute(counts_sql, [str(run.pk), str(run.pk), str(run.pk)])
-        baskets_processed, source_row_count, items_seen = cursor.fetchone()
+        if resume_training_run_id is not None and run.baskets_processed and run.source_row_count and run.items_seen:
+            baskets_processed = run.baskets_processed
+            source_row_count = run.source_row_count
+            items_seen = run.items_seen
+        else:
+            with connection.cursor() as cursor:
+                cursor.execute(counts_sql, [str(run.pk), str(run.pk), str(run.pk)])
+                baskets_processed, source_row_count, items_seen = cursor.fetchone()
 
     run.baskets_processed = baskets_processed
     run.baskets_skipped = baskets_skipped
@@ -627,17 +705,50 @@ def _train_cooccurrence_listenbrainz_sql(
             run.pk,
         )
 
-    with transaction.atomic():
+    if resume_training_run_id is not None and run.pairs_written:
+        pairs_written = run.pairs_written
+        logger.info(
+            "train_cooccurrence_listenbrainz_sql: skipping staged pair merge for already-merged run=%s pairs=%d",
+            run.pk,
+            pairs_written,
+        )
+    else:
         with connection.cursor() as cursor:
-            cursor.execute("SET work_mem = %s", [SQL_TRAINING_WORK_MEM])
-            cursor.execute("SET maintenance_work_mem = %s", [SQL_TRAINING_MAINTENANCE_WORK_MEM])
-            cursor.execute("SET max_parallel_workers_per_gather = %s", [SQL_TRAINING_MAX_PARALLEL_WORKERS])
-            cursor.execute(merge_staged_pairs_sql, [str(run.pk), str(run.pk)])
-            cursor.execute(delete_staged_pairs_sql, [str(run.pk)])
-            cursor.execute(counts_sql, [str(run.pk), str(run.pk), str(run.pk)])
-            baskets_processed, source_row_count, items_seen = cursor.fetchone()
-            cursor.execute(update_pmi_sql, [str(run.pk), str(run.pk), str(run.pk), str(run.pk)])
-            cursor.execute(pairs_count_sql, [str(run.pk)])
+            cursor.execute(merged_bucket_count_sql, [str(run.pk), SQL_PAIR_BUCKET_COUNT])
+            (merged_bucket_count,) = cursor.fetchone()
+            cursor.execute(unmerged_bucket_indices_sql, [str(run.pk), SQL_PAIR_BUCKET_COUNT])
+            merge_bucket_indices = [row[0] for row in cursor.fetchall()]
+
+        if merged_bucket_count == 0 and merge_bucket_indices:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("TRUNCATE TABLE mlcore_item_cooccurrence RESTART IDENTITY")
+
+        for bucket in merge_bucket_indices:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SET work_mem = %s", [SQL_TRAINING_WORK_MEM])
+                    cursor.execute("SET maintenance_work_mem = %s", [SQL_TRAINING_MAINTENANCE_WORK_MEM])
+                    cursor.execute("SET max_parallel_workers_per_gather = %s", [SQL_TRAINING_MAX_PARALLEL_WORKERS])
+                    cursor.execute(
+                        merge_staged_pair_bucket_sql,
+                        [str(run.pk), str(run.pk), SQL_PAIR_BUCKET_COUNT, bucket],
+                    )
+                    rows_merged = max(cursor.rowcount, 0)
+                    cursor.execute(
+                        mark_bucket_merged_sql,
+                        [timezone.now().isoformat(), rows_merged, str(run.pk), SQL_PAIR_BUCKET_COUNT, bucket],
+                    )
+            logger.info(
+                "train_cooccurrence_listenbrainz_sql: merged pair bucket %d/%d rows=%d run=%s",
+                bucket + 1,
+                SQL_PAIR_BUCKET_COUNT,
+                rows_merged,
+                run.pk,
+            )
+
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*)::bigint FROM mlcore_item_cooccurrence")
             (pairs_written,) = cursor.fetchone()
 
         run.baskets_processed = baskets_processed
@@ -654,6 +765,80 @@ def _train_cooccurrence_listenbrainz_sql(
                 "source_row_count",
             ]
         )
+
+    with connection.cursor() as cursor:
+        cursor.execute(pmi_bucket_count_sql, [str(run.pk), SQL_PAIR_BUCKET_COUNT])
+        (pmi_bucket_count,) = cursor.fetchone()
+        cursor.execute(unpmi_bucket_indices_sql, [str(run.pk), SQL_PAIR_BUCKET_COUNT])
+        pmi_bucket_indices = [row[0] for row in cursor.fetchall()]
+
+    if pmi_bucket_indices:
+        with connection.cursor() as cursor:
+            cursor.execute("SET work_mem = %s", ["128MB"])
+            cursor.execute("SET maintenance_work_mem = %s", [SQL_TRAINING_MAINTENANCE_WORK_MEM])
+            cursor.execute("SET max_parallel_workers_per_gather = 0")
+            cursor.execute(drop_pmi_item_counts_sql)
+            cursor.execute(create_pmi_item_counts_sql, [str(run.pk)])
+            cursor.execute(index_pmi_item_counts_sql)
+            cursor.execute(analyze_pmi_item_counts_sql)
+            cursor.execute(pmi_id_bounds_sql, [str(run.pk)])
+            min_pair_id, max_pair_id = cursor.fetchone()
+
+        if max_pair_id:
+            bucket_width = max(1, ((max_pair_id - min_pair_id + 1) + SQL_PAIR_BUCKET_COUNT - 1) // SQL_PAIR_BUCKET_COUNT)
+            for bucket in pmi_bucket_indices:
+                lower_id = min_pair_id + (bucket * bucket_width)
+                upper_id = max_pair_id + 1 if bucket == SQL_PAIR_BUCKET_COUNT - 1 else lower_id + bucket_width
+                with transaction.atomic():
+                    with connection.cursor() as cursor:
+                        cursor.execute("SET work_mem = %s", [SQL_TRAINING_WORK_MEM])
+                        cursor.execute("SET maintenance_work_mem = %s", [SQL_TRAINING_MAINTENANCE_WORK_MEM])
+                        cursor.execute("SET max_parallel_workers_per_gather = %s", [SQL_TRAINING_MAX_PARALLEL_WORKERS])
+                        cursor.execute(
+                            update_pmi_bucket_sql,
+                            [
+                                baskets_processed,
+                                baskets_processed,
+                                baskets_processed,
+                                str(run.pk),
+                                str(run.pk),
+                                lower_id,
+                                upper_id,
+                            ],
+                        )
+                        rows_pmi = max(cursor.rowcount, 0)
+                        cursor.execute(
+                            mark_bucket_pmi_sql,
+                            [timezone.now().isoformat(), rows_pmi, str(run.pk), SQL_PAIR_BUCKET_COUNT, bucket],
+                        )
+                logger.info(
+                    "train_cooccurrence_listenbrainz_sql: updated PMI bucket %d/%d rows=%d run=%s",
+                    bucket + 1,
+                    SQL_PAIR_BUCKET_COUNT,
+                    rows_pmi,
+                    run.pk,
+                )
+    else:
+        logger.info(
+            "train_cooccurrence_listenbrainz_sql: skipping PMI update for already-updated run=%s buckets=%d",
+            run.pk,
+            pmi_bucket_count,
+        )
+
+    run.baskets_processed = baskets_processed
+    run.baskets_skipped = baskets_skipped
+    run.items_seen = items_seen
+    run.pairs_written = pairs_written
+    run.source_row_count = source_row_count
+    run.save(
+        update_fields=[
+            "baskets_processed",
+            "baskets_skipped",
+            "items_seen",
+            "pairs_written",
+            "source_row_count",
+        ]
+    )
 
     result.baskets_processed = baskets_processed
     result.baskets_skipped = baskets_skipped
