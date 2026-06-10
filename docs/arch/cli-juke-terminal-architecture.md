@@ -1,8 +1,8 @@
 # Juke CLI — Architecture Document
 
-**Version:** 1.0
-**Date:** 2026-03-06
-**Status:** Phase 0 — Approved direction (decisions locked)
+**Version:** 1.1
+**Date:** 2026-06-10
+**Status:** Phase 1 complete — decisions locked
 **Scope:** `cli/` subproject + `backend/realtime/` WebSocket foundation
 
 ---
@@ -69,6 +69,10 @@ implementation constraints.
     is a post-phase-3 enhancement. Initial TUI is text-only.
 14. **Keybinding model:** vim-derived defaults (`j`/`k` nav, `/` search,
     `:` command palette, `space` play/pause). User-remappable via config.
+15. **No containerisation of CLI binaries.** `juked` and `juke` run directly
+    on the host OS. The backend stack (Django, Celery, Redis, Postgres) remains
+    in Docker; the daemon communicates with it over `localhost`. See §14 for the
+    full rationale. This decision is locked.
 
 ---
 
@@ -690,12 +694,76 @@ not own. Other clients will consume them too.
 
 ---
 
+## 14. Runtime Deployment Model
+
+### 14.1 Decision: CLI binaries run on the host, not in Docker
+
+This decision was confirmed during Phase 1 development and is locked.
+
+**What runs where:**
+
+| Component | Runtime | Reason |
+|---|---|---|
+| Django API, Celery, Redis, Postgres | Docker Compose | Server workloads with no TTY requirement; already containerised |
+| `juked` daemon | Host OS | User-session process; owns IPC socket in `~/` |
+| `juke` TUI | Host OS | Requires direct TTY ownership for bubbletea rendering |
+
+The daemon communicates with the backend over HTTP/WebSocket to `localhost:8000`
+(or whatever `backend_url` is set to in `config.toml`). No networking changes
+are needed.
+
+### 14.2 Rationale
+
+Three constraints make containerisation of the CLI binaries incorrect:
+
+1. **The TUI requires direct TTY ownership.**
+   `juke` uses bubbletea, which claims raw terminal mode, intercepts resize
+   signals, and detects truecolor via `$COLORTERM`. Docker's `--tty` flag
+   emulates a TTY but sits between the binary and the real terminal, degrading
+   resize events and breaking lipgloss's color-capability detection. This is
+   not fixable at the application layer.
+
+2. **The IPC socket is a user-space path in `$HOME`.**
+   `juked` creates a Unix domain socket at (e.g.) `~/Library/Application
+   Support/Juke/juke.sock`. If the daemon ran in a container, `juke` running on
+   the host could not reach that socket without a bind-mount — which would
+   reconstruct, at significant complexity, what the OS provides for free when
+   both processes run on the host.
+
+3. **Static binaries have nothing to containerise.**
+   `CGO_ENABLED=0` was chosen as a design constraint specifically so that users
+   have zero runtime dependencies. A Docker container for a static binary is a
+   layer of infrastructure that provides no isolation benefit and adds operational
+   friction (image rebuilds, container lifecycle, volume mounts for config and
+   session data).
+
+### 14.3 Setup
+
+First-time setup is handled by `scripts/setup_cli.sh`. The script:
+- Checks Go version (installs via Homebrew on macOS if absent)
+- Reads `BACKEND_URL` from the repo's `.env` (the same file `docker-compose`
+  uses) so the CLI and Docker stack stay in sync automatically
+- Writes `config.toml` to the platform path if it does not already exist
+- Builds both binaries with `CGO_ENABLED=0` into `cli/dist/`
+- Symlinks them to `~/bin`
+
+Re-running the script is safe; it never overwrites an existing `config.toml`.
+
+### 14.4 Why not revisit this?
+
+Future phases do not change this calculus. Playback control (Phase 3), DMs
+(Phase 5), and music generation (Phase 6) all go through the same backend HTTP
+surface the web and mobile clients already use. There is no phase that adds a
+reason for the CLI to live in a container.
+
+---
+
 ## 13. Progress Log
 
 | Phase | Status | Notes |
 |---|---|---|
 | 0 | review | Arch + TUX docs, `cli/AGENTS.md`, task generation |
-| 1 | ready | — |
+| 1 | review | Daemon, IPC codec, auth/session, TUI stub, `scripts/setup_cli.sh` |
 | 2 | ready | — |
 | 3 | ready | — |
 | 4 | blocked | on `backend-track-facts-llm-endpoint` |
@@ -704,5 +772,5 @@ not own. Other clients will consume them too.
 
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2026-03-06*
+*Document Version: 1.1*
+*Last Updated: 2026-06-10*

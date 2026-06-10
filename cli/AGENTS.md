@@ -21,10 +21,36 @@ No CLI-specific backend endpoints. Auth header: `Authorization: Token <key>`.
 
 ## Status
 
-Phase 0 complete (architecture + design). No Go code yet — Phase 1 delivers
-`go.mod`, daemon skeleton, IPC protocol, auth, polling transport. See
-`tasks/cli-phase1-daemon-ipc-auth-foundation.md` for the first implementation
-task.
+Phase 1 complete (daemon skeleton, IPC protocol, auth/session). Binaries build
+and tests pass. See `tasks/cli-phase1-daemon-ipc-auth-foundation.md`.
+
+## First-Time Setup
+
+Run once from the repo root. Checks Go, reads `BACKEND_URL` from `.env`,
+writes `config.toml`, builds both binaries, and symlinks them to `~/bin`.
+
+```bash
+./scripts/setup_cli.sh
+```
+
+Re-running is safe — it will not overwrite an existing `config.toml`.
+
+If `~/bin` is not yet in your PATH, the script will tell you. Add to `~/.zshrc`:
+
+```bash
+export PATH="$HOME/bin:$PATH"
+```
+
+**Config file location** (written by the script, read by `juked` at startup):
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Juke/config.toml` |
+| Linux | `~/.config/juke/config.toml` |
+| Windows | `%APPDATA%\Juke\config.toml` |
+
+The only required field is `backend_url`. With the Docker stack running, the
+default `http://localhost:8000` is correct.
 
 ## Stack
 
