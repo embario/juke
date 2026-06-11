@@ -75,6 +75,18 @@ func HandleSessionLogin(
 	return &resp
 }
 
+// HandlePlaybackState returns the cached playback state without making a
+// backend round-trip. Returns null data when no state is cached yet.
+func HandlePlaybackState(req ipc.Message, state *State) *ipc.Message {
+	ps := state.PlaybackState() // nil is valid — nothing playing
+	resp, err := ipc.OKResponse(req, ps)
+	if err != nil {
+		e := ipc.ErrorResponse(req, "internal", err.Error())
+		return &e
+	}
+	return &resp
+}
+
 // HandleSessionLogout clears the session, removes the session file, and
 // broadcasts a session.changed event.
 // apiLogout is called best-effort; its error does not prevent local cleanup.

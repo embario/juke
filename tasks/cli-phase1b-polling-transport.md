@@ -1,7 +1,7 @@
 ---
 id: cli-phase1b-polling-transport
 title: Juke CLI Phase 1b — Polling transport, playback state cache, and playback.state IPC
-status: ready
+status: done
 priority: p1
 owner: unassigned
 area: cli
@@ -236,6 +236,42 @@ juke                       # Terminal 2 — log in, then within 10s:
 ## Handoff
 
 - Completed:
+  - **2026-06-10** — `cli/internal/transport/transport.go` (`Transport` interface,
+    `ModeWebSocket`/`ModePolling` constants), `poll.go` (`PollTransport`: ticker loop,
+    shallow-diff on `(IsPlaying, ProgressMs/10000, Track.URI)`, network-error
+    recovery), `ws_stub.go` (always returns `errWSNotAvailable`), `manager.go`
+    (`Manager`: WS-first with polling fallback, `daemon.transport.changed` broadcast,
+    `Mode() string`).
+  - `cli/internal/api/playback.go` — `PlaybackState()` method: `GET /api/v1/playback/state/`,
+    returns `nil, nil` on 204 / empty body, `*NetworkError` on transport failure.
+  - `cli/internal/api/types.go` — `PlaybackTrack` extended with `Album`
+    (`PlaybackAlbum`) and `Artists` (`[]PlaybackArtist`) to match the full web
+    frontend shape (`web/src/features/playback/types.ts`).
+  - `cli/testdata/fixtures/playback-state-playing.json` and
+    `playback-state-stopped.json` — representative backend responses used by API
+    tests (Miles Davis / Kind of Blue fixture).
+  - `cli/internal/daemon/state.go` — `playback *api.PlaybackState` field,
+    `SetPlaybackState` / `PlaybackState` methods, both RWMutex-guarded.
+  - `cli/internal/daemon/handlers.go` — `HandlePlaybackState` (cached response,
+    no backend call).
+  - `cli/internal/daemon/daemon.go` — `transport.Manager` instantiated in `Run`;
+    drain goroutine calls `state.SetPlaybackState` + `server.Broadcast`
+    (`playback.state.changed`); transport started on startup if token present,
+    or after successful login via `startTransport()`; `BroadcastPlaybackState`
+    test helper; `playback.state` case added to `dispatch`.
+  - `cli/internal/tui/app.go` — `playback *api.PlaybackState` field in `Model`;
+    `playback.state.changed` event handler; `connectAndFetch` fetches
+    `playback.state` on connect; `playbackLine()` renders `▸`/`⏸`/`Not playing`;
+    `PlaybackAlbum`/`PlaybackArtist` types imported via updated `api/types.go`.
+  - Tests: `internal/transport/poll_test.go` (5 tests), `internal/api/playback_test.go`
+    (4 tests), `internal/daemon/handlers_test.go` (3 new tests).
+  - `go test -race ./...` → all pass, no data races.
+  - `./scripts/test_cli.sh` → exit 0.
+  - Cross-compile verified: linux/amd64, darwin/arm64.
+  - **Diff equality design:** shallow comparison on `(IsPlaying, ProgressMs÷10000,
+    Track.URI)` per arch doc §5.3. `updated_at` changes on every backend response
+    and is explicitly excluded from the diff to prevent 10-second spurious events.
+
 - Next:
   - **cli-phase2** — backend WS endpoint. Once that lands, the WS stub in
     `transport/ws_stub.go` can be replaced with a real `gorilla/websocket`

@@ -10,16 +10,70 @@ import (
 
 // Paths holds the resolved filesystem locations for all Juke CLI data.
 type Paths struct {
-	// Config is the path to config.toml.
+	// Config is the path to config.toml. Resolved by FindConfigPath; may be
+	// empty when no file is found (Load will use defaults + env overrides).
 	Config string
 	// Data is the directory for persistent data (session.json lives here).
+	// Always platform-specific — the session token must not follow the repo.
 	Data string
 	// Socket is the IPC socket path (platform-specific; see ipc package).
 	Socket string
 }
 
-// ResolvePaths returns platform-appropriate paths following XDG on Linux,
-// ~/Library/Application Support/Juke on macOS, and %APPDATA%\Juke on Windows.
+// FindConfigPath locates config.toml by searching in priority order:
+//
+//  1. $JUKE_CONFIG — explicit override, highest priority.
+//  2. ./config.toml in the current working directory — works when running
+//     with `go run ./cmd/juked` from the cli/ project directory.
+//  3. config.toml in the binary's directory, then its parent directory —
+//     handles installed binaries (cli/dist/juked finds cli/config.toml)
+//     and symlinks (~/bin/juked resolved through the symlink first).
+//
+// Returns an empty string when no file is found; Load handles that gracefully
+// by applying defaults and env overrides without reading any file.
+func FindConfigPath() string {
+	// 1. Explicit env var.
+	if v := os.Getenv("JUKE_CONFIG"); v != "" {
+		return v
+	}
+
+	// 2. Current working directory.
+	if cwd, err := os.Getwd(); err == nil {
+		if p := filepath.Join(cwd, "config.toml"); fileExists(p) {
+			return p
+		}
+	}
+
+	// 3. Binary-relative. Resolve symlinks first so ~/bin/juked follows the
+	// chain all the way to cli/dist/juked, whose parent is cli/.
+	if exe, err := os.Executable(); err == nil {
+		if real, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = real
+		}
+		exeDir := filepath.Dir(exe)
+		// Check the binary's directory (e.g. cli/dist/config.toml).
+		if p := filepath.Join(exeDir, "config.toml"); fileExists(p) {
+			return p
+		}
+		// Check the binary's parent directory (e.g. cli/config.toml when
+		// the binary lives at cli/dist/juked).
+		if p := filepath.Join(filepath.Dir(exeDir), "config.toml"); fileExists(p) {
+			return p
+		}
+	}
+
+	return "" // no file found; Load uses defaults + env overrides
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// ResolvePaths returns the filesystem locations for the running platform.
+// Config is resolved by FindConfigPath (project-local, then platform fallback).
+// Data and Socket remain platform-specific so the session token and IPC socket
+// never follow the source tree.
 func ResolvePaths() (Paths, error) {
 	switch runtime.GOOS {
 	case "darwin":
@@ -38,7 +92,7 @@ func darwinPaths() (Paths, error) {
 	}
 	base := filepath.Join(home, "Library", "Application Support", "Juke")
 	return Paths{
-		Config: filepath.Join(base, "config.toml"),
+		Config: resolveConfig(filepath.Join(base, "config.toml")),
 		Data:   base,
 		Socket: filepath.Join(base, "juke.sock"),
 	}, nil
@@ -51,7 +105,7 @@ func windowsPaths() (Paths, error) {
 	}
 	base := filepath.Join(appdata, "Juke")
 	return Paths{
-		Config: filepath.Join(base, "config.toml"),
+		Config: resolveConfig(filepath.Join(base, "config.toml")),
 		Data:   base,
 		Socket: `\\.\pipe\juke`,
 	}, nil
@@ -85,8 +139,17 @@ func xdgPaths() (Paths, error) {
 	}
 
 	return Paths{
-		Config: filepath.Join(cfgDir, "juke", "config.toml"),
+		Config: resolveConfig(filepath.Join(cfgDir, "juke", "config.toml")),
 		Data:   filepath.Join(dataDir, "juke"),
 		Socket: sockPath,
 	}, nil
+}
+
+// resolveConfig returns FindConfigPath() when it finds a project-local file,
+// otherwise falls back to the platform-specific path.
+func resolveConfig(platformPath string) string {
+	if p := FindConfigPath(); p != "" {
+		return p
+	}
+	return platformPath
 }

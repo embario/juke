@@ -12,7 +12,13 @@ import (
 // loading. Fields are intentionally minimal for Phase 1; extend in later phases.
 type Config struct {
 	// BackendURL is the base URL of the Juke backend (no trailing slash).
-	// e.g. "https://juke.example.com" or "http://127.0.0.1:8000"
+	// e.g. "https://juke.example.com" or "http://127.0.0.1:8001"
+	//
+	// Resolution order (highest to lowest priority):
+	//   JUKE_BACKEND_URL env var  — CLI-specific override
+	//   BACKEND_URL env var       — shared with the Docker Compose stack
+	//   backend_url in config.toml
+	//   "" (empty — daemon refuses to start without a valid URL)
 	BackendURL string `toml:"backend_url"`
 
 	Transport TransportConfig `toml:"transport"`
@@ -39,17 +45,41 @@ func defaults() Config {
 	}
 }
 
-// Load reads a TOML config file from path.
-// If the file does not exist, Load returns defaults with no error.
-// Any other I/O or parse error is returned.
+// Load reads a TOML config file from path and applies environment variable
+// overrides on top. If path is empty or the file does not exist, Load returns
+// defaults (plus any env overrides) with no error. Any other I/O or parse
+// error is returned unchanged.
 func Load(path string) (Config, error) {
 	cfg := defaults()
-	_, err := toml.DecodeFile(path, &cfg)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return cfg, nil
+
+	if path != "" {
+		if _, err := toml.DecodeFile(path, &cfg); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				return Config{}, fmt.Errorf("config: decode %s: %w", path, err)
+			}
+			// File absent — continue with defaults.
 		}
-		return Config{}, fmt.Errorf("config: decode %s: %w", path, err)
 	}
+
+	applyEnvOverrides(&cfg)
 	return cfg, nil
+}
+
+// applyEnvOverrides applies environment variables on top of the values already
+// loaded from config.toml (or defaults). Env vars always win so that the Docker
+// Compose .env file is the single source of truth during development without
+// requiring a manually maintained config file.
+//
+// Variables read:
+//
+//	BACKEND_URL        — shared with docker-compose; sets cfg.BackendURL.
+//	JUKE_BACKEND_URL   — CLI-specific override; takes priority over BACKEND_URL.
+func applyEnvOverrides(cfg *Config) {
+	if v := os.Getenv("BACKEND_URL"); v != "" {
+		cfg.BackendURL = v
+	}
+	// More specific CLI override wins over the shared stack variable.
+	if v := os.Getenv("JUKE_BACKEND_URL"); v != "" {
+		cfg.BackendURL = v
+	}
 }
