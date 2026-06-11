@@ -13,12 +13,30 @@ type PlaybackState struct {
 }
 
 // PlaybackTrack is a minimal mirror of the backend track shape.
+// Mirrors web/src/features/playback/types.ts PlaybackTrack.
 type PlaybackTrack struct {
+	ID         *string          `json:"id,omitempty"`
+	URI        *string          `json:"uri,omitempty"`
+	Name       string           `json:"name,omitempty"`
+	DurationMs *int             `json:"duration_ms,omitempty"`
+	ArtworkURL *string          `json:"artwork_url,omitempty"`
+	Album      *PlaybackAlbum   `json:"album,omitempty"`
+	Artists    []PlaybackArtist `json:"artists,omitempty"`
+}
+
+// PlaybackAlbum is a minimal mirror of the backend album shape.
+type PlaybackAlbum struct {
 	ID         *string `json:"id,omitempty"`
 	URI        *string `json:"uri,omitempty"`
 	Name       string  `json:"name,omitempty"`
-	DurationMs *int    `json:"duration_ms,omitempty"`
 	ArtworkURL *string `json:"artwork_url,omitempty"`
+}
+
+// PlaybackArtist is a minimal mirror of the backend artist shape.
+type PlaybackArtist struct {
+	ID   *string `json:"id,omitempty"`
+	URI  *string `json:"uri,omitempty"`
+	Name string  `json:"name,omitempty"`
 }
 
 // PlaybackDevice is a minimal mirror of the backend device shape.

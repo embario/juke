@@ -1,15 +1,18 @@
 // Package tui is the bubbletea application for the juke TUI client.
-// Phase 1 renders only the session status screen: not-logged-in + login prompt,
-// or "logged in as <username>". Playback panes, nav, and search land in Phase 3.
+// Phase 1b renders the session status screen plus a single playback-status line
+// below it: track + artist when playing or paused, "Not playing" when idle.
+// Full playback panes, nav, and search land in Phase 3.
 package tui
 
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/embario/juke/cli/internal/api"
 	"github.com/embario/juke/cli/internal/daemon"
 	"github.com/embario/juke/cli/internal/ipc"
 )
@@ -19,11 +22,12 @@ import (
 // ipcConnectedMsg is delivered once the IPC client is connected and the initial
 // session.state response has been read.
 type ipcConnectedMsg struct {
-	client *ipc.Client
-	snap   daemon.SessionSnapshot
+	client   *ipc.Client
+	snap     daemon.SessionSnapshot
+	playback *api.PlaybackState // nil if nothing is playing
 }
 
-// ipcEventMsg carries a server-pushed event (session.changed, etc.).
+// ipcEventMsg carries a server-pushed event (session.changed, playback.state.changed, …).
 type ipcEventMsg struct{ msg ipc.Message }
 
 // ipcErrMsg is sent when the IPC connection fails or drops.
@@ -43,7 +47,7 @@ const (
 	fieldPassword = 1
 )
 
-// Model is the root bubbletea model. Intentionally flat for Phase 1.
+// Model is the root bubbletea model. Intentionally flat for Phase 1b.
 type Model struct {
 	client     *ipc.Client
 	socketPath string
@@ -54,6 +58,9 @@ type Model struct {
 
 	// session
 	snap daemon.SessionSnapshot
+
+	// playback — cached from the daemon, updated via playback.state.changed events
+	playback *api.PlaybackState
 
 	// login form
 	inputs     [2]textinput.Model
@@ -80,7 +87,7 @@ func New(socketPath string) Model {
 	}
 }
 
-// Init connects to the IPC socket and fetches session state.
+// Init connects to the IPC socket and fetches session + initial playback state.
 // Runs as a tea.Cmd (goroutine) so Update is never blocked.
 func (m Model) Init() tea.Cmd {
 	return connectAndFetch(m.socketPath)
@@ -94,6 +101,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.client = msg.client
 		m.connected = true
 		m.snap = msg.snap
+		m.playback = msg.playback
 		return m, waitForEvent(m.client)
 
 	case ipcErrMsg:
@@ -101,10 +109,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ipcEventMsg:
-		if msg.msg.Type == "session.changed" {
+		switch msg.msg.Type {
+		case "session.changed":
 			var snap daemon.SessionSnapshot
 			_ = json.Unmarshal(msg.msg.Data, &snap)
 			m.snap = snap
+		case "playback.state.changed":
+			var ps api.PlaybackState
+			if err := json.Unmarshal(msg.msg.Data, &ps); err == nil {
+				m.playback = &ps
+			} else {
+				// null data means "not playing"
+				m.playback = nil
+			}
 		}
 		// Re-arm: wait for the next event.
 		return m, waitForEvent(m.client)
@@ -190,7 +207,11 @@ func (m Model) View() string {
 		return "juke: connecting…\n"
 	}
 	if m.snap.Authenticated {
-		return fmt.Sprintf("juke — ✓ logged in as %s\n\nPress q or Ctrl+C to quit.\n", m.snap.Username)
+		var b strings.Builder
+		fmt.Fprintf(&b, "juke — ✓ logged in as %s\n", m.snap.Username)
+		b.WriteString(playbackLine(m.playback))
+		b.WriteString("\nPress q or Ctrl+C to quit.\n")
+		return b.String()
 	}
 
 	s := "juke — log in\n\n"
@@ -206,16 +227,49 @@ func (m Model) View() string {
 	return s
 }
 
+// playbackLine returns the one-line playback status shown below the session line.
+//
+//	▸ So What — Miles Davis   (playing)
+//	⏸ So What — Miles Davis   (paused)
+//	  Not playing              (nil or no track)
+func playbackLine(ps *api.PlaybackState) string {
+	if ps == nil || ps.Track == nil {
+		return "  Not playing"
+	}
+	track := ps.Track.Name
+	artist := firstArtistName(ps.Track)
+	label := trackLabel(ps.IsPlaying)
+	if artist != "" {
+		return fmt.Sprintf("%s %s — %s", label, track, artist)
+	}
+	return fmt.Sprintf("%s %s", label, track)
+}
+
+func trackLabel(playing bool) string {
+	if playing {
+		return "▸"
+	}
+	return "⏸"
+}
+
+func firstArtistName(t *api.PlaybackTrack) string {
+	if len(t.Artists) > 0 {
+		return t.Artists[0].Name
+	}
+	return ""
+}
+
 // ---- commands ---------------------------------------------------------------
 
-// connectAndFetch dials the IPC socket, sends session.state, and returns
-// the connection + snapshot as a single message.
+// connectAndFetch dials the IPC socket, sends session.state and playback.state,
+// and returns both as a single message so the TUI renders immediately on connect.
 func connectAndFetch(socketPath string) tea.Cmd {
 	return func() tea.Msg {
 		client, err := ipc.DialClient(socketPath)
 		if err != nil {
 			return ipcErrMsg{fmt.Errorf("connect: %w", err)}
 		}
+
 		resp, err := client.Request("session.state", map[string]any{})
 		if err != nil {
 			client.Close()
@@ -226,7 +280,18 @@ func connectAndFetch(socketPath string) tea.Cmd {
 			client.Close()
 			return ipcErrMsg{fmt.Errorf("decode session: %w", err)}
 		}
-		return ipcConnectedMsg{client: client, snap: snap}
+
+		// Fetch the cached playback state (instant cache hit — no backend call).
+		var ps *api.PlaybackState
+		pbResp, err := client.Request("playback.state", map[string]any{})
+		if err == nil && pbResp.Type == "ok" {
+			var state api.PlaybackState
+			if json.Unmarshal(pbResp.Data, &state) == nil && state.Provider != "" {
+				ps = &state
+			}
+		}
+
+		return ipcConnectedMsg{client: client, snap: snap, playback: ps}
 	}
 }
 

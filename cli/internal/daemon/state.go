@@ -2,7 +2,11 @@
 // state shared between IPC handlers.
 package daemon
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/embario/juke/cli/internal/api"
+)
 
 // SessionSnapshot is the read-only view of session state sent to IPC clients.
 type SessionSnapshot struct {
@@ -17,6 +21,7 @@ type State struct {
 	authenticated bool
 	username      string
 	token         string
+	playback      *api.PlaybackState // nil when nothing is playing or Spotify is disconnected
 }
 
 // SetSession marks the user as authenticated and stores credentials.
@@ -52,4 +57,20 @@ func (s *State) Token() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.token
+}
+
+// SetPlaybackState stores the most-recent playback state from the transport
+// layer. Passing nil is valid and means "not playing / Spotify disconnected".
+func (s *State) SetPlaybackState(state *api.PlaybackState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.playback = state
+}
+
+// PlaybackState returns the cached playback state. Returns nil when no state
+// has been received yet, or when the last known state was "not playing".
+func (s *State) PlaybackState() *api.PlaybackState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.playback
 }

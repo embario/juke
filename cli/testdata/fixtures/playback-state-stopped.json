@@ -1,0 +1,33 @@
+{
+  "provider": "spotify",
+  "is_playing": false,
+  "progress_ms": 47000,
+  "track": {
+    "id": "4vLYewWIvqHfKtJDk8c8tq",
+    "uri": "spotify:track:4vLYewWIvqHfKtJDk8c8tq",
+    "name": "So What",
+    "duration_ms": 562000,
+    "artwork_url": "https://i.scdn.co/image/ab67616d0000b273e936b7be8d5aeaa0a0d91ce9",
+    "album": {
+      "id": "1weenld61qoidwYuZ1GESA",
+      "uri": "spotify:album:1weenld61qoidwYuZ1GESA",
+      "name": "Kind of Blue",
+      "artwork_url": "https://i.scdn.co/image/ab67616d0000b273e936b7be8d5aeaa0a0d91ce9"
+    },
+    "artists": [
+      {
+        "id": "0kbYTNQb4Pb1rPbbaF0pT4",
+        "uri": "spotify:artist:0kbYTNQb4Pb1rPbbaF0pT4",
+        "name": "Miles Davis"
+      }
+    ]
+  },
+  "device": {
+    "id": "abc123",
+    "name": "Desktop",
+    "type": "Computer",
+    "volume_percent": 72,
+    "is_active": false
+  },
+  "updated_at": "2026-06-10T14:30:00Z"
+}

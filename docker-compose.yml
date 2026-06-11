@@ -2,13 +2,17 @@ services:
   db:
     image: ${POSTGRES_IMAGE:-postgres:18-alpine}
     user: "999:999"
+    # PGDATA must be an explicit env var so docker-entrypoint.sh uses the right
+    # directory when running initdb on first boot. The entrypoint reads $PGDATA;
+    # it does not parse the -D flag from the postgres command line.
+    environment:
+      PGDATA: ${POSTGRES_PGDATA:-/var/lib/postgresql/18/docker}
     command:
       - sh
       - -lc
       - >
         mkdir -p /tmp/pgsock &&
-        exec postgres
-        -D ${POSTGRES_PGDATA:-/var/lib/postgresql/18/docker}
+        exec docker-entrypoint.sh postgres
         -c listen_addresses='*'
         -c max_wal_size=${POSTGRES_MAX_WAL_SIZE:-16GB}
     volumes:

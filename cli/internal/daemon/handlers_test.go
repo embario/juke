@@ -1,10 +1,15 @@
 package daemon_test
 
 import (
+	"context"
 	"encoding/json"
+	"net"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/embario/juke/cli/internal/api"
+	"github.com/embario/juke/cli/internal/config"
 	"github.com/embario/juke/cli/internal/daemon"
 	"github.com/embario/juke/cli/internal/ipc"
 )
@@ -167,6 +172,164 @@ func TestHandleSessionLogout(t *testing.T) {
 		t.Errorf("expected one session.changed broadcast, got %v", broadcasts)
 	}
 }
+
+// --- HandlePlaybackState tests -----------------------------------------------
+
+// TestHandlePlaybackStateNil verifies the handler returns null data when no
+// playback state has been set yet.
+func TestHandlePlaybackStateNil(t *testing.T) {
+	t.Parallel()
+	state := &daemon.State{}
+	req := makeReq(10, "playback.state", map[string]any{})
+	resp := daemon.HandlePlaybackState(req, state)
+	if resp == nil {
+		t.Fatal("nil response")
+	}
+	if resp.Type != "ok" {
+		t.Errorf("type: got %q, want ok", resp.Type)
+	}
+	// data should decode as a nil PlaybackState (JSON null).
+	var ps *api.PlaybackState
+	if err := json.Unmarshal(resp.Data, &ps); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if ps != nil {
+		t.Errorf("expected nil PlaybackState, got %+v", ps)
+	}
+}
+
+// TestHandlePlaybackStateFilled verifies the handler returns the cached state.
+func TestHandlePlaybackStateFilled(t *testing.T) {
+	t.Parallel()
+	trackURI := "spotify:track:4vLYewWIvqHfKtJDk8c8tq"
+	fixture := &api.PlaybackState{
+		Provider:  "spotify",
+		IsPlaying: true,
+		Track: &api.PlaybackTrack{
+			Name: "So What",
+			URI:  &trackURI,
+			Artists: []api.PlaybackArtist{
+				{Name: "Miles Davis"},
+			},
+		},
+	}
+
+	state := &daemon.State{}
+	state.SetPlaybackState(fixture)
+
+	req := makeReq(11, "playback.state", map[string]any{})
+	resp := daemon.HandlePlaybackState(req, state)
+	if resp == nil {
+		t.Fatal("nil response")
+	}
+	if resp.Type != "ok" {
+		t.Errorf("type: got %q, want ok", resp.Type)
+	}
+
+	var ps api.PlaybackState
+	if err := json.Unmarshal(resp.Data, &ps); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !ps.IsPlaying {
+		t.Error("IsPlaying should be true")
+	}
+	if ps.Track == nil || ps.Track.Name != "So What" {
+		t.Errorf("Track.Name: got %+v, want So What", ps.Track)
+	}
+	if len(ps.Track.Artists) == 0 || ps.Track.Artists[0].Name != "Miles Davis" {
+		t.Errorf("Artists: got %+v", ps.Track.Artists)
+	}
+}
+
+// TestDaemonBroadcastsPlaybackChanged wires a real ipc.Server via net.Pipe,
+// simulates the daemon receiving a transport update, and asserts that a
+// connected client receives a playback.state.changed broadcast.
+func TestDaemonBroadcastsPlaybackChanged(t *testing.T) {
+	t.Parallel()
+
+	// Set up an in-process server/client pair via net.Pipe.
+	serverConn, clientConn := net.Pipe()
+
+	ln := newSingleConnListener(serverConn)
+	d := daemon.NewWithListener(ln, config.Paths{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() { _ = d.Serve(ctx) }()
+
+	// Connect the client side.
+	ipcClient := ipc.NewClient(clientConn)
+	defer ipcClient.Close()
+
+	// Poke the daemon to broadcast a playback.state.changed event by making
+	// it respond to session.state (just to confirm the connection is live),
+	// then manually trigger the broadcast path via the exported test helper.
+	_, err := ipcClient.Request("session.state", map[string]any{})
+	if err != nil {
+		t.Fatalf("session.state: %v", err)
+	}
+
+	// Inject a playback update directly into the daemon's state and ask it
+	// to broadcast. We use the BroadcastPlaybackState test hook.
+	trackURI := "spotify:track:abc"
+	ps := &api.PlaybackState{
+		Provider:  "spotify",
+		IsPlaying: true,
+		Track:     &api.PlaybackTrack{Name: "Test Track", URI: &trackURI},
+	}
+	d.BroadcastPlaybackState(ps)
+
+	// The client should receive the broadcast event within 200 ms.
+	select {
+	case ev := <-ipcClient.Events():
+		if ev.Type != "playback.state.changed" {
+			t.Errorf("event type: got %q, want playback.state.changed", ev.Type)
+		}
+		var got api.PlaybackState
+		if err := json.Unmarshal(ev.Data, &got); err != nil {
+			t.Fatalf("unmarshal event data: %v", err)
+		}
+		if !got.IsPlaying {
+			t.Error("IsPlaying should be true in broadcast")
+		}
+		if got.Track == nil || got.Track.Name != "Test Track" {
+			t.Errorf("Track.Name: got %+v", got.Track)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("timed out waiting for playback.state.changed broadcast")
+	}
+}
+
+// singleConnListener wraps a single net.Conn as a net.Listener so tests can
+// hand a pre-connected pipe to ipc.NewServer.
+type singleConnListener struct {
+	conn chan net.Conn
+	addr net.Addr
+}
+
+func newSingleConnListener(conn net.Conn) *singleConnListener {
+	ch := make(chan net.Conn, 1)
+	ch <- conn
+	return &singleConnListener{conn: ch, addr: conn.RemoteAddr()}
+}
+
+func (l *singleConnListener) Accept() (net.Conn, error) {
+	c, ok := <-l.conn
+	if !ok {
+		return nil, net.ErrClosed
+	}
+	return c, nil
+}
+
+func (l *singleConnListener) Close() error {
+	close(l.conn)
+	return nil
+}
+
+func (l *singleConnListener) Addr() net.Addr { return l.addr }
+
+// --- legacy local types ------------------------------------------------------
 
 // apiError is a minimal error type for tests.
 type apiError struct {
