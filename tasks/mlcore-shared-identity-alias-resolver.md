@@ -13,7 +13,7 @@ labels:
   - recommender
   - identity
 complexity: 4
-updated_at: 2026-05-31
+updated_at: 2026-06-08
 ---
 
 ## Goal
@@ -180,6 +180,8 @@ Future-facing:
 - MLCore should resolve external IDs to canonical item IDs.
 - MLCore should rank using canonical item IDs.
 - MLCore should return stable external identities and display metadata suitable for clients.
+- The identity graph should accumulate bridge aliases such as ISRC plus platform URI aliases such as Spotify, Apple Music, YouTube Music, Deezer, or Tidal IDs as enrichment jobs prove them.
+- Provider-specific URIs should remain aliases attached to canonical items; they should not become separate competing canonical identifiers unless no better canonical identity exists.
 
 ## Out Of Scope
 
@@ -242,9 +244,71 @@ Future-facing:
     - Verified the alias model/migration, materialization service, backend client helper, and resolver response behavior with focused Django tests.
     - Verified the recommender-engine resolver imports and response shaping inside the `recommender-engine` container by calling the FastAPI handler directly; the container does not include `httpx`, so `fastapi.testclient.TestClient` is not available there.
     - Tightened `/resolve` SQL to join against the exact requested alias tuples instead of independent `ANY()` filters, avoiding broad cross-product matching for mixed-source batches.
+  - 2026-06-08 isolation-boundary serving slice:
+    - Added identity-aware MLCore engine endpoints:
+      - `POST /engine/recommend/cooccurrence/identity`
+      - `POST /engine/recommend/metadata/identity`
+    - Added authenticated backend proxy endpoint `POST /api/v1/recommendations/mlcore/` so model-local backend stacks can call the shared MLCore service with external IDs instead of local catalog IDs.
+    - Added backend recommender client helper `fetch_identity_recommendations(ranker, payload)`.
+    - Identifier contract for this slice: model-local stacks should prefer Spotify track IDs (`source=spotify`, `resource_type=track`) for seeds/exclusions when available; MusicBrainz recording MBIDs (`source=musicbrainz`, `resource_type=recording`) remain accepted fallback identifiers. Local Juke catalog UUIDs are intentionally not accepted by the backend proxy.
+    - Resolution behavior: MLCore resolves seed/exclusion items via `mlcore_canonical_item_alias`; unresolved, conflict, and invalid seeds are reported in `unresolved_seed_items`; ranking runs only for resolved canonical item IDs. Recommendation results use `canonical_item_id` rather than local catalog IDs. If no seed resolves, the response is empty with `resolved_seed_count=0` rather than falling back to local IDs.
+    - Failure behavior: backend proxy returns `503 {"detail": "recommendations unavailable"}` when the shared MLCore engine cannot be reached.
+    - Added focused tests for the engine identity-ranking flow, backend client payloads, and authenticated backend proxy behavior.
+  - 2026-06-08 canonical alias operational hardening:
+    - Changed `materialize_canonical_aliases` / `materialize_track_aliases()` to process catalog tracks in bounded batches, defaulting to 10,000 tracks per batch, so Neptune-scale alias materialization does not load the full catalog into Python memory or issue one corpus-wide alias lookup.
+    - Added `--batch-size` to the management command for operational tuning.
+    - Marked `mlcore_canonical_item` and `mlcore_canonical_item_alias` as hot-path tables and added migration `0026_canonical_identity_hot_tablespace` to move both tables and their indexes to `juke_mlcore_hot` on PostgreSQL.
+    - Added focused tests for alias table hot-storage metadata, batched materialization, invalid batch sizes, and cross-batch conflict reporting.
+    - Added Prometheus textfile progress metrics for alias materialization:
+      `mlcore_canonical_alias_materialization_*`. The default output path is
+      `/srv/monitoring/node-exporter/textfile/mlcore_canonical_alias_materialization.prom`.
+    - Updated `MLCore Full Ingestion` Grafana dashboard panels to show alias
+      materialization active state, progress, ETA, throughput, and counters.
+    - Corrected alias materialization to cover MLCore-native canonical items,
+      not only local `catalog_track` rows. The command now defaults to a
+      set-based Postgres path over `mlcore_canonical_item`, materializing:
+      `recording_mbid` -> `musicbrainz:recording`, `recording_msid` ->
+      `listenbrainz:recording`, and `spotify_track` -> `spotify:track`.
+    - Kicked off the Neptune-scale self-alias job on 2026-06-08:
+      `source_version=canonical-self-alias-2026-06-08`, `batch_size=100000`,
+      backend container PID `1147`. Initial progress after seven batches:
+      700,000 / 123,355,717 items processed, 700,000 aliases created,
+      0 conflicts, ETA roughly 1h 44m at ~19.7k items/sec.
+  - 2026-06-13 pre-PR resilience pass:
+    - Enforced the supported external identity contract in both Django and the
+      standalone MLCore service. Local Juke IDs and invalid provider/resource
+      combinations are rejected at the boundary.
+    - Added provider-aware normalization for Spotify IDs/URIs/URLs and canonical
+      UUID normalization for MusicBrainz MBIDs and ListenBrainz MSIDs.
+    - Bounded and deduplicated seed/exclusion inputs at 100 items each.
+    - Added explicit `unresolved_exclude_items` reporting so exclusions are not
+      silently treated as honored when resolution fails.
+    - Added correlation request IDs and structured API/model/training/identity
+      graph version provenance to identity-aware responses.
+    - Added `502` handling for malformed MLCore responses while preserving `503`
+      behavior for unavailable MLCore calls.
+    - Unified Python and PostgreSQL alias IDs on the same deterministic MD5-based
+      opaque UUID algorithm. Existing alias IDs remain valid and require no
+      123M-row rewrite.
+    - Added persistent `mlcore_canonical_alias_materialization_run` records with
+      cumulative counters, source/algorithm versions, transactional per-batch
+      checkpoints, failure state, and `--resume-run-id` support.
+    - Added advisory-lock serialization and actual `INSERT ... RETURNING` counts
+      so concurrent materializers preserve uniqueness and report real inserts.
+    - Added tests for normalization, request bounds/deduplication, unresolved
+      exclusions, invalid upstream responses, version provenance, concurrent
+      inserts, clean migrations, and interruption/resume behavior.
+    - Backfilled the completed 2026-06-08 canonical self-alias materialization
+      as run `e74b17b6-470c-4753-84a7-2e2a72a11ef0` using the persisted
+      Prometheus completion metrics: 123,355,717 items processed,
+      123,355,716 aliases created, one existing alias, zero conflicts, and
+      algorithm version `canonical-alias-v1-md5`. Identity-aware serving now
+      reports this run and source version instead of `unversioned` provenance.
 - Next:
-  - Run/apply the new migration in the target shared MLCore database when safe for the active Neptune training job.
-  - Run `python manage.py materialize_canonical_aliases --source-version <corpus-version>` after migration.
+  - Treat this isolation boundary as the prerequisite for MusicBrainz/ListenBrainz hydration work. Hydration should enrich the shared MLCore graph after this contract is merged, not before it.
+  - Commit, push, and open the isolation-boundary PR from `codex/mlcore-isolation-boundary-service`.
+  - Keep the interim response contract canonical-only: MLCore returns `canonical_item_id` recommendations, and model-local backend clients remain responsible for any vendor-specific output resolution they can perform locally until provider alias hydration is mature.
   - Complete the clean/current ListenBrainz-only cooccurrence training and evaluation handoff in `tasks/mlcore-phase1-metadata-and-cooccurrence-rankers.md`.
-  - Wire identity-aware recommendation requests on top of `/resolve` once the validated cooccurrence ranker is ready to serve.
+  - Add service API keys once the private-tailnet unauthenticated route has been exercised (`tasks/mlcore-service-api-keys.md`).
+  - Consider enriching identity-aware recommendation responses with preferred external IDs/display metadata for downstream frontend clients.
 - Blockers:

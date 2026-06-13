@@ -3,13 +3,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Sequence
-from uuid import UUID
+from urllib.parse import urlparse
+from uuid import UUID, uuid4
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -23,6 +24,16 @@ VECTOR_DIM = int(os.environ.get('RECOMMENDER_VECTOR_DIM', '32'))
 DB_POOL_MIN = int(os.environ.get('RECOMMENDER_DB_POOL_MIN', '1'))
 DB_POOL_MAX = int(os.environ.get('RECOMMENDER_DB_POOL_MAX', '10'))
 DEFAULT_LIMIT = int(os.environ.get('JUKE_RECOMMENDER_DEFAULT_LIMIT', '10'))
+MLCORE_API_VERSION = os.environ.get('MLCORE_API_VERSION', 'v1')
+TRAINING_VERSION_FALLBACK = os.environ.get('MLCORE_TRAINING_VERSION', 'unversioned')
+IDENTITY_GRAPH_VERSION_FALLBACK = os.environ.get('MLCORE_IDENTITY_GRAPH_VERSION', 'unversioned')
+IDENTITY_GRAPH_ALGORITHM_FALLBACK = os.environ.get('MLCORE_IDENTITY_GRAPH_ALGORITHM_VERSION', 'unversioned')
+MAX_IDENTITY_ITEMS = 100
+SUPPORTED_IDENTITY_RESOURCES = {
+    'spotify': 'track',
+    'musicbrainz': 'recording',
+    'listenbrainz': 'recording',
+}
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +60,26 @@ DB_POOL = ConnectionPool(
 )
 
 app = FastAPI(title='Juke Recommender Engine')
+
+
+def _normalize_source_id(source: str, source_id: str) -> str:
+    normalized = str(source_id or '').strip()
+    if source == 'spotify':
+        if normalized.startswith('spotify:track:'):
+            normalized = normalized.removeprefix('spotify:track:')
+        elif normalized.startswith(('https://open.spotify.com/', 'http://open.spotify.com/')):
+            path_parts = [part for part in urlparse(normalized).path.split('/') if part]
+            if len(path_parts) >= 2 and path_parts[0] == 'track':
+                normalized = path_parts[1]
+        if len(normalized) != 22 or not normalized.isalnum():
+            raise ValueError('Provide a valid Spotify track ID, URI, or URL.')
+        return normalized
+
+    try:
+        return str(UUID(normalized))
+    except (TypeError, ValueError, AttributeError) as exc:
+        provider = 'MusicBrainz recording MBID' if source == 'musicbrainz' else 'ListenBrainz recording MSID'
+        raise ValueError(f'Provide a valid {provider}.') from exc
 
 
 class EmbedRequest(BaseModel):
@@ -83,7 +114,7 @@ class RecommendationResponse(BaseModel):
     albums: List[RecommendationItem] = Field(default_factory=list)
     tracks: List[RecommendationItem] = Field(default_factory=list)
     model_version: str = MODEL_VERSION
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ResolveRequestItem(BaseModel):
@@ -91,9 +122,31 @@ class ResolveRequestItem(BaseModel):
     resource_type: str
     source_id: str
 
+    @field_validator('source', 'resource_type', mode='before')
+    @classmethod
+    def normalize_identity_kind(cls, value):
+        return str(value or '').strip().lower()
+
+    @model_validator(mode='after')
+    def validate_identity_contract(self):
+        expected_resource_type = SUPPORTED_IDENTITY_RESOURCES.get(self.source)
+        if expected_resource_type != self.resource_type:
+            raise ValueError(f'Unsupported identity pair: {self.source}:{self.resource_type}.')
+        self.source_id = _normalize_source_id(self.source, self.source_id)
+        return self
+
 
 class ResolveRequest(BaseModel):
-    items: List[ResolveRequestItem] = Field(..., min_length=1)
+    items: List[ResolveRequestItem] = Field(..., min_length=1, max_length=MAX_IDENTITY_ITEMS)
+    request_id: UUID = Field(default_factory=uuid4)
+
+    @field_validator('items')
+    @classmethod
+    def deduplicate_items(cls, items):
+        unique = {}
+        for item in items:
+            unique.setdefault((item.source, item.resource_type, item.source_id), item)
+        return list(unique.values())
 
 
 class ResolveResponseItem(BaseModel):
@@ -106,10 +159,22 @@ class ResolveResponseItem(BaseModel):
     item_type: str = ''
 
 
+class ServingVersions(BaseModel):
+    api_version: str = MLCORE_API_VERSION
+    model_version: str = MODEL_VERSION
+    training_run_id: UUID | None = None
+    training_version: str = TRAINING_VERSION_FALLBACK
+    identity_graph_run_id: UUID | None = None
+    identity_graph_version: str = IDENTITY_GRAPH_VERSION_FALLBACK
+    identity_graph_algorithm_version: str = IDENTITY_GRAPH_ALGORITHM_FALLBACK
+
+
 class ResolveResponse(BaseModel):
     items: List[ResolveResponseItem]
     model_version: str = MODEL_VERSION
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    request_id: UUID
+    versions: ServingVersions
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 _EMBEDDING_QUERIES = {
@@ -301,7 +366,7 @@ def recommend(request: RecommendationRequest):
         ranked = _rank_candidates(user_vector, embeddings, limit=request.limit, exclude=exclude)
         setattr(response, resource_type, ranked)
 
-    response.generated_at = datetime.utcnow()
+    response.generated_at = datetime.now(UTC)
     return response
 
 
@@ -328,7 +393,41 @@ class BaselineResponse(BaseModel):
     items: List[BaselineItem]
     ranker: str
     seed_count: int
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class IdentityBaselineRequest(BaseModel):
+    seed_items: List[ResolveRequestItem] = Field(..., min_length=1, max_length=MAX_IDENTITY_ITEMS)
+    exclude_items: List[ResolveRequestItem] = Field(default_factory=list, max_length=MAX_IDENTITY_ITEMS)
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=100)
+    request_id: UUID = Field(default_factory=uuid4)
+
+    @field_validator('seed_items', 'exclude_items')
+    @classmethod
+    def deduplicate_identity_items(cls, items):
+        unique = {}
+        for item in items:
+            unique.setdefault((item.source, item.resource_type, item.source_id), item)
+        return list(unique.values())
+
+
+class IdentityBaselineItem(BaseModel):
+    canonical_item_id: UUID
+    score: float
+    components: Dict[str, float] = Field(default_factory=dict)
+
+
+class IdentityBaselineResponse(BaseModel):
+    items: List[IdentityBaselineItem]
+    ranker: str
+    seed_count: int
+    requested_seed_count: int
+    resolved_seed_count: int
+    unresolved_seed_items: List[ResolveResponseItem] = Field(default_factory=list)
+    unresolved_exclude_items: List[ResolveResponseItem] = Field(default_factory=list)
+    request_id: UUID
+    versions: ServingVersions
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # Resolve canonical item ids → local track metadata when a bridge exists.
@@ -395,6 +494,30 @@ _RESOLVE_ALIASES_SQL = """
      AND requested.source_id = alias.source_id
 """
 
+_SERVING_VERSIONS_SQL = """
+    SELECT
+        training.id AS training_run_id,
+        training.training_hash AS training_version,
+        identity_run.id AS identity_graph_run_id,
+        identity_run.source_version AS identity_graph_version,
+        identity_run.algorithm_version AS identity_graph_algorithm_version
+    FROM (SELECT 1) singleton
+    LEFT JOIN LATERAL (
+        SELECT id, training_hash
+        FROM mlcore_training_run
+        WHERE ranker_label = 'cooccurrence'
+        ORDER BY created_at DESC
+        LIMIT 1
+    ) training ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT id, source_version, algorithm_version
+        FROM mlcore_canonical_alias_materialization_run
+        WHERE status = 'succeeded'
+        ORDER BY completed_at DESC NULLS LAST, started_at DESC
+        LIMIT 1
+    ) identity_run ON TRUE
+"""
+
 
 def _as_item(s) -> BaselineItem:
     return BaselineItem(juke_id=s.juke_id, score=s.score, components=s.components)
@@ -420,11 +543,10 @@ def _resolve_status(row: Dict[str, Any] | None) -> str:
     return 'unresolved'
 
 
-@app.post('/resolve', response_model=ResolveResponse)
-def resolve(request: ResolveRequest):
+def _resolve_requested_items(items: List[ResolveRequestItem]) -> list[ResolveResponseItem]:
     normalized_items: list[tuple[int, tuple[str, str, str] | None]] = [
         (index, _normalize_resolve_item(item))
-        for index, item in enumerate(request.items)
+        for index, item in enumerate(items)
     ]
     valid_keys = sorted({key for _, key in normalized_items if key is not None})
     rows_by_key: dict[tuple[str, str, str], Dict[str, Any]] = {}
@@ -446,7 +568,7 @@ def resolve(request: ResolveRequest):
 
     response_items: list[ResolveResponseItem] = []
     for index, key in normalized_items:
-        original = request.items[index]
+        original = items[index]
         if key is None:
             response_items.append(
                 ResolveResponseItem(
@@ -471,33 +593,134 @@ def resolve(request: ResolveRequest):
             )
         )
 
-    return ResolveResponse(items=response_items, generated_at=datetime.utcnow())
+    return response_items
+
+
+def _canonical_ids_from_resolved(items: list[ResolveResponseItem]) -> list[UUID]:
+    return [
+        item.canonical_item_id
+        for item in items
+        if item.status == 'resolved' and item.canonical_item_id is not None
+    ]
+
+
+def _unresolved_items(items: list[ResolveResponseItem]) -> list[ResolveResponseItem]:
+    return [item for item in items if item.status != 'resolved']
+
+
+def _serving_versions() -> ServingVersions:
+    rows = _run_query(_SERVING_VERSIONS_SQL)
+    row = rows[0] if rows else {}
+    return ServingVersions(
+        training_run_id=row.get('training_run_id'),
+        training_version=row.get('training_version') or TRAINING_VERSION_FALLBACK,
+        identity_graph_run_id=row.get('identity_graph_run_id'),
+        identity_graph_version=row.get('identity_graph_version') or IDENTITY_GRAPH_VERSION_FALLBACK,
+        identity_graph_algorithm_version=(
+            row.get('identity_graph_algorithm_version') or IDENTITY_GRAPH_ALGORITHM_FALLBACK
+        ),
+    )
+
+
+def _recommend_metadata_canonical(seed_item_ids: list[UUID], exclude_ids: list[UUID], limit: int) -> BaselineResponse:
+    exclude = set(seed_item_ids) | set(exclude_ids)
+    seed_rows = _run_query(_SEED_FEATURES_SQL, [seed_item_ids])
+    if not seed_rows:
+        return BaselineResponse(items=[], ranker='metadata', seed_count=len(seed_item_ids))
+    albums, artists, genres = extract_seed_feature_ids(seed_rows)
+    cand_rows = _run_query(_METADATA_CANDIDATES_SQL, [albums, artists, genres])
+    scored = score_metadata(seed_rows, cand_rows, exclude, limit)
+    return BaselineResponse(
+        items=[_as_item(s) for s in scored],
+        ranker='metadata',
+        seed_count=len(seed_item_ids),
+    )
+
+
+def _recommend_cooccurrence_canonical(seed_item_ids: list[UUID], exclude_ids: list[UUID], limit: int) -> BaselineResponse:
+    exclude = set(seed_item_ids) | set(exclude_ids)
+    rows = _run_query(_COOCCURRENCE_SQL, [seed_item_ids, seed_item_ids])
+    scored = score_cooccurrence(rows, exclude, limit)
+    return BaselineResponse(
+        items=[_as_item(s) for s in scored],
+        ranker='cooccurrence',
+        seed_count=len(seed_item_ids),
+    )
+
+
+def _identity_baseline_response(request: IdentityBaselineRequest, *, ranker: str) -> IdentityBaselineResponse:
+    resolved_seeds = _resolve_requested_items(request.seed_items)
+    seed_item_ids = _canonical_ids_from_resolved(resolved_seeds)
+    unresolved_seed_items = _unresolved_items(resolved_seeds)
+
+    resolved_excludes = _resolve_requested_items(request.exclude_items) if request.exclude_items else []
+    exclude_ids = _canonical_ids_from_resolved(resolved_excludes)
+    unresolved_exclude_items = _unresolved_items(resolved_excludes)
+
+    if not seed_item_ids:
+        baseline = BaselineResponse(items=[], ranker=ranker, seed_count=0)
+    elif ranker == 'metadata':
+        baseline = _recommend_metadata_canonical(seed_item_ids, exclude_ids, request.limit)
+    elif ranker == 'cooccurrence':
+        baseline = _recommend_cooccurrence_canonical(seed_item_ids, exclude_ids, request.limit)
+    else:  # pragma: no cover - call sites pass fixed ranker labels
+        raise HTTPException(status_code=400, detail=f'Unsupported ranker: {ranker}')
+
+    return IdentityBaselineResponse(
+        items=[
+            IdentityBaselineItem(
+                canonical_item_id=item.juke_id,
+                score=item.score,
+                components=item.components,
+            )
+            for item in baseline.items
+        ],
+        ranker=baseline.ranker,
+        seed_count=baseline.seed_count,
+        requested_seed_count=len(request.seed_items),
+        resolved_seed_count=len(seed_item_ids),
+        unresolved_seed_items=unresolved_seed_items,
+        unresolved_exclude_items=unresolved_exclude_items,
+        request_id=request.request_id,
+        versions=_serving_versions(),
+        generated_at=datetime.now(UTC),
+    )
+
+
+@app.post('/resolve', response_model=ResolveResponse)
+def resolve(request: ResolveRequest):
+    response_items = _resolve_requested_items(request.items)
+    return ResolveResponse(
+        items=response_items,
+        request_id=request.request_id,
+        versions=_serving_versions(),
+        generated_at=datetime.now(UTC),
+    )
 
 
 @app.post('/engine/recommend/metadata', response_model=BaselineResponse)
 def recommend_metadata(request: BaselineRequest):
-    exclude = set(request.seed_item_ids) | set(request.exclude_ids)
-    seed_rows = _run_query(_SEED_FEATURES_SQL, [list(request.seed_item_ids)])
-    if not seed_rows:
-        return BaselineResponse(items=[], ranker='metadata', seed_count=len(request.seed_item_ids))
-    albums, artists, genres = extract_seed_feature_ids(seed_rows)
-    cand_rows = _run_query(_METADATA_CANDIDATES_SQL, [albums, artists, genres])
-    scored = score_metadata(seed_rows, cand_rows, exclude, request.limit)
-    return BaselineResponse(
-        items=[_as_item(s) for s in scored],
-        ranker='metadata',
-        seed_count=len(request.seed_item_ids),
+    return _recommend_metadata_canonical(
+        seed_item_ids=list(request.seed_item_ids),
+        exclude_ids=list(request.exclude_ids),
+        limit=request.limit,
     )
 
 
 @app.post('/engine/recommend/cooccurrence', response_model=BaselineResponse)
 def recommend_cooccurrence(request: BaselineRequest):
-    exclude = set(request.seed_item_ids) | set(request.exclude_ids)
-    seeds = list(request.seed_item_ids)
-    rows = _run_query(_COOCCURRENCE_SQL, [seeds, seeds])
-    scored = score_cooccurrence(rows, exclude, request.limit)
-    return BaselineResponse(
-        items=[_as_item(s) for s in scored],
-        ranker='cooccurrence',
-        seed_count=len(request.seed_item_ids),
+    return _recommend_cooccurrence_canonical(
+        seed_item_ids=list(request.seed_item_ids),
+        exclude_ids=list(request.exclude_ids),
+        limit=request.limit,
     )
+
+
+@app.post('/engine/recommend/metadata/identity', response_model=IdentityBaselineResponse)
+def recommend_metadata_identity(request: IdentityBaselineRequest):
+    return _identity_baseline_response(request, ranker='metadata')
+
+
+@app.post('/engine/recommend/cooccurrence/identity', response_model=IdentityBaselineResponse)
+def recommend_cooccurrence_identity(request: IdentityBaselineRequest):
+    return _identity_baseline_response(request, ranker='cooccurrence')
