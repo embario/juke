@@ -667,6 +667,159 @@
       },
       "fieldConfig": {
         "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 33
+      },
+      "id": 18,
+      "targets": [
+        {
+          "expr": "mlcore_canonical_alias_materialization_active",
+          "refId": "A"
+        }
+      ],
+      "title": "Alias Materialization Active",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "max": 1,
+          "min": 0,
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 33
+      },
+      "id": 19,
+      "targets": [
+        {
+          "expr": "mlcore_canonical_alias_materialization_progress_fraction",
+          "refId": "A"
+        }
+      ],
+      "title": "Alias Materialization Progress",
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 33
+      },
+      "id": 20,
+      "targets": [
+        {
+          "expr": "mlcore_canonical_alias_materialization_eta_seconds",
+          "refId": "A"
+        }
+      ],
+      "title": "Alias Materialization ETA",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 33
+      },
+      "id": 21,
+      "targets": [
+        {
+          "expr": "mlcore_canonical_alias_materialization_items_per_second",
+          "refId": "A"
+        }
+      ],
+      "title": "Alias Materialization Throughput",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 37
+      },
+      "id": 22,
+      "targets": [
+        {
+          "expr": "mlcore_canonical_alias_materialization_items_processed",
+          "legendFormat": "items processed",
+          "refId": "A"
+        },
+        {
+          "expr": "mlcore_canonical_alias_materialization_aliases_created",
+          "legendFormat": "aliases created",
+          "refId": "B"
+        },
+        {
+          "expr": "mlcore_canonical_alias_materialization_aliases_existing",
+          "legendFormat": "aliases existing",
+          "refId": "C"
+        },
+        {
+          "expr": "mlcore_canonical_alias_materialization_alias_conflicts",
+          "legendFormat": "conflicts",
+          "refId": "D"
+        }
+      ],
+      "title": "Alias Materialization Counters",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
           "unit": "bytes"
         },
         "overrides": []
@@ -675,7 +828,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 33
+        "y": 44
       },
       "id": 16,
       "options": {
@@ -717,7 +870,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 33
+        "y": 44
       },
       "id": 17,
       "options": {

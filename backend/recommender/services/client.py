@@ -14,10 +14,13 @@ if not ENGINE_BASE_URL:
 DEFAULT_TIMEOUT = int(getattr(settings, 'RECOMMENDER_ENGINE_TIMEOUT', 15))
 
 
-def _request(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def _request(path: str, payload: Dict[str, Any], *, request_id: str | None = None) -> Dict[str, Any]:
     url = f"{ENGINE_BASE_URL.rstrip('/')}{path}"
     logger.debug('Recommender engine request %s payload=%s', url, payload)
-    response = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT)
+    kwargs = {'json': payload, 'timeout': DEFAULT_TIMEOUT}
+    if request_id:
+        kwargs['headers'] = {'X-Request-ID': request_id}
+    response = requests.post(url, **kwargs)
     response.raise_for_status()
     data = response.json()
     logger.debug('Recommender engine response %s', data)
@@ -32,6 +35,17 @@ def fetch_recommendations(profile: Dict[str, Any]) -> Dict[str, Any]:
 def resolve_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Resolve external music identities to MLCore canonical item IDs."""
     return _request('/resolve', {'items': items})
+
+
+def fetch_identity_recommendations(ranker: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Call an MLCore ranker using external music identity seeds."""
+    if ranker not in {'metadata', 'cooccurrence'}:
+        raise ValueError(f"Unsupported MLCore ranker: {ranker}")
+    return _request(
+        f'/engine/recommend/{ranker}/identity',
+        payload,
+        request_id=str(payload.get('request_id') or ''),
+    )
 
 
 def generate_embedding(resource_type: str, attributes: Dict[str, Any]) -> Dict[str, Any]:

@@ -273,6 +273,7 @@ class CanonicalItem(models.Model):
 
     class Meta:
         db_table = 'mlcore_canonical_item'
+        db_tablespace = 'juke_mlcore_hot'
         indexes = [
             models.Index(fields=['item_type'], name='mlcore_ci_item_ty_ef87b5_idx'),
             models.Index(fields=['track'], name='mlcore_ci_track_i_79f9ca_idx'),
@@ -304,6 +305,7 @@ class CanonicalItemAlias(models.Model):
 
     class Meta:
         db_table = 'mlcore_canonical_item_alias'
+        db_tablespace = 'juke_mlcore_hot'
         constraints = [
             models.UniqueConstraint(
                 fields=['source', 'resource_type', 'source_id'],
@@ -319,6 +321,42 @@ class CanonicalItemAlias(models.Model):
 
     def __str__(self):
         return f'{self.source}:{self.resource_type}:{self.source_id}'
+
+
+class CanonicalAliasMaterializationRun(models.Model):
+    """Persistent checkpoint and provenance for canonical alias materialization."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source_version = models.CharField(max_length=255, blank=True, default='')
+    algorithm_version = models.CharField(max_length=64, default='canonical-alias-v2')
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    current_phase = models.CharField(max_length=64, blank=True, default='')
+    include_catalog_tracks = models.BooleanField(default=False)
+    batch_size = models.IntegerField(default=100_000)
+    total_items = models.BigIntegerField(default=0)
+    processed_items = models.BigIntegerField(default=0)
+    created_count = models.BigIntegerField(default=0)
+    existing_count = models.BigIntegerField(default=0)
+    conflict_count = models.BigIntegerField(default=0)
+    batches_processed = models.BigIntegerField(default=0)
+    checkpoints = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    started_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'mlcore_canonical_alias_materialization_run'
+        db_tablespace = 'juke_mlcore_hot'
+        indexes = [
+            models.Index(fields=['status'], name='mlcore_camr_status_idx'),
+            models.Index(fields=['source_version'], name='mlcore_camr_source_idx'),
+            models.Index(fields=['started_at'], name='mlcore_camr_started_idx'),
+        ]
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f'{self.source_version or self.id}:{self.status}'
 
 
 class ListenBrainzEventLedger(models.Model):

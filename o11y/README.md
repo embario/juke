@@ -35,6 +35,8 @@ What the dashboard covers:
 - offline evaluation progress from `mlcore_evaluation_*` textfile metrics
 - hot/cold MLCore table residency from `mlcore_table_*` and
   `mlcore_tablespace_mlcore_*` textfile metrics
+- canonical alias materialization progress from
+  `mlcore_canonical_alias_materialization_*` textfile metrics
 
 Operational note:
 
@@ -47,3 +49,10 @@ Operational note:
 - Refresh table residency metrics with `scripts/mlcore_tablespace_metrics.sh`.
 - Refresh completed evaluation history metrics with
   `scripts/mlcore_evaluation_history_metrics.sh`.
+- `materialize_canonical_aliases` writes live progress metrics to
+  `/srv/monitoring/node-exporter/textfile/mlcore_canonical_alias_materialization.prom`
+  by default.
+- Canonical alias metrics include persistent run ID, algorithm version, source
+  version, current phase, cumulative counters, and ETA. Durable checkpoints
+  live in `mlcore_canonical_alias_materialization_run`; resume with
+  `--resume-run-id <run-uuid>`.
