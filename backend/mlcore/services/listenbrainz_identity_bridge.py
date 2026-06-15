@@ -14,6 +14,8 @@ from django.db import connection, transaction
 from django.utils import timezone
 
 from mlcore.models import ListenBrainzIdentityShard, SourceIngestionRun
+from mlcore.models import CanonicalItem
+from mlcore.services.canonical_items import ITEM_TYPE_RECORDING_MSID, canonical_item_uuid
 
 BRIDGE_SOURCE_ID = 'listenbrainz-identity-bridge'
 PAIR_STAGE_TABLE = 'mlcore_listenbrainz_identity_pair_stage'
@@ -46,6 +48,19 @@ class ShardExtractionResult:
     unique_pair_count: int
     malformed_row_count: int
     skipped: bool = False
+
+
+@dataclass(frozen=True)
+class IdentityGraphExpansionResult:
+    source_version: str
+    missing_msid_count: int
+    created_msid_count: int
+    active_mapping_count: int
+    conflict_msid_count: int
+    redirect_count: int
+    redirect_conflict_count: int
+    elapsed_seconds: float
+    dry_run: bool = False
 
 
 def import_listenbrainz_identity_bridge(
@@ -193,6 +208,60 @@ def import_listenbrainz_identity_bridge(
             completed_at=timezone.now(),
         )
         raise
+
+
+def expand_listenbrainz_identity_graph(
+    source_version: str,
+    *,
+    batch_size: int = 100_000,
+    dry_run: bool = False,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> IdentityGraphExpansionResult:
+    if batch_size < 1:
+        raise ValueError('batch_size must be greater than zero')
+    started = time.monotonic()
+    missing_msid_count = _count_missing_msid_canonical_items(source_version)
+    created_count = 0
+    last_msid = None
+    if not dry_run:
+        while True:
+            msids = _fetch_missing_msid_batch(source_version, batch_size=batch_size, after_msid=last_msid)
+            if not msids:
+                break
+            rows = [
+                CanonicalItem(
+                    id=canonical_item_uuid(item_type=ITEM_TYPE_RECORDING_MSID, key_value=str(msid)),
+                    item_type=ITEM_TYPE_RECORDING_MSID,
+                    canonical_key=f'{ITEM_TYPE_RECORDING_MSID}:{msid}',
+                )
+                for msid in msids
+            ]
+            CanonicalItem.objects.bulk_create(rows, ignore_conflicts=True, batch_size=batch_size)
+            created_count += len(rows)
+            last_msid = msids[-1]
+            _report(progress_callback, {
+                'event': 'msid_canonical_batch',
+                'source_version': source_version,
+                'batch_size': len(msids),
+                'created_msid_count': created_count,
+                'missing_msid_count': missing_msid_count,
+            })
+    summary = {
+        'active_mapping_count': 0,
+        'conflict_msid_count': 0,
+        'redirect_count': 0,
+        'redirect_conflict_count': 0,
+    }
+    if not dry_run:
+        summary = _classify_and_materialize(source_version)
+    return IdentityGraphExpansionResult(
+        source_version=source_version,
+        missing_msid_count=missing_msid_count,
+        created_msid_count=created_count,
+        elapsed_seconds=time.monotonic() - started,
+        dry_run=dry_run,
+        **summary,
+    )
 
 
 def extract_listenbrainz_identity_shard(
@@ -381,6 +450,53 @@ def _copy_pair_file(cursor, path: Path) -> None:
             raw_cursor.copy_expert(sql, handle)
             return
     raise RuntimeError('ListenBrainz identity bridge requires PostgreSQL COPY support')
+
+
+def _count_missing_msid_canonical_items(source_version: str) -> int:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            '''
+            SELECT COUNT(*)
+            FROM mlcore_listenbrainz_msid_mbid_mapping mapping
+            JOIN mlcore_canonical_item target_item
+              ON target_item.canonical_key = 'recording_mbid:' || mapping.recording_mbid::text
+            LEFT JOIN mlcore_canonical_item source_item
+              ON source_item.canonical_key = 'recording_msid:' || mapping.recording_msid::text
+            WHERE mapping.source_version = %s
+              AND mapping.status = 'active'
+              AND source_item.id IS NULL
+            ''',
+            [source_version],
+        )
+        return int(cursor.fetchone()[0])
+
+
+def _fetch_missing_msid_batch(source_version: str, *, batch_size: int, after_msid: UUID | None = None) -> list[UUID]:
+    after_clause = ''
+    params: list[Any] = [source_version]
+    if after_msid is not None:
+        after_clause = 'AND mapping.recording_msid > %s'
+        params.append(after_msid)
+    params.append(batch_size)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f'''
+            SELECT mapping.recording_msid
+            FROM mlcore_listenbrainz_msid_mbid_mapping mapping
+            JOIN mlcore_canonical_item target_item
+              ON target_item.canonical_key = 'recording_mbid:' || mapping.recording_mbid::text
+            LEFT JOIN mlcore_canonical_item source_item
+              ON source_item.canonical_key = 'recording_msid:' || mapping.recording_msid::text
+            WHERE mapping.source_version = %s
+              AND mapping.status = 'active'
+              AND source_item.id IS NULL
+              {after_clause}
+            ORDER BY mapping.recording_msid
+            LIMIT %s
+            ''',
+            params,
+        )
+        return [row[0] for row in cursor.fetchall()]
 
 
 def _classify_and_materialize(source_version: str) -> dict[str, int]:

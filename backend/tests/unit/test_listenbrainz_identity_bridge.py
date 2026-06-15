@@ -18,6 +18,7 @@ from mlcore.models import (
 )
 from mlcore.services.canonical_items import identity_from_parts
 from mlcore.services.listenbrainz_identity_bridge import import_listenbrainz_identity_bridge
+from mlcore.services.listenbrainz_identity_bridge import expand_listenbrainz_identity_graph
 
 
 class ListenBrainzIdentityBridgeTests(TestCase):
@@ -139,6 +140,36 @@ class ListenBrainzIdentityBridgeTests(TestCase):
                 status='retired',
             ).count(),
             1,
+        )
+
+    def test_expansion_creates_missing_msid_items_and_materializes_redirects(self):
+        import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
+        missing_msid = uuid.uuid4()
+        ListenBrainzMSIDMBIDMapping.objects.create(
+            recording_msid=missing_msid,
+            recording_mbid=self.mbid_two,
+            source_version=self.source_version,
+            shard_observation_count=4,
+            first_shard='manual',
+            last_shard='manual',
+            status='active',
+        )
+
+        dry_run = expand_listenbrainz_identity_graph(self.source_version, batch_size=2, dry_run=True)
+        result = expand_listenbrainz_identity_graph(self.source_version, batch_size=2)
+
+        self.assertEqual(dry_run.missing_msid_count, 1)
+        self.assertEqual(dry_run.created_msid_count, 0)
+        self.assertEqual(result.missing_msid_count, 1)
+        self.assertEqual(result.created_msid_count, 1)
+        self.assertEqual(result.redirect_count, 3)
+        self.assertTrue(CanonicalItem.objects.filter(canonical_key=f'recording_msid:{missing_msid}').exists())
+        self.assertTrue(
+            CanonicalItemRedirect.objects.filter(
+                from_canonical_item__canonical_key=f'recording_msid:{missing_msid}',
+                to_canonical_item__canonical_key=f'recording_mbid:{self.mbid_two}',
+                status='active',
+            ).exists()
         )
 
     def test_cold_evidence_and_unlogged_stage_placement(self):

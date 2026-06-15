@@ -71,7 +71,9 @@ Mine ListenBrainz dumps for identity evidence that enriches MLCore's local ident
 - Completed: confirmed exact MSID-to-MBID evidence is embedded in the locally materialized ListenBrainz shards.
 - Completed: added resumable per-shard extraction, cold evidence/checkpoint tables, exact conflict classification, 64-bit ingestion counters, progress/throughput/ETA reporting, and safe hot canonical redirects.
 - Completed: real-data validation scanned 8 shards and materialized 6 exact redirects with no conflicts.
-- In progress: full 261-shard production backfill in detached container `juke-listenbrainz-identity-bridge`; run ID `699b2eb7-4d4b-48f2-a713-dff7765f342c`.
-- Latest checkpoint at launch verification: 19/261 shards, 7,768,648 listens, 216,619 mapped observations, 103,944 per-shard unique pairs, about 160 MB/s, estimated extraction ETA about 1.6 hours.
-- Next: record final mapping coverage, conflicts, redirect coverage, hot/cold table sizes, and expose the completed-run metrics on the identity observability dashboard task.
+- Completed: full 261-shard production backfill succeeded; run ID `699b2eb7-4d4b-48f2-a713-dff7765f342c`.
+- Completed: scanned 1,751,330,064 listens, found 252,222,425 mapped observations, stored 24,133,470 global unique MSID-to-MBID rows, classified 15,481,819 clean active mappings, and excluded 4,085,990 conflicting MSIDs.
+- In progress: identity graph expansion in detached container `juke-listenbrainz-identity-expand`; target is 7,691,107 missing MSID canonical rows for clean mappings whose MBID target already exists.
+- Latest checkpoint: 500,000/7,691,107 missing MSID canonical rows inserted; redirects will be rematerialized after insert completion.
+- Next: record final redirect count, hot/cold table sizes, and expose the completed-run metrics on the identity observability dashboard task.
 - Blockers: none.

@@ -56,6 +56,7 @@ Define and implement how MLCore safely converges separate MSID, MBID, Spotify, a
 - Completed: hot canonical redirect model, non-destructive MBID preference policy, source/version/evidence provenance, conflict exclusion, resolver traversal, and cycle/depth protection.
 - Completed: cooccurrence serving expands preferred MBID seeds back to legacy MSID model IDs and maps recommended MSID neighbors forward to preferred MBIDs.
 - Completed: unit/database tests cover direct and chained redirects, unchanged unresolved items, contradictory evidence, cycles, hot/cold placement, and existing-model serving compatibility.
-- In progress: production MSID-to-MBID redirect materialization under run `699b2eb7-4d4b-48f2-a713-dff7765f342c`.
-- Next: add redirect coverage/conflict panels through `mlcore-identity-resolution-coverage-observability` after final production counts are known.
+- Completed: initial production MSID-to-MBID redirect materialization produced 7,790,712 active redirects against the pre-existing canonical corpus.
+- In progress: expanding missing MSID canonical rows for 7,691,107 additional clean mappings, then rematerializing redirects so active coverage should approach the full 15,481,819 clean mapping set.
+- Next: add redirect coverage/conflict panels through `mlcore-identity-resolution-coverage-observability` after expanded production counts are known.
 - Blockers: none.
