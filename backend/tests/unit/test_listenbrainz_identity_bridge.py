@@ -124,6 +124,23 @@ class ListenBrainzIdentityBridgeTests(TestCase):
         )
         self.assertEqual(SourceIngestionRun.objects.filter(status='succeeded').count(), 2)
 
+    def test_full_run_retires_redirects_created_by_partial_validation_run(self):
+        partial = import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root, max_shards=1)
+        self.assertEqual(partial.redirect_count, 3)
+        self.assertEqual(CanonicalItemRedirect.objects.filter(status='active').count(), 3)
+
+        final = import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
+
+        self.assertEqual(final.redirect_count, 2)
+        self.assertEqual(CanonicalItemRedirect.objects.filter(status='active').count(), 2)
+        self.assertEqual(
+            CanonicalItemRedirect.objects.filter(
+                from_canonical_item__canonical_key=f'recording_msid:{self.msid_conflict}',
+                status='retired',
+            ).count(),
+            1,
+        )
+
     def test_cold_evidence_and_unlogged_stage_placement(self):
         self.assertEqual(ListenBrainzMSIDMBIDMapping._meta.db_tablespace, 'juke_mlcore_cold')
         self.assertEqual(ListenBrainzIdentityShard._meta.db_tablespace, 'juke_mlcore_cold')

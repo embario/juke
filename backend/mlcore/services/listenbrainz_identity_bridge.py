@@ -446,6 +446,23 @@ def _classify_and_materialize(source_version: str) -> dict[str, int]:
         '''
         cursor.execute(
             f'''
+            UPDATE mlcore_canonical_item_redirect redirect
+            SET status = 'retired',
+                updated_at = NOW()
+            WHERE redirect.source = %s
+              AND redirect.source_version = %s
+              AND redirect.status = 'active'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM ({candidates_sql}) candidate
+                  WHERE candidate.from_id = redirect.from_canonical_item_id
+                    AND candidate.to_id = redirect.to_canonical_item_id
+              )
+            ''',
+            [BRIDGE_SOURCE_ID, source_version, source_version],
+        )
+        cursor.execute(
+            f'''
             INSERT INTO mlcore_canonical_item_redirect (
                 from_canonical_item_id,
                 to_canonical_item_id,
