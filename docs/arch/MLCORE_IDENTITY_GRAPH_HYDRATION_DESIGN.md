@@ -149,7 +149,7 @@ Estimated cold-storage needs:
 
 | Source | Current Known/Expected Size |
 | --- | ---: |
-| MusicBrainz `mbdump.tar.bz2` | 7 GB compressed in 2026-06 full export |
+| MusicBrainz `mbdump.tar.bz2` | 7,260,740,543 bytes (6.76 GiB) in `20260613-002047` |
 | MusicBrainz derived dump | 476 MB compressed in 2026-06 full export |
 | MusicBrainz edit history | 15 GB compressed, not needed for this plan |
 | Expanded MusicBrainz staging | plan for tens to low hundreds of GB |
@@ -214,6 +214,9 @@ The design should make vendor data another provider evidence source, not a diffe
 
 ## Source Notes
 
-- MusicBrainz full export checked on 2026-06-09 listed `mbdump.tar.bz2` at 7 GB compressed, `mbdump-derived.tar.bz2` at 476 MB, and `mbdump-edit.tar.bz2` at 15 GB.
+- MusicBrainz full export `20260613-002047`, checked on 2026-06-13, listed
+  `mbdump.tar.bz2` at 7,260,740,543 bytes. This core artifact contains the
+  recording/ISRC/URL relationship tables required by the first bridge. The
+  derived and edit-history dumps are not required for that import.
 - ListenBrainz docs describe full dumps and incremental dumps, with listens stored as monthly JSON-lines files.
 - Spotify Search supports `isrc` filters for tracks. Spotify rate limits are rolling-window based and return `429` when exceeded.

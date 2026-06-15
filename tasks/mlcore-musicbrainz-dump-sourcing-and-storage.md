@@ -1,9 +1,9 @@
 ---
 id: mlcore-musicbrainz-dump-sourcing-storage
 title: MLCore MusicBrainz dump sourcing and storage plan
-status: ready
+status: review
 priority: p1
-owner: unassigned
+owner: codex
 area: platform
 label: BACKEND/ML
 labels:
@@ -13,7 +13,7 @@ labels:
   - data-ingestion
   - identity
 complexity: 2
-updated_at: 2026-06-09
+updated_at: 2026-06-13
 ---
 
 ## Goal
@@ -56,6 +56,11 @@ Define and implement the repeatable source-of-truth download path for MusicBrain
 
 ## Handoff
 
-- Completed: task created.
-- Next: implement source manifest and downloader.
+- Completed:
+  - Selected official core `mbdump.tar.bz2`; derived and edit-history exports are not required for MBID/ISRC/URL bridging.
+  - Added `stage_musicbrainz_dump` discovery, planning, atomic download, SHA-256 verification, required-table validation, cold-storage manifest, and `SourceIngestionRun` provenance.
+  - Added rerun/adoption behavior, capacity refusal, partial cleanup, and focused tests.
+  - Live plan on 2026-06-13 resolved release `20260613-002047`, 7,260,740,543 compressed bytes, 80 GiB estimated expanded staging, and 100 GiB minimum free space.
+  - Verified `/srv/data/backups/juke/musicbrainz` resides on `zfspool/backups` with approximately 7.1 TiB free.
+- Next: review and merge, then implement `mlcore-musicbrainz-isrc-bridge-ingestion` against the staged manifest.
 - Blockers: none.
