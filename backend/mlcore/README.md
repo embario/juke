@@ -222,6 +222,31 @@ docker compose -f docker-compose.yml exec backend python manage.py shell -c \
 - `NormalizedInteraction.track` may be null when MBID/Spotify fallback resolution fails. Those rows remain valuable for audit metrics but do not form baskets until resolved.
 - Manual full/incremental import tasks remain available for one-off backfills and local testing against explicit files.
 
+## MusicBrainz identity bridge
+
+The MusicBrainz bridge imports recording MBID-to-ISRC evidence and direct
+recording URL relationships without calling a public API. Raw archives,
+replayable unlogged staging tables, and durable bridge tables are all kept in
+the `juke_mlcore_cold` tablespace. Canonical alias promotion remains a separate
+reviewable step.
+
+```bash
+# Download, checksum, and stage the latest official core dump.
+docker compose run --rm backend python manage.py stage_musicbrainz_dump
+
+# Stream the latest staged archive into the cold bridge tables.
+docker compose run --rm backend python manage.py import_musicbrainz_bridge
+
+# Or pin an explicit staged manifest.
+docker compose run --rm backend python manage.py import_musicbrainz_bridge \
+  --manifest /srv/data/backups/juke/musicbrainz/releases/<version>/manifest.json --json
+```
+
+Each bridge execution creates a `SourceIngestionRun` with recording, ISRC,
+malformed, duplicate, provider URL, and inserted-row counters. Replaying the
+same source version is safe: durable ISRC and URL evidence has source-versioned
+uniqueness constraints.
+
 ## Serving interfaces (integration)
 
 Engine endpoints used by clients:

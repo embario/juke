@@ -138,6 +138,56 @@ class SourceIngestionRun(models.Model):
         return f"{self.source}:{self.import_mode}:{self.source_version}"
 
 
+class MusicBrainzRecordingISRC(models.Model):
+    """Source-versioned MusicBrainz recording-to-ISRC identity evidence."""
+
+    recording_mbid = models.UUIDField()
+    isrc = models.CharField(max_length=12)
+    source_version = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_musicbrainz_recording_isrc'
+        db_tablespace = 'juke_mlcore_cold'
+        unique_together = ('recording_mbid', 'isrc', 'source_version')
+        indexes = [
+            models.Index(fields=['recording_mbid'], name='mlcore_mbri_mbid_idx'),
+            models.Index(fields=['isrc'], name='mlcore_mbri_isrc_idx'),
+            models.Index(fields=['source_version'], name='mlcore_mbri_source_idx'),
+        ]
+        ordering = ['recording_mbid', 'isrc']
+
+    def __str__(self):
+        return f'{self.recording_mbid}:{self.isrc}'
+
+
+class MusicBrainzRecordingURL(models.Model):
+    """Direct MusicBrainz recording URL relationship evidence."""
+
+    recording_mbid = models.UUIDField()
+    url = models.TextField()
+    url_fingerprint = models.CharField(max_length=32)
+    provider = models.CharField(max_length=32, blank=True, default='other')
+    link_type_id = models.BigIntegerField()
+    link_type_name = models.CharField(max_length=255, blank=True, default='')
+    source_version = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_musicbrainz_recording_url'
+        db_tablespace = 'juke_mlcore_cold'
+        unique_together = ('recording_mbid', 'url_fingerprint', 'source_version')
+        indexes = [
+            models.Index(fields=['recording_mbid'], name='mlcore_mbru_mbid_idx'),
+            models.Index(fields=['provider'], name='mlcore_mbru_provider_idx'),
+            models.Index(fields=['source_version'], name='mlcore_mbru_source_idx'),
+        ]
+        ordering = ['recording_mbid', 'provider', 'url']
+
+    def __str__(self):
+        return f'{self.recording_mbid}:{self.provider}:{self.url}'
+
+
 class DatasetOrchestrationRun(models.Model):
     """Top-level execution record for one orchestrated dataset shard run."""
 
