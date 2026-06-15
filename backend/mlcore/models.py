@@ -55,6 +55,12 @@ CANONICAL_ITEM_ALIAS_STATUS_CHOICES = (
     ('conflict', 'Conflict'),
 )
 
+CANONICAL_REDIRECT_STATUS_CHOICES = (
+    ('active', 'Active'),
+    ('conflict', 'Conflict'),
+    ('retired', 'Retired'),
+)
+
 
 def _binary_to_hex(value):
     if isinstance(value, memoryview):
@@ -112,12 +118,12 @@ class SourceIngestionRun(models.Model):
     checksum = models.CharField(max_length=128)
     fingerprint = models.CharField(max_length=128, blank=True, default='')
     status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
-    source_row_count = models.IntegerField(default=0)
-    imported_row_count = models.IntegerField(default=0)
-    duplicate_row_count = models.IntegerField(default=0)
-    canonicalized_row_count = models.IntegerField(default=0)
-    unresolved_row_count = models.IntegerField(default=0)
-    malformed_row_count = models.IntegerField(default=0)
+    source_row_count = models.BigIntegerField(default=0)
+    imported_row_count = models.BigIntegerField(default=0)
+    duplicate_row_count = models.BigIntegerField(default=0)
+    canonicalized_row_count = models.BigIntegerField(default=0)
+    unresolved_row_count = models.BigIntegerField(default=0)
+    malformed_row_count = models.BigIntegerField(default=0)
     policy_classification = models.CharField(max_length=32, blank=True, default='')
     metadata = models.JSONField(default=dict, blank=True)
     last_error = models.TextField(blank=True, default='')
@@ -186,6 +192,62 @@ class MusicBrainzRecordingURL(models.Model):
 
     def __str__(self):
         return f'{self.recording_mbid}:{self.provider}:{self.url}'
+
+
+class ListenBrainzMSIDMBIDMapping(models.Model):
+    """Versioned exact identity evidence embedded in ListenBrainz listens."""
+
+    recording_msid = models.UUIDField()
+    recording_mbid = models.UUIDField()
+    source_version = models.CharField(max_length=255)
+    shard_observation_count = models.BigIntegerField(default=1)
+    first_shard = models.CharField(max_length=255)
+    last_shard = models.CharField(max_length=255)
+    status = models.CharField(max_length=16, choices=CANONICAL_REDIRECT_STATUS_CHOICES, default='active')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mlcore_listenbrainz_msid_mbid_mapping'
+        db_tablespace = 'juke_mlcore_cold'
+        unique_together = ('recording_msid', 'recording_mbid', 'source_version')
+        indexes = [
+            models.Index(fields=['recording_msid'], name='mlcore_lbmm_msid_idx'),
+            models.Index(fields=['recording_mbid'], name='mlcore_lbmm_mbid_idx'),
+            models.Index(fields=['source_version', 'status'], name='mlcore_lbmm_version_status_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.recording_msid}:{self.recording_mbid}'
+
+
+class ListenBrainzIdentityShard(models.Model):
+    """Resumable extraction and load checkpoint for one ListenBrainz shard."""
+
+    source_version = models.CharField(max_length=255)
+    shard_key = models.CharField(max_length=255)
+    source_sha256 = models.CharField(max_length=64)
+    output_path = models.CharField(max_length=1024)
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    source_row_count = models.BigIntegerField(default=0)
+    mapped_row_count = models.BigIntegerField(default=0)
+    unique_pair_count = models.BigIntegerField(default=0)
+    malformed_row_count = models.BigIntegerField(default=0)
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'mlcore_listenbrainz_identity_shard'
+        db_tablespace = 'juke_mlcore_cold'
+        unique_together = ('source_version', 'shard_key')
+        indexes = [
+            models.Index(fields=['source_version', 'status'], name='mlcore_lbis_version_status_idx'),
+        ]
+        ordering = ['source_version', 'shard_key']
+
+    def __str__(self):
+        return f'{self.source_version}:{self.shard_key}:{self.status}'
 
 
 class DatasetOrchestrationRun(models.Model):
@@ -371,6 +433,47 @@ class CanonicalItemAlias(models.Model):
 
     def __str__(self):
         return f'{self.source}:{self.resource_type}:{self.source_id}'
+
+
+class CanonicalItemRedirect(models.Model):
+    """Non-destructive preference edge between equivalent canonical items."""
+
+    from_canonical_item = models.OneToOneField(
+        CanonicalItem,
+        on_delete=models.CASCADE,
+        related_name='outgoing_redirect',
+    )
+    to_canonical_item = models.ForeignKey(
+        CanonicalItem,
+        on_delete=models.CASCADE,
+        related_name='incoming_redirects',
+    )
+    relation = models.CharField(max_length=32, default='same_recording')
+    confidence = models.FloatField(default=1.0)
+    source = models.CharField(max_length=64)
+    source_version = models.CharField(max_length=255)
+    status = models.CharField(max_length=16, choices=CANONICAL_REDIRECT_STATUS_CHOICES, default='active')
+    evidence = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mlcore_canonical_item_redirect'
+        db_tablespace = 'juke_mlcore_hot'
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(from_canonical_item=models.F('to_canonical_item')),
+                name='mlcore_cir_no_self_redirect',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['to_canonical_item'], name='mlcore_cir_target_idx'),
+            models.Index(fields=['status'], name='mlcore_cir_status_idx'),
+            models.Index(fields=['source', 'source_version'], name='mlcore_cir_source_version_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.from_canonical_item_id}->{self.to_canonical_item_id}:{self.status}'
 
 
 class CanonicalAliasMaterializationRun(models.Model):

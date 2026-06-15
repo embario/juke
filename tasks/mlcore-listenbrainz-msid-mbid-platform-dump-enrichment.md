@@ -1,9 +1,9 @@
 ---
 id: mlcore-listenbrainz-msid-mbid-platform-dump-enrichment
 title: MLCore ListenBrainz dump enrichment for MSID, MBID, ISRC, and platform IDs
-status: ready
+status: in_progress
 priority: p1
-owner: unassigned
+owner: codex
 area: platform
 label: BACKEND/ML
 labels:
@@ -13,7 +13,7 @@ labels:
   - data-ingestion
   - identity
 complexity: 5
-updated_at: 2026-06-11
+updated_at: 2026-06-15
 ---
 
 ## Goal
@@ -68,6 +68,10 @@ Mine ListenBrainz dumps for identity evidence that enriches MLCore's local ident
 
 ## Handoff
 
-- Completed: task created from identity graph hydration design.
-- Next: implement manifest discovery and a small extractor prototype against one monthly dump.
+- Completed: confirmed exact MSID-to-MBID evidence is embedded in the locally materialized ListenBrainz shards.
+- Completed: added resumable per-shard extraction, cold evidence/checkpoint tables, exact conflict classification, 64-bit ingestion counters, progress/throughput/ETA reporting, and safe hot canonical redirects.
+- Completed: real-data validation scanned 8 shards and materialized 6 exact redirects with no conflicts.
+- In progress: full 261-shard production backfill in detached container `juke-listenbrainz-identity-bridge`; run ID `699b2eb7-4d4b-48f2-a713-dff7765f342c`.
+- Latest checkpoint at launch verification: 19/261 shards, 7,768,648 listens, 216,619 mapped observations, 103,944 per-shard unique pairs, about 160 MB/s, estimated extraction ETA about 1.6 hours.
+- Next: record final mapping coverage, conflicts, redirect coverage, hot/cold table sizes, and expose the completed-run metrics on the identity observability dashboard task.
 - Blockers: none.

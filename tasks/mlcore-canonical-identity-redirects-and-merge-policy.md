@@ -1,9 +1,9 @@
 ---
 id: mlcore-canonical-identity-redirects-merge-policy
 title: MLCore canonical identity redirects and merge policy
-status: ready
+status: in_progress
 priority: p1
-owner: unassigned
+owner: codex
 area: platform
 label: BACKEND/ML
 labels:
@@ -12,7 +12,7 @@ labels:
   - backend
   - identity
 complexity: 4
-updated_at: 2026-06-11
+updated_at: 2026-06-15
 ---
 
 ## Goal
@@ -53,6 +53,9 @@ Define and implement how MLCore safely converges separate MSID, MBID, Spotify, a
 
 ## Handoff
 
-- Completed: task created from identity graph hydration design.
-- Next: design model/migration and resolver changes.
+- Completed: hot canonical redirect model, non-destructive MBID preference policy, source/version/evidence provenance, conflict exclusion, resolver traversal, and cycle/depth protection.
+- Completed: cooccurrence serving expands preferred MBID seeds back to legacy MSID model IDs and maps recommended MSID neighbors forward to preferred MBIDs.
+- Completed: unit/database tests cover direct and chained redirects, unchanged unresolved items, contradictory evidence, cycles, hot/cold placement, and existing-model serving compatibility.
+- In progress: production MSID-to-MBID redirect materialization under run `699b2eb7-4d4b-48f2-a713-dff7765f342c`.
+- Next: add redirect coverage/conflict panels through `mlcore-identity-resolution-coverage-observability` after final production counts are known.
 - Blockers: none.

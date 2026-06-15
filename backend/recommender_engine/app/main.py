@@ -464,34 +464,99 @@ _METADATA_CANDIDATES_SQL = """
 
 # Pairs are stored canonically (a < b); query both orientations.
 _COOCCURRENCE_SQL = """
-    SELECT item_b_juke_id AS neighbour, pmi_score, co_count
-    FROM mlcore_item_cooccurrence
-    WHERE item_a_juke_id = ANY(%s)
-    UNION ALL
-    SELECT item_a_juke_id AS neighbour, pmi_score, co_count
-    FROM mlcore_item_cooccurrence
-    WHERE item_b_juke_id = ANY(%s)
+    WITH RECURSIVE requested_seed(id) AS (
+        SELECT unnest(%s::uuid[])
+    ),
+    model_seed(id) AS (
+        SELECT id FROM requested_seed
+        UNION
+        SELECT redirect.from_canonical_item_id
+        FROM mlcore_canonical_item_redirect redirect
+        JOIN requested_seed ON requested_seed.id = redirect.to_canonical_item_id
+        WHERE redirect.status = 'active'
+    ),
+    pairs AS (
+        SELECT item_b_juke_id AS neighbour, pmi_score, co_count
+        FROM mlcore_item_cooccurrence
+        WHERE item_a_juke_id IN (SELECT id FROM model_seed)
+        UNION ALL
+        SELECT item_a_juke_id AS neighbour, pmi_score, co_count
+        FROM mlcore_item_cooccurrence
+        WHERE item_b_juke_id IN (SELECT id FROM model_seed)
+    )
+    SELECT COALESCE(redirect.to_canonical_item_id, pairs.neighbour) AS neighbour,
+           pairs.pmi_score,
+           pairs.co_count
+    FROM pairs
+    LEFT JOIN mlcore_canonical_item_redirect redirect
+      ON redirect.from_canonical_item_id = pairs.neighbour
+     AND redirect.status = 'active'
 """
 
 _RESOLVE_ALIASES_SQL = """
-    WITH requested(source, resource_type, source_id) AS (
+    WITH RECURSIVE requested(source, resource_type, source_id) AS (
         SELECT *
         FROM unnest(%s::text[], %s::text[], %s::text[])
+    ),
+    alias_match AS (
+        SELECT
+            alias.source,
+            alias.resource_type,
+            alias.source_id,
+            alias.status,
+            alias.canonical_item_id
+        FROM mlcore_canonical_item_alias alias
+        JOIN requested
+          ON requested.source = alias.source
+         AND requested.resource_type = alias.resource_type
+         AND requested.source_id = alias.source_id
+    ),
+    redirect_chain AS (
+        SELECT
+            alias_match.source,
+            alias_match.resource_type,
+            alias_match.source_id,
+            alias_match.status,
+            alias_match.canonical_item_id,
+            ARRAY[alias_match.canonical_item_id]::uuid[] AS path,
+            0 AS depth
+        FROM alias_match
+        UNION ALL
+        SELECT
+            chain.source,
+            chain.resource_type,
+            chain.source_id,
+            chain.status,
+            redirect.to_canonical_item_id,
+            chain.path || redirect.to_canonical_item_id,
+            chain.depth + 1
+        FROM redirect_chain chain
+        JOIN mlcore_canonical_item_redirect redirect
+          ON redirect.from_canonical_item_id = chain.canonical_item_id
+         AND redirect.status = 'active'
+        WHERE chain.depth < 8
+          AND NOT redirect.to_canonical_item_id = ANY(chain.path)
+    ),
+    resolved AS (
+        SELECT DISTINCT ON (source, resource_type, source_id)
+            source,
+            resource_type,
+            source_id,
+            status,
+            canonical_item_id
+        FROM redirect_chain
+        ORDER BY source, resource_type, source_id, depth DESC
     )
     SELECT
-        alias.source,
-        alias.resource_type,
-        alias.source_id,
-        alias.status,
-        alias.canonical_item_id,
+        resolved.source,
+        resolved.resource_type,
+        resolved.source_id,
+        resolved.status,
+        resolved.canonical_item_id,
         canonical.canonical_key,
         canonical.item_type
-    FROM mlcore_canonical_item_alias alias
-    JOIN mlcore_canonical_item canonical ON canonical.id = alias.canonical_item_id
-    JOIN requested
-      ON requested.source = alias.source
-     AND requested.resource_type = alias.resource_type
-     AND requested.source_id = alias.source_id
+    FROM resolved
+    JOIN mlcore_canonical_item canonical ON canonical.id = resolved.canonical_item_id
 """
 
 _SERVING_VERSIONS_SQL = """
@@ -639,7 +704,7 @@ def _recommend_metadata_canonical(seed_item_ids: list[UUID], exclude_ids: list[U
 
 def _recommend_cooccurrence_canonical(seed_item_ids: list[UUID], exclude_ids: list[UUID], limit: int) -> BaselineResponse:
     exclude = set(seed_item_ids) | set(exclude_ids)
-    rows = _run_query(_COOCCURRENCE_SQL, [seed_item_ids, seed_item_ids])
+    rows = _run_query(_COOCCURRENCE_SQL, [seed_item_ids])
     scored = score_cooccurrence(rows, exclude, limit)
     return BaselineResponse(
         items=[_as_item(s) for s in scored],
