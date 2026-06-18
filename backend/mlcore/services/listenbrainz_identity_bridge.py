@@ -13,11 +13,12 @@ from uuid import UUID
 from django.db import connection, transaction
 from django.utils import timezone
 
-from mlcore.models import ListenBrainzIdentityShard, SourceIngestionRun
-from mlcore.models import CanonicalItem
+from mlcore.models import CanonicalItem, ListenBrainzIdentityShard, SourceIngestionRun
 from mlcore.services.canonical_items import ITEM_TYPE_RECORDING_MSID, canonical_item_uuid
 
 BRIDGE_SOURCE_ID = 'listenbrainz-identity-bridge'
+CONFLICT_RESOLVER_SOURCE_ID = 'listenbrainz-identity-conflict-resolver'
+CONFLICT_RESOLVER_POLICY_VERSION = 'shard-dominance-v1'
 PAIR_STAGE_TABLE = 'mlcore_listenbrainz_identity_pair_stage'
 DEFAULT_OUTPUT_ROOT = '/srv/data/backups/juke/listenbrainz/identity-evidence'
 PROGRESS_INTERVAL_ROWS = 1_000_000
@@ -60,6 +61,21 @@ class IdentityGraphExpansionResult:
     redirect_count: int
     redirect_conflict_count: int
     elapsed_seconds: float
+    dry_run: bool = False
+
+
+@dataclass(frozen=True)
+class ConflictResolutionResult:
+    source_version: str
+    policy_version: str
+    eligible_conflict_msid_count: int
+    resolved_msid_count: int
+    created_msid_count: int
+    redirect_count: int
+    redirect_conflict_count: int
+    elapsed_seconds: float
+    min_winner_share: float
+    min_winner_shards: int
     dry_run: bool = False
 
 
@@ -261,6 +277,64 @@ def expand_listenbrainz_identity_graph(
         elapsed_seconds=time.monotonic() - started,
         dry_run=dry_run,
         **summary,
+    )
+
+
+def resolve_listenbrainz_identity_conflicts(
+    source_version: str,
+    *,
+    min_winner_share: float = 0.95,
+    min_winner_shards: int = 2,
+    policy_version: str = CONFLICT_RESOLVER_POLICY_VERSION,
+    batch_size: int = 100_000,
+    dry_run: bool = False,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> ConflictResolutionResult:
+    if not 0 < min_winner_share <= 1:
+        raise ValueError('min_winner_share must be greater than zero and at most one')
+    if min_winner_shards < 1:
+        raise ValueError('min_winner_shards must be greater than zero')
+    if batch_size < 1:
+        raise ValueError('batch_size must be greater than zero')
+    started = time.monotonic()
+    eligible_conflict_msid_count = _count_conflict_msids(source_version)
+    resolved_msid_count = _count_resolvable_conflict_msids(
+        source_version,
+        min_winner_share=min_winner_share,
+        min_winner_shards=min_winner_shards,
+    )
+    created_msid_count = 0
+    redirect_count = 0
+    redirect_conflict_count = 0
+    if not dry_run:
+        _write_conflict_resolutions(
+            source_version,
+            policy_version=policy_version,
+            min_winner_share=min_winner_share,
+            min_winner_shards=min_winner_shards,
+        )
+        created_msid_count = _ensure_conflict_resolution_msid_items(
+            source_version,
+            policy_version=policy_version,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
+        )
+        redirect_count, redirect_conflict_count = _materialize_conflict_resolution_redirects(
+            source_version,
+            policy_version=policy_version,
+        )
+    return ConflictResolutionResult(
+        source_version=source_version,
+        policy_version=policy_version,
+        eligible_conflict_msid_count=eligible_conflict_msid_count,
+        resolved_msid_count=resolved_msid_count,
+        created_msid_count=created_msid_count,
+        redirect_count=redirect_count,
+        redirect_conflict_count=redirect_conflict_count,
+        elapsed_seconds=time.monotonic() - started,
+        min_winner_share=min_winner_share,
+        min_winner_shards=min_winner_shards,
+        dry_run=dry_run,
     )
 
 
@@ -497,6 +571,337 @@ def _fetch_missing_msid_batch(source_version: str, *, batch_size: int, after_msi
             params,
         )
         return [row[0] for row in cursor.fetchall()]
+
+
+def _count_conflict_msids(source_version: str) -> int:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            '''
+            SELECT COUNT(DISTINCT recording_msid)
+            FROM mlcore_listenbrainz_msid_mbid_mapping
+            WHERE source_version = %s
+              AND status = 'conflict'
+            ''',
+            [source_version],
+        )
+        return int(cursor.fetchone()[0])
+
+
+def _conflict_winners_sql() -> str:
+    return '''
+        WITH ranked AS (
+            SELECT
+                mapping.recording_msid,
+                mapping.recording_mbid,
+                mapping.shard_observation_count,
+                SUM(mapping.shard_observation_count) OVER (
+                    PARTITION BY mapping.recording_msid
+                ) AS total_shard_observation_count,
+                COUNT(*) OVER (PARTITION BY mapping.recording_msid) AS candidate_count,
+                ROW_NUMBER() OVER (
+                    PARTITION BY mapping.recording_msid
+                    ORDER BY mapping.shard_observation_count DESC, mapping.recording_mbid
+                ) AS candidate_rank
+            FROM mlcore_listenbrainz_msid_mbid_mapping mapping
+            WHERE mapping.source_version = %s
+              AND mapping.status = 'conflict'
+        )
+        SELECT
+            ranked.recording_msid,
+            ranked.recording_mbid AS chosen_recording_mbid,
+            ranked.shard_observation_count AS winner_shard_observation_count,
+            ranked.total_shard_observation_count,
+            ranked.candidate_count,
+            ranked.shard_observation_count::double precision
+                / NULLIF(ranked.total_shard_observation_count, 0)::double precision AS winner_share
+        FROM ranked
+        JOIN mlcore_canonical_item target_item
+          ON target_item.canonical_key = 'recording_mbid:' || ranked.recording_mbid::text
+        WHERE ranked.candidate_rank = 1
+          AND ranked.shard_observation_count >= %s
+          AND ranked.shard_observation_count::double precision
+                / NULLIF(ranked.total_shard_observation_count, 0)::double precision >= %s
+    '''
+
+
+def _count_resolvable_conflict_msids(
+    source_version: str,
+    *,
+    min_winner_share: float,
+    min_winner_shards: int,
+) -> int:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f'SELECT COUNT(*) FROM ({_conflict_winners_sql()}) winners',
+            [source_version, min_winner_shards, min_winner_share],
+        )
+        return int(cursor.fetchone()[0])
+
+
+def _write_conflict_resolutions(
+    source_version: str,
+    *,
+    policy_version: str,
+    min_winner_share: float,
+    min_winner_shards: int,
+) -> None:
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            '''
+            UPDATE mlcore_listenbrainz_msid_mbid_conflict_resolution resolution
+            SET status = 'retired',
+                updated_at = NOW()
+            WHERE resolution.source_version = %s
+              AND resolution.policy_version = %s
+              AND resolution.status = 'active'
+            ''',
+            [source_version, policy_version],
+        )
+        cursor.execute(
+            f'''
+            INSERT INTO mlcore_listenbrainz_msid_mbid_conflict_resolution (
+                recording_msid,
+                chosen_recording_mbid,
+                source_version,
+                policy_version,
+                winner_shard_observation_count,
+                total_shard_observation_count,
+                candidate_count,
+                winner_share,
+                status,
+                evidence,
+                created_at,
+                updated_at
+            )
+            SELECT
+                winners.recording_msid,
+                winners.chosen_recording_mbid,
+                %s,
+                %s,
+                winners.winner_shard_observation_count,
+                winners.total_shard_observation_count,
+                winners.candidate_count,
+                winners.winner_share,
+                'active',
+                jsonb_build_object(
+                    'policy_version', %s,
+                    'min_winner_share', %s,
+                    'min_winner_shards', %s,
+                    'evidence_basis', 'shard_observation_count'
+                ),
+                NOW(),
+                NOW()
+            FROM ({_conflict_winners_sql()}) winners
+            ON CONFLICT (recording_msid, source_version, policy_version) DO UPDATE
+            SET chosen_recording_mbid = EXCLUDED.chosen_recording_mbid,
+                winner_shard_observation_count = EXCLUDED.winner_shard_observation_count,
+                total_shard_observation_count = EXCLUDED.total_shard_observation_count,
+                candidate_count = EXCLUDED.candidate_count,
+                winner_share = EXCLUDED.winner_share,
+                status = 'active',
+                evidence = EXCLUDED.evidence,
+                updated_at = NOW()
+            ''',
+            [
+                source_version,
+                policy_version,
+                policy_version,
+                min_winner_share,
+                min_winner_shards,
+                source_version,
+                min_winner_shards,
+                min_winner_share,
+            ],
+        )
+
+
+def _fetch_conflict_resolution_missing_msid_batch(
+    source_version: str,
+    *,
+    policy_version: str,
+    batch_size: int,
+    after_msid: UUID | None = None,
+) -> list[UUID]:
+    after_clause = ''
+    params: list[Any] = [source_version, policy_version]
+    if after_msid is not None:
+        after_clause = 'AND resolution.recording_msid > %s'
+        params.append(after_msid)
+    params.append(batch_size)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f'''
+            SELECT resolution.recording_msid
+            FROM mlcore_listenbrainz_msid_mbid_conflict_resolution resolution
+            LEFT JOIN mlcore_canonical_item source_item
+              ON source_item.canonical_key = 'recording_msid:' || resolution.recording_msid::text
+            WHERE resolution.source_version = %s
+              AND resolution.policy_version = %s
+              AND resolution.status = 'active'
+              AND source_item.id IS NULL
+              {after_clause}
+            ORDER BY resolution.recording_msid
+            LIMIT %s
+            ''',
+            params,
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
+def _ensure_conflict_resolution_msid_items(
+    source_version: str,
+    *,
+    policy_version: str,
+    batch_size: int,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> int:
+    created_count = 0
+    last_msid = None
+    while True:
+        msids = _fetch_conflict_resolution_missing_msid_batch(
+            source_version,
+            policy_version=policy_version,
+            batch_size=batch_size,
+            after_msid=last_msid,
+        )
+        if not msids:
+            break
+        rows = [
+            CanonicalItem(
+                id=canonical_item_uuid(item_type=ITEM_TYPE_RECORDING_MSID, key_value=str(msid)),
+                item_type=ITEM_TYPE_RECORDING_MSID,
+                canonical_key=f'{ITEM_TYPE_RECORDING_MSID}:{msid}',
+            )
+            for msid in msids
+        ]
+        CanonicalItem.objects.bulk_create(rows, ignore_conflicts=True, batch_size=batch_size)
+        created_count += len(rows)
+        last_msid = msids[-1]
+        _report(progress_callback, {
+            'event': 'conflict_msid_canonical_batch',
+            'source_version': source_version,
+            'policy_version': policy_version,
+            'batch_size': len(msids),
+            'created_msid_count': created_count,
+        })
+    return created_count
+
+
+def _materialize_conflict_resolution_redirects(source_version: str, *, policy_version: str) -> tuple[int, int]:
+    candidates_sql = '''
+        SELECT
+            source_item.id AS from_id,
+            target_item.id AS to_id,
+            resolution.recording_msid,
+            resolution.chosen_recording_mbid,
+            resolution.winner_shard_observation_count,
+            resolution.total_shard_observation_count,
+            resolution.candidate_count,
+            resolution.winner_share
+        FROM mlcore_listenbrainz_msid_mbid_conflict_resolution resolution
+        JOIN mlcore_canonical_item source_item
+          ON source_item.canonical_key = 'recording_msid:' || resolution.recording_msid::text
+        JOIN mlcore_canonical_item target_item
+          ON target_item.canonical_key = 'recording_mbid:' || resolution.chosen_recording_mbid::text
+        WHERE resolution.source_version = %s
+          AND resolution.policy_version = %s
+          AND resolution.status = 'active'
+    '''
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            f'''
+            UPDATE mlcore_canonical_item_redirect redirect
+            SET status = 'retired',
+                updated_at = NOW()
+            WHERE redirect.source = %s
+              AND redirect.source_version = %s
+              AND redirect.status = 'active'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM ({candidates_sql}) candidate
+                  WHERE candidate.from_id = redirect.from_canonical_item_id
+                    AND candidate.to_id = redirect.to_canonical_item_id
+              )
+            ''',
+            [CONFLICT_RESOLVER_SOURCE_ID, source_version, source_version, policy_version],
+        )
+        cursor.execute(
+            f'''
+            INSERT INTO mlcore_canonical_item_redirect (
+                from_canonical_item_id,
+                to_canonical_item_id,
+                relation,
+                confidence,
+                source,
+                source_version,
+                status,
+                evidence,
+                created_at,
+                updated_at
+            )
+            SELECT
+                candidate.from_id,
+                candidate.to_id,
+                'same_recording',
+                candidate.winner_share,
+                %s,
+                %s,
+                'active',
+                jsonb_build_object(
+                    'recording_msid', candidate.recording_msid,
+                    'recording_mbid', candidate.chosen_recording_mbid,
+                    'policy_version', %s,
+                    'winner_shard_observation_count', candidate.winner_shard_observation_count,
+                    'total_shard_observation_count', candidate.total_shard_observation_count,
+                    'candidate_count', candidate.candidate_count,
+                    'winner_share', candidate.winner_share,
+                    'evidence_basis', 'shard_observation_count'
+                ),
+                NOW(),
+                NOW()
+            FROM ({candidates_sql}) candidate
+            ON CONFLICT (from_canonical_item_id) DO UPDATE
+            SET status = CASE
+                    WHEN mlcore_canonical_item_redirect.to_canonical_item_id = EXCLUDED.to_canonical_item_id
+                    THEN 'active'
+                    ELSE 'conflict'
+                END,
+                confidence = CASE
+                    WHEN mlcore_canonical_item_redirect.to_canonical_item_id = EXCLUDED.to_canonical_item_id
+                    THEN EXCLUDED.confidence
+                    ELSE mlcore_canonical_item_redirect.confidence
+                END,
+                source = EXCLUDED.source,
+                source_version = EXCLUDED.source_version,
+                evidence = CASE
+                    WHEN mlcore_canonical_item_redirect.to_canonical_item_id = EXCLUDED.to_canonical_item_id
+                    THEN EXCLUDED.evidence
+                    ELSE mlcore_canonical_item_redirect.evidence || jsonb_build_object(
+                        'conflicting_target_id', EXCLUDED.to_canonical_item_id,
+                        'conflicting_source', EXCLUDED.source
+                    )
+                END,
+                updated_at = NOW()
+            ''',
+            [
+                CONFLICT_RESOLVER_SOURCE_ID,
+                source_version,
+                policy_version,
+                source_version,
+                policy_version,
+            ],
+        )
+        cursor.execute(
+            '''
+            SELECT COUNT(*) FILTER (WHERE status = 'active'),
+                   COUNT(*) FILTER (WHERE status = 'conflict')
+            FROM mlcore_canonical_item_redirect
+            WHERE source = %s AND source_version = %s
+            ''',
+            [CONFLICT_RESOLVER_SOURCE_ID, source_version],
+        )
+        redirect_count, redirect_conflict_count = (int(value) for value in cursor.fetchone())
+    return redirect_count, redirect_conflict_count
 
 
 def _classify_and_materialize(source_version: str) -> dict[str, int]:

@@ -12,7 +12,7 @@ labels:
   - backend
   - identity
 complexity: 4
-updated_at: 2026-06-15
+updated_at: 2026-06-17
 ---
 
 ## Goal
@@ -57,6 +57,7 @@ Define and implement how MLCore safely converges separate MSID, MBID, Spotify, a
 - Completed: cooccurrence serving expands preferred MBID seeds back to legacy MSID model IDs and maps recommended MSID neighbors forward to preferred MBIDs.
 - Completed: unit/database tests cover direct and chained redirects, unchanged unresolved items, contradictory evidence, cycles, hot/cold placement, and existing-model serving compatibility.
 - Completed: initial production MSID-to-MBID redirect materialization produced 7,790,712 active redirects against the pre-existing canonical corpus.
-- In progress: expanding missing MSID canonical rows for 7,691,107 additional clean mappings, then rematerializing redirects so active coverage should approach the full 15,481,819 clean mapping set.
-- Next: add redirect coverage/conflict panels through `mlcore-identity-resolution-coverage-observability` after expanded production counts are known.
+- Completed: expanded missing MSID canonical rows for 7,691,107 additional clean mappings and rematerialized redirects to the full 15,481,819 clean mapping set.
+- Completed: added auditable conflict-resolution table and strict `shard-dominance-v1` resolver; production pass promoted 40,198 conflict MSIDs into active redirects and left ambiguous conflicts excluded.
+- Next: add redirect coverage/conflict panels through `mlcore-identity-resolution-coverage-observability`; evaluate whether a second policy can safely resolve additional ambiguous conflicts.
 - Blockers: none.

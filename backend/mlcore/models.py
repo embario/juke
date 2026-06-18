@@ -250,6 +250,36 @@ class ListenBrainzIdentityShard(models.Model):
         return f'{self.source_version}:{self.shard_key}:{self.status}'
 
 
+class ListenBrainzMSIDMBIDConflictResolution(models.Model):
+    """Auditable winner selection for conflicting ListenBrainz MSID-to-MBID evidence."""
+
+    recording_msid = models.UUIDField()
+    chosen_recording_mbid = models.UUIDField()
+    source_version = models.CharField(max_length=255)
+    policy_version = models.CharField(max_length=64)
+    winner_shard_observation_count = models.BigIntegerField(default=0)
+    total_shard_observation_count = models.BigIntegerField(default=0)
+    candidate_count = models.IntegerField(default=0)
+    winner_share = models.FloatField(default=0.0)
+    status = models.CharField(max_length=16, choices=CANONICAL_REDIRECT_STATUS_CHOICES, default='active')
+    evidence = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mlcore_listenbrainz_msid_mbid_conflict_resolution'
+        db_tablespace = 'juke_mlcore_cold'
+        unique_together = ('recording_msid', 'source_version', 'policy_version')
+        indexes = [
+            models.Index(fields=['source_version', 'policy_version', 'status'], name='mlcore_lbmcr_policy_status_idx'),
+            models.Index(fields=['chosen_recording_mbid'], name='mlcore_lbmcr_mbid_idx'),
+        ]
+        ordering = ['source_version', 'recording_msid']
+
+    def __str__(self):
+        return f'{self.recording_msid}->{self.chosen_recording_mbid}:{self.policy_version}:{self.status}'
+
+
 class DatasetOrchestrationRun(models.Model):
     """Top-level execution record for one orchestrated dataset shard run."""
 

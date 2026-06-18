@@ -13,12 +13,17 @@ from mlcore.models import (
     CanonicalItem,
     CanonicalItemRedirect,
     ListenBrainzIdentityShard,
+    ListenBrainzMSIDMBIDConflictResolution,
     ListenBrainzMSIDMBIDMapping,
     SourceIngestionRun,
 )
 from mlcore.services.canonical_items import identity_from_parts
-from mlcore.services.listenbrainz_identity_bridge import import_listenbrainz_identity_bridge
-from mlcore.services.listenbrainz_identity_bridge import expand_listenbrainz_identity_graph
+from mlcore.services.listenbrainz_identity_bridge import (
+    CONFLICT_RESOLVER_SOURCE_ID,
+    expand_listenbrainz_identity_graph,
+    import_listenbrainz_identity_bridge,
+    resolve_listenbrainz_identity_conflicts,
+)
 
 
 class ListenBrainzIdentityBridgeTests(TestCase):
@@ -172,9 +177,73 @@ class ListenBrainzIdentityBridgeTests(TestCase):
             ).exists()
         )
 
+    def test_conflict_resolution_promotes_only_dominant_conflicts(self):
+        import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
+        dominant_msid = uuid.uuid4()
+        loser_mbid = uuid.uuid4()
+        self._create_item('recording_msid', dominant_msid)
+        self._create_item('recording_mbid', loser_mbid)
+        ListenBrainzMSIDMBIDMapping.objects.bulk_create([
+            ListenBrainzMSIDMBIDMapping(
+                recording_msid=dominant_msid,
+                recording_mbid=self.mbid_one,
+                source_version=self.source_version,
+                shard_observation_count=20,
+                first_shard='manual',
+                last_shard='manual',
+                status='conflict',
+            ),
+            ListenBrainzMSIDMBIDMapping(
+                recording_msid=dominant_msid,
+                recording_mbid=loser_mbid,
+                source_version=self.source_version,
+                shard_observation_count=1,
+                first_shard='manual',
+                last_shard='manual',
+                status='conflict',
+            ),
+        ])
+
+        dry_run = resolve_listenbrainz_identity_conflicts(
+            self.source_version,
+            min_winner_share=0.95,
+            min_winner_shards=2,
+            dry_run=True,
+        )
+        result = resolve_listenbrainz_identity_conflicts(
+            self.source_version,
+            min_winner_share=0.95,
+            min_winner_shards=2,
+        )
+
+        self.assertEqual(dry_run.eligible_conflict_msid_count, 2)
+        self.assertEqual(dry_run.resolved_msid_count, 1)
+        self.assertEqual(result.resolved_msid_count, 1)
+        self.assertEqual(result.redirect_count, 1)
+        self.assertEqual(result.redirect_conflict_count, 0)
+        resolution = ListenBrainzMSIDMBIDConflictResolution.objects.get(recording_msid=dominant_msid)
+        self.assertEqual(resolution.chosen_recording_mbid, self.mbid_one)
+        self.assertAlmostEqual(resolution.winner_share, 20 / 21)
+        self.assertTrue(
+            CanonicalItemRedirect.objects.filter(
+                from_canonical_item__canonical_key=f'recording_msid:{dominant_msid}',
+                to_canonical_item__canonical_key=f'recording_mbid:{self.mbid_one}',
+                source=CONFLICT_RESOLVER_SOURCE_ID,
+                status='active',
+            ).exists()
+        )
+        self.assertFalse(
+            CanonicalItemRedirect.objects.filter(
+                from_canonical_item__canonical_key=f'recording_msid:{self.msid_conflict}',
+                source=CONFLICT_RESOLVER_SOURCE_ID,
+                status='active',
+            ).exists()
+        )
+
     def test_cold_evidence_and_unlogged_stage_placement(self):
         self.assertEqual(ListenBrainzMSIDMBIDMapping._meta.db_tablespace, 'juke_mlcore_cold')
         self.assertEqual(ListenBrainzIdentityShard._meta.db_tablespace, 'juke_mlcore_cold')
+        self.assertEqual(ListenBrainzMSIDMBIDConflictResolution._meta.db_tablespace, 'juke_mlcore_cold')
         with connection.cursor() as cursor:
             cursor.execute('''
                 SELECT c.relname, t.spcname, c.relpersistence

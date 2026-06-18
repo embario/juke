@@ -13,7 +13,7 @@ labels:
   - data-ingestion
   - identity
 complexity: 5
-updated_at: 2026-06-15
+updated_at: 2026-06-17
 ---
 
 ## Goal
@@ -73,7 +73,9 @@ Mine ListenBrainz dumps for identity evidence that enriches MLCore's local ident
 - Completed: real-data validation scanned 8 shards and materialized 6 exact redirects with no conflicts.
 - Completed: full 261-shard production backfill succeeded; run ID `699b2eb7-4d4b-48f2-a713-dff7765f342c`.
 - Completed: scanned 1,751,330,064 listens, found 252,222,425 mapped observations, stored 24,133,470 global unique MSID-to-MBID rows, classified 15,481,819 clean active mappings, and excluded 4,085,990 conflicting MSIDs.
-- In progress: identity graph expansion in detached container `juke-listenbrainz-identity-expand`; target is 7,691,107 missing MSID canonical rows for clean mappings whose MBID target already exists.
-- Latest checkpoint: 500,000/7,691,107 missing MSID canonical rows inserted; redirects will be rematerialized after insert completion.
-- Next: record final redirect count, hot/cold table sizes, and expose the completed-run metrics on the identity observability dashboard task.
+- Completed: identity graph expansion inserted all 7,691,107 missing MSID canonical rows for clean mappings whose MBID target already existed.
+- Completed: clean MSID-to-MBID coverage reached 15,481,819 active canonical redirects.
+- Completed: strict conflict resolver `shard-dominance-v1` promoted 40,198 additional conflict MSIDs using `winner_share >= 0.95` and `winner_shard_observation_count >= 2`; 0 redirect conflicts.
+- Current totals: 15,522,017 active redirects from ListenBrainz identity work; conflict-resolution evidence table is 20 MB cold storage.
+- Next: expose the completed-run metrics on the identity observability dashboard task and design a second-pass ambiguity analysis for conflicts below the strict dominance threshold.
 - Blockers: none.
