@@ -11,6 +11,7 @@ from django.test import TestCase
 
 from mlcore.models import (
     CanonicalItem,
+    CanonicalItemAlias,
     CanonicalItemRedirect,
     ListenBrainzIdentityShard,
     ListenBrainzMSIDMBIDConflictResolution,
@@ -22,6 +23,7 @@ from mlcore.services.listenbrainz_identity_bridge import (
     CONFLICT_RESOLVER_SOURCE_ID,
     expand_listenbrainz_identity_graph,
     import_listenbrainz_identity_bridge,
+    materialize_listenbrainz_isrc_aliases,
     resolve_listenbrainz_identity_conflicts,
 )
 
@@ -56,28 +58,30 @@ class ListenBrainzIdentityBridgeTests(TestCase):
             canonical_key=identity.canonical_key,
         )
 
-    def _listen(self, msid, mbid=None):
+    def _listen(self, msid, mbid=None, isrc=None):
         payload = {
             'recording_msid': str(msid),
             'track_metadata': {'additional_info': {}},
         }
         if mbid is not None:
             payload['track_metadata']['mbid_mapping'] = {'recording_mbid': str(mbid)}
+        if isrc is not None:
+            payload['track_metadata']['additional_info']['isrc'] = isrc
         return json.dumps(payload)
 
     def _write_manifest(self):
         contents = {
             '2000/01.jsonl': '\n'.join([
-                self._listen(self.msid_one, self.mbid_one),
-                self._listen(self.msid_one, self.mbid_one),
-                self._listen(self.msid_two, self.mbid_two),
-                self._listen(self.msid_conflict, self.mbid_one),
+                self._listen(self.msid_one, self.mbid_one, 'USAAA2400001'),
+                self._listen(self.msid_one, self.mbid_one, 'USAAA2400001'),
+                self._listen(self.msid_two, self.mbid_two, 'USAAA2400002'),
+                self._listen(self.msid_conflict, self.mbid_one, 'USAAA2400003'),
                 self._listen(uuid.uuid4()),
                 '{not-json',
             ]) + '\n',
             '2000/02.jsonl': '\n'.join([
-                self._listen(self.msid_one, self.mbid_one),
-                self._listen(self.msid_conflict, self.mbid_two),
+                self._listen(self.msid_one, self.mbid_one, 'USAAA2400001'),
+                self._listen(self.msid_conflict, self.mbid_two, 'USAAA2400003'),
             ]) + '\n',
         }
         shards = []
@@ -106,6 +110,8 @@ class ListenBrainzIdentityBridgeTests(TestCase):
         self.assertEqual(first.source_row_count, 8)
         self.assertEqual(first.mapped_row_count, 6)
         self.assertEqual(first.unique_pair_count, 5)
+        self.assertEqual(first.isrc_observation_count, 6)
+        self.assertEqual(first.unique_isrc_pair_count, 5)
         self.assertEqual(first.malformed_row_count, 1)
         self.assertEqual(first.active_mapping_count, 2)
         self.assertEqual(first.conflict_msid_count, 1)
@@ -129,6 +135,83 @@ class ListenBrainzIdentityBridgeTests(TestCase):
             2,
         )
         self.assertEqual(SourceIngestionRun.objects.filter(status='succeeded').count(), 2)
+
+    def test_materializes_isrcs_directly_into_alias_graph(self):
+        bridge = import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
+        expand_listenbrainz_identity_graph(self.source_version)
+        result = materialize_listenbrainz_isrc_aliases(self.source_version)
+        repeated = materialize_listenbrainz_isrc_aliases(self.source_version)
+
+        self.assertEqual(bridge.isrc_observation_count, 6)
+        self.assertEqual(result.isrc_observation_count, 6)
+        self.assertEqual(result.unique_msid_isrc_pair_count, 3)
+        self.assertEqual(result.distinct_isrc_count, 3)
+        self.assertEqual(result.materialized_alias_count, 3)
+        self.assertEqual(result.ambiguous_isrc_count, 0)
+        self.assertEqual(result.existing_alias_conflict_count, 0)
+        self.assertEqual(result.unresolved_pair_count, 0)
+        self.assertEqual(repeated.materialized_alias_count, 0)
+        self.assertEqual(CanonicalItemAlias.objects.filter(source='isrc').count(), 3)
+        alias = CanonicalItemAlias.objects.get(source='isrc', source_id='USAAA2400001')
+        self.assertEqual(alias.canonical_item.canonical_key, f'recording_mbid:{self.mbid_one}')
+        self.assertEqual(alias.metadata['match_source'], 'listenbrainz')
+
+    def test_excludes_isrc_that_resolves_to_multiple_canonical_items(self):
+        shared_isrc = 'USAAA2400099'
+        manifest = json.loads(self.manifest_path.read_text())
+        shard_path = self.root / manifest['shards'][0]['relative_path']
+        with shard_path.open('a') as handle:
+            handle.write(self._listen(self.msid_one, self.mbid_one, shared_isrc) + '\n')
+            handle.write(self._listen(self.msid_two, self.mbid_two, shared_isrc) + '\n')
+        manifest['shards'][0]['size_bytes'] = shard_path.stat().st_size
+        manifest['shards'][0]['sha256'] = hashlib.sha256(shard_path.read_bytes()).hexdigest()
+        self.manifest_path.write_text(json.dumps(manifest))
+
+        import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
+        expand_listenbrainz_identity_graph(self.source_version)
+        result = materialize_listenbrainz_isrc_aliases(self.source_version)
+
+        self.assertEqual(result.ambiguous_isrc_count, 1)
+        self.assertFalse(CanonicalItemAlias.objects.filter(source='isrc', source_id=shared_isrc).exists())
+
+    def test_invalid_isrc_does_not_discard_valid_msid_mbid_evidence(self):
+        manifest = json.loads(self.manifest_path.read_text())
+        shard_path = self.root / manifest['shards'][0]['relative_path']
+        with shard_path.open('a') as handle:
+            handle.write(self._listen(self.msid_one, self.mbid_one, 'not-an-isrc') + '\n')
+        manifest['shards'][0]['size_bytes'] = shard_path.stat().st_size
+        manifest['shards'][0]['sha256'] = hashlib.sha256(shard_path.read_bytes()).hexdigest()
+        self.manifest_path.write_text(json.dumps(manifest))
+
+        result = import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
+
+        self.assertEqual(result.source_row_count, 9)
+        self.assertEqual(result.mapped_row_count, 7)
+        self.assertEqual(result.isrc_observation_count, 6)
+        self.assertEqual(result.malformed_row_count, 2)
+
+    def test_pre_isrc_checkpoint_is_reextracted_once(self):
+        first = import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
+        ListenBrainzIdentityShard.objects.filter(source_version=self.source_version).update(
+            extraction_schema_version=1,
+            isrc_observation_count=0,
+            unique_isrc_pair_count=0,
+        )
+        for path in self.output_root.rglob('*.msid-isrc.tsv'):
+            path.unlink()
+
+        replay = import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
+
+        self.assertEqual(first.isrc_observation_count, 6)
+        self.assertEqual(replay.isrc_observation_count, 6)
+        self.assertTrue(
+            all(
+                version == 2
+                for version in ListenBrainzIdentityShard.objects.filter(
+                    source_version=self.source_version
+                ).values_list('extraction_schema_version', flat=True)
+            )
+        )
 
     def test_full_run_retires_redirects_created_by_partial_validation_run(self):
         partial = import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root, max_shards=1)

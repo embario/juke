@@ -1,9 +1,9 @@
 ---
 id: mlcore-isrc-alias-enrichment
 title: MLCore ISRC alias enrichment for canonical items
-status: ready
+status: review
 priority: p1
-owner: unassigned
+owner: codex
 area: platform
 label: BACKEND/ML
 labels:
@@ -12,7 +12,7 @@ labels:
   - backend
   - identity
 complexity: 3
-updated_at: 2026-06-09
+updated_at: 2026-06-21
 ---
 
 ## Goal
@@ -61,5 +61,9 @@ Attach ISRC identities to MLCore canonical recording items through the existing 
 ## Handoff
 
 - Completed: task created.
-- Next: implement alias materializer after bridge ingestion.
-- Blockers: `mlcore-musicbrainz-isrc-bridge-ingestion`.
+- Completed: added a resumable, ISRC-keyed MusicBrainz alias promoter with deterministic alias IDs and canonical redirect-aware conflict checks.
+- Completed: added tests for many-ISRC recordings, ambiguous mappings, unresolved MBIDs, idempotency, conflicts, batching, and persisted resume checkpoints.
+- Completed: production run `7f9c2855-c1a8-422b-adeb-c4524ba19275` processed all 5,880,911 distinct ISRCs from release `20260613-002047` in 59 batches.
+- Result: created 1,857,666 active ISRC aliases, excluded 131,695 ambiguous ISRCs, and recorded 3,891,550 unresolved ISRCs whose MBIDs are absent from the current canonical corpus.
+- Next: review and package the implementation; use unresolved MBIDs to prioritize future canonical-corpus expansion.
+- Blockers: none.

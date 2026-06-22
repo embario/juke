@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -22,6 +23,8 @@ CONFLICT_RESOLVER_POLICY_VERSION = 'shard-dominance-v1'
 PAIR_STAGE_TABLE = 'mlcore_listenbrainz_identity_pair_stage'
 DEFAULT_OUTPUT_ROOT = '/srv/data/backups/juke/listenbrainz/identity-evidence'
 PROGRESS_INTERVAL_ROWS = 1_000_000
+EXTRACTION_SCHEMA_VERSION = 2
+ISRC_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$')
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,8 @@ class ListenBrainzIdentityBridgeResult:
     source_row_count: int
     mapped_row_count: int
     unique_pair_count: int
+    isrc_observation_count: int
+    unique_isrc_pair_count: int
     malformed_row_count: int
     active_mapping_count: int
     conflict_msid_count: int
@@ -44,9 +49,12 @@ class ListenBrainzIdentityBridgeResult:
 class ShardExtractionResult:
     shard_key: str
     output_path: str
+    isrc_output_path: str
     source_row_count: int
     mapped_row_count: int
     unique_pair_count: int
+    isrc_observation_count: int
+    unique_isrc_pair_count: int
     malformed_row_count: int
     skipped: bool = False
 
@@ -77,6 +85,18 @@ class ConflictResolutionResult:
     min_winner_share: float
     min_winner_shards: int
     dry_run: bool = False
+
+
+@dataclass(frozen=True)
+class ISRCAliasMaterializationResult:
+    source_version: str
+    isrc_observation_count: int
+    unique_msid_isrc_pair_count: int
+    distinct_isrc_count: int
+    materialized_alias_count: int
+    ambiguous_isrc_count: int
+    existing_alias_conflict_count: int
+    unresolved_pair_count: int
 
 
 def import_listenbrainz_identity_bridge(
@@ -119,6 +139,7 @@ def import_listenbrainz_identity_bridge(
         policy_classification='production_approved',
         metadata={
             'phase': 'extract',
+            'extraction_schema_version': EXTRACTION_SCHEMA_VERSION,
             'manifest_path': str(manifest_path),
             'output_root': str(target_root),
             'shard_count': len(shards),
@@ -132,6 +153,8 @@ def import_listenbrainz_identity_bridge(
         'source_row_count': 0,
         'mapped_row_count': 0,
         'unique_pair_count': 0,
+        'isrc_observation_count': 0,
+        'unique_isrc_pair_count': 0,
         'malformed_row_count': 0,
         'processed_bytes': 0,
     }
@@ -151,6 +174,8 @@ def import_listenbrainz_identity_bridge(
             totals['source_row_count'] += result.source_row_count
             totals['mapped_row_count'] += result.mapped_row_count
             totals['unique_pair_count'] += result.unique_pair_count
+            totals['isrc_observation_count'] += result.isrc_observation_count
+            totals['unique_isrc_pair_count'] += result.unique_isrc_pair_count
             totals['malformed_row_count'] += result.malformed_row_count
             totals['processed_bytes'] += int(shard.get('size_bytes') or 0)
             elapsed = max(time.monotonic() - started, 0.001)
@@ -163,6 +188,8 @@ def import_listenbrainz_identity_bridge(
                 'source_row_count': totals['source_row_count'],
                 'mapped_row_count': totals['mapped_row_count'],
                 'unique_pair_count': totals['unique_pair_count'],
+                'isrc_observation_count': totals['isrc_observation_count'],
+                'unique_isrc_pair_count': totals['unique_isrc_pair_count'],
                 'malformed_row_count': totals['malformed_row_count'],
                 'throughput_bytes_per_second': totals['processed_bytes'] / elapsed,
                 'eta_seconds': _eta_seconds(
@@ -209,6 +236,8 @@ def import_listenbrainz_identity_bridge(
             source_row_count=totals['source_row_count'],
             mapped_row_count=totals['mapped_row_count'],
             unique_pair_count=totals['unique_pair_count'],
+            isrc_observation_count=totals['isrc_observation_count'],
+            unique_isrc_pair_count=totals['unique_isrc_pair_count'],
             malformed_row_count=totals['malformed_row_count'],
             elapsed_seconds=elapsed_seconds,
             **summary,
@@ -338,6 +367,184 @@ def resolve_listenbrainz_identity_conflicts(
     )
 
 
+def materialize_listenbrainz_isrc_aliases(source_version: str) -> ISRCAliasMaterializationResult:
+    checkpoints = list(
+        ListenBrainzIdentityShard.objects.filter(
+            source_version=source_version,
+            status='succeeded',
+            extraction_schema_version__gte=EXTRACTION_SCHEMA_VERSION,
+        )
+    )
+    isrc_paths = [_isrc_output_path(Path(checkpoint.output_path)) for checkpoint in checkpoints]
+    isrc_paths = [path for path in isrc_paths if path.is_file()]
+    observation_count = sum(checkpoint.isrc_observation_count for checkpoint in checkpoints)
+    unique_pair_count = sum(checkpoint.unique_isrc_pair_count for checkpoint in checkpoints)
+    if not isrc_paths:
+        return ISRCAliasMaterializationResult(
+            source_version=source_version,
+            isrc_observation_count=observation_count,
+            unique_msid_isrc_pair_count=unique_pair_count,
+            distinct_isrc_count=0,
+            materialized_alias_count=0,
+            ambiguous_isrc_count=0,
+            existing_alias_conflict_count=0,
+            unresolved_pair_count=0,
+        )
+
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SET LOCAL temp_tablespaces = 'juke_mlcore_cold'")
+        cursor.execute('''
+            CREATE TEMP TABLE mlcore_lb_isrc_candidate_stage (
+                recording_msid uuid NOT NULL,
+                isrc varchar(12) NOT NULL
+            ) ON COMMIT DROP
+        ''')
+        for path in isrc_paths:
+            _copy_isrc_file(cursor, path)
+        cursor.execute('CREATE INDEX ON mlcore_lb_isrc_candidate_stage (recording_msid)')
+        cursor.execute('CREATE INDEX ON mlcore_lb_isrc_candidate_stage (isrc)')
+        cursor.execute('ANALYZE mlcore_lb_isrc_candidate_stage')
+
+        resolved_cte = '''
+            WITH resolved AS (
+                SELECT DISTINCT
+                    stage.isrc,
+                    COALESCE(redirect.to_canonical_item_id, source_item.id) AS canonical_item_id
+                FROM mlcore_lb_isrc_candidate_stage stage
+                LEFT JOIN mlcore_canonical_item source_item
+                  ON source_item.canonical_key = 'recording_msid:' || stage.recording_msid::text
+                LEFT JOIN mlcore_canonical_item_redirect redirect
+                  ON redirect.from_canonical_item_id = source_item.id
+                 AND redirect.status = 'active'
+                WHERE source_item.id IS NOT NULL
+            ), unambiguous AS (
+                SELECT isrc, MIN(canonical_item_id::text)::uuid AS canonical_item_id
+                FROM resolved
+                GROUP BY isrc
+                HAVING COUNT(DISTINCT canonical_item_id) = 1
+            )
+        '''
+        cursor.execute('SELECT COUNT(DISTINCT isrc) FROM mlcore_lb_isrc_candidate_stage')
+        distinct_isrc_count = int(cursor.fetchone()[0])
+        cursor.execute('''
+            SELECT COUNT(*)
+            FROM (
+                SELECT DISTINCT recording_msid, isrc
+                FROM mlcore_lb_isrc_candidate_stage
+            ) pairs
+        ''')
+        unique_pair_count = int(cursor.fetchone()[0])
+        cursor.execute('''
+            SELECT COUNT(*)
+            FROM mlcore_lb_isrc_candidate_stage stage
+            LEFT JOIN mlcore_canonical_item source_item
+              ON source_item.canonical_key = 'recording_msid:' || stage.recording_msid::text
+            WHERE source_item.id IS NULL
+        ''')
+        unresolved_pair_count = int(cursor.fetchone()[0])
+        cursor.execute(
+            resolved_cte
+            + '''
+            SELECT COUNT(*)
+            FROM (
+                SELECT isrc
+                FROM resolved
+                GROUP BY isrc
+                HAVING COUNT(DISTINCT canonical_item_id) > 1
+            ) conflicts
+            '''
+        )
+        ambiguous_isrc_count = int(cursor.fetchone()[0])
+        cursor.execute(
+            resolved_cte
+            + '''
+            SELECT COUNT(*)
+            FROM unambiguous candidate
+            JOIN mlcore_canonical_item_alias alias
+              ON alias.source = 'isrc'
+             AND alias.resource_type = 'recording'
+             AND alias.source_id = candidate.isrc
+            WHERE alias.canonical_item_id <> candidate.canonical_item_id
+            '''
+        )
+        existing_alias_conflict_count = int(cursor.fetchone()[0])
+        cursor.execute(
+            resolved_cte
+            + '''
+            INSERT INTO mlcore_canonical_item_alias (
+                id,
+                canonical_item_id,
+                source,
+                resource_type,
+                source_id,
+                confidence,
+                source_version,
+                status,
+                metadata,
+                created_at,
+                updated_at
+            )
+            SELECT
+                md5('isrc:recording:' || candidate.isrc)::uuid,
+                candidate.canonical_item_id,
+                'isrc',
+                'recording',
+                candidate.isrc,
+                1.0,
+                %s,
+                'active',
+                jsonb_build_object(
+                    'match_source', 'listenbrainz',
+                    'listenbrainz_source_version', %s
+                ),
+                NOW(),
+                NOW()
+            FROM unambiguous candidate
+            ON CONFLICT (source, resource_type, source_id) DO UPDATE
+            SET confidence = GREATEST(mlcore_canonical_item_alias.confidence, EXCLUDED.confidence),
+                status = 'active',
+                metadata = mlcore_canonical_item_alias.metadata || EXCLUDED.metadata,
+                updated_at = NOW()
+            WHERE mlcore_canonical_item_alias.canonical_item_id = EXCLUDED.canonical_item_id
+            ''',
+            [source_version, source_version],
+        )
+        materialized_alias_count = max(cursor.rowcount, 0)
+
+    for path in isrc_paths:
+        path.unlink(missing_ok=True)
+    bridge_run = SourceIngestionRun.objects.filter(
+        source=BRIDGE_SOURCE_ID,
+        source_version=source_version,
+        status='succeeded',
+    ).order_by('-completed_at', '-started_at').first()
+    if bridge_run is not None:
+        bridge_run.metadata = {
+            **bridge_run.metadata,
+            'isrc_aliases_materialized': True,
+            'isrc_alias_summary': {
+                'isrc_observation_count': observation_count,
+                'unique_msid_isrc_pair_count': unique_pair_count,
+                'distinct_isrc_count': distinct_isrc_count,
+                'materialized_alias_count': materialized_alias_count,
+                'ambiguous_isrc_count': ambiguous_isrc_count,
+                'existing_alias_conflict_count': existing_alias_conflict_count,
+                'unresolved_pair_count': unresolved_pair_count,
+            },
+        }
+        bridge_run.save(update_fields=['metadata'])
+    return ISRCAliasMaterializationResult(
+        source_version=source_version,
+        isrc_observation_count=observation_count,
+        unique_msid_isrc_pair_count=unique_pair_count,
+        distinct_isrc_count=distinct_isrc_count,
+        materialized_alias_count=materialized_alias_count,
+        ambiguous_isrc_count=ambiguous_isrc_count,
+        existing_alias_conflict_count=existing_alias_conflict_count,
+        unresolved_pair_count=unresolved_pair_count,
+    )
+
+
 def extract_listenbrainz_identity_shard(
     source_path: str | Path,
     *,
@@ -352,6 +559,7 @@ def extract_listenbrainz_identity_shard(
     if not source_path.is_file():
         raise FileNotFoundError(f'ListenBrainz shard does not exist: {source_path}')
     output_path = Path(output_root) / f'{shard_key}.msid-mbid.tsv'
+    isrc_output_path = Path(output_root) / f'{shard_key}.msid-isrc.tsv'
     output_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint = ListenBrainzIdentityShard.objects.filter(
         source_version=source_version,
@@ -362,14 +570,18 @@ def extract_listenbrainz_identity_shard(
         and checkpoint is not None
         and checkpoint.status == 'succeeded'
         and checkpoint.source_sha256 == source_sha256
+        and checkpoint.extraction_schema_version >= EXTRACTION_SCHEMA_VERSION
         and output_path.is_file()
     ):
         return ShardExtractionResult(
             shard_key=shard_key,
             output_path=str(output_path),
+            isrc_output_path=str(isrc_output_path),
             source_row_count=checkpoint.source_row_count,
             mapped_row_count=checkpoint.mapped_row_count,
             unique_pair_count=checkpoint.unique_pair_count,
+            isrc_observation_count=checkpoint.isrc_observation_count,
+            unique_isrc_pair_count=checkpoint.unique_isrc_pair_count,
             malformed_row_count=checkpoint.malformed_row_count,
             skipped=True,
         )
@@ -380,82 +592,104 @@ def extract_listenbrainz_identity_shard(
         defaults={
             'source_sha256': source_sha256,
             'output_path': str(output_path),
+            'extraction_schema_version': EXTRACTION_SCHEMA_VERSION,
             'status': 'running',
             'source_row_count': 0,
             'mapped_row_count': 0,
             'unique_pair_count': 0,
+            'isrc_observation_count': 0,
+            'unique_isrc_pair_count': 0,
             'malformed_row_count': 0,
             'completed_at': None,
             'last_error': '',
         },
     )
     temp_path = output_path.with_suffix(output_path.suffix + '.part')
+    isrc_temp_path = isrc_output_path.with_suffix(isrc_output_path.suffix + '.part')
     temp_path.unlink(missing_ok=True)
+    isrc_temp_path.unlink(missing_ok=True)
     sort_tmp = output_path.parent / '.sort-tmp'
     sort_tmp.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, 'LC_ALL': 'C'}
-    process = subprocess.Popen(
-        ['sort', '-u', '-T', str(sort_tmp), '-o', str(temp_path)],
-        stdin=subprocess.PIPE,
-        text=True,
-        encoding='utf-8',
-        env=env,
-    )
+    process = _start_unique_sort(temp_path, sort_tmp=sort_tmp, env=env)
+    isrc_process = _start_unique_sort(isrc_temp_path, sort_tmp=sort_tmp, env=env)
     source_rows = 0
     mapped_rows = 0
+    isrc_observations = 0
     malformed_rows = 0
     try:
         assert process.stdin is not None
+        assert isrc_process.stdin is not None
         with source_path.open('rb') as source:
             for raw_line in source:
                 source_rows += 1
                 try:
                     payload = json.loads(raw_line)
-                    pair = _extract_pair(payload)
+                    pair, isrc_pairs, invalid_isrc_count = _extract_identity_pairs(payload)
                 except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
                     malformed_rows += 1
                     continue
+                malformed_rows += invalid_isrc_count
                 if pair is not None:
                     mapped_rows += 1
                     process.stdin.write(f'{pair[0]}\t{pair[1]}\n')
+                for msid, isrc in isrc_pairs:
+                    isrc_observations += 1
+                    isrc_process.stdin.write(f'{msid}\t{isrc}\n')
                 if source_rows % PROGRESS_INTERVAL_ROWS == 0:
                     _report(progress_callback, {
                         'event': 'extract_progress',
                         'shard_key': shard_key,
                         'source_row_count': source_rows,
                         'mapped_row_count': mapped_rows,
+                        'isrc_observation_count': isrc_observations,
                         'malformed_row_count': malformed_rows,
                     })
         process.stdin.close()
+        isrc_process.stdin.close()
         return_code = process.wait()
-        if return_code:
-            raise RuntimeError(f'sort failed for {shard_key} with exit code {return_code}')
+        isrc_return_code = isrc_process.wait()
+        if return_code or isrc_return_code:
+            raise RuntimeError(
+                f'sort failed for {shard_key} with exit codes {return_code}/{isrc_return_code}'
+            )
         unique_pairs = _count_lines(temp_path)
+        unique_isrc_pairs = _count_lines(isrc_temp_path)
         temp_path.replace(output_path)
+        isrc_temp_path.replace(isrc_output_path)
         ListenBrainzIdentityShard.objects.filter(pk=checkpoint.pk).update(
             status='running',
+            extraction_schema_version=EXTRACTION_SCHEMA_VERSION,
             source_row_count=source_rows,
             mapped_row_count=mapped_rows,
             unique_pair_count=unique_pairs,
+            isrc_observation_count=isrc_observations,
+            unique_isrc_pair_count=unique_isrc_pairs,
             malformed_row_count=malformed_rows,
         )
         return ShardExtractionResult(
             shard_key=shard_key,
             output_path=str(output_path),
+            isrc_output_path=str(isrc_output_path),
             source_row_count=source_rows,
             mapped_row_count=mapped_rows,
             unique_pair_count=unique_pairs,
+            isrc_observation_count=isrc_observations,
+            unique_isrc_pair_count=unique_isrc_pairs,
             malformed_row_count=malformed_rows,
         )
     except Exception as exc:
-        if process.poll() is None:
-            process.kill()
-            process.wait()
+        for active_process in (process, isrc_process):
+            if active_process.poll() is None:
+                active_process.kill()
+                active_process.wait()
         temp_path.unlink(missing_ok=True)
+        isrc_temp_path.unlink(missing_ok=True)
         ListenBrainzIdentityShard.objects.filter(pk=checkpoint.pk).update(
             status='failed',
             source_row_count=source_rows,
             mapped_row_count=mapped_rows,
+            isrc_observation_count=isrc_observations,
             malformed_row_count=malformed_rows,
             last_error=str(exc),
             completed_at=timezone.now(),
@@ -463,15 +697,55 @@ def extract_listenbrainz_identity_shard(
         raise
 
 
-def _extract_pair(payload: dict[str, Any]) -> tuple[str, str] | None:
+def _start_unique_sort(output_path: Path, *, sort_tmp: Path, env: dict[str, str]) -> subprocess.Popen:
+    return subprocess.Popen(
+        ['sort', '-u', '-T', str(sort_tmp), '-o', str(output_path)],
+        stdin=subprocess.PIPE,
+        text=True,
+        encoding='utf-8',
+        env=env,
+    )
+
+
+def _isrc_output_path(msid_mbid_output_path: Path) -> Path:
+    suffix = '.msid-mbid.tsv'
+    if not msid_mbid_output_path.name.endswith(suffix):
+        raise ValueError(f'Unexpected ListenBrainz identity output path: {msid_mbid_output_path}')
+    return msid_mbid_output_path.with_name(
+        msid_mbid_output_path.name[:-len(suffix)] + '.msid-isrc.tsv'
+    )
+
+
+def _extract_identity_pairs(
+    payload: dict[str, Any],
+) -> tuple[tuple[str, str] | None, list[tuple[str, str]], int]:
     metadata = payload.get('track_metadata') or {}
     additional = metadata.get('additional_info') or {}
     mapping = metadata.get('mbid_mapping') or {}
     msid = payload.get('recording_msid') or metadata.get('recording_msid') or additional.get('recording_msid')
     mbid = mapping.get('recording_mbid') or additional.get('recording_mbid')
-    if not msid or not mbid:
-        return None
-    return str(UUID(str(msid))), str(UUID(str(mbid)))
+    normalized_msid = str(UUID(str(msid))) if msid else None
+    mbid_pair = (
+        (normalized_msid, str(UUID(str(mbid))))
+        if normalized_msid and mbid
+        else None
+    )
+    raw_isrcs = additional.get('isrc')
+    if raw_isrcs in (None, '') or normalized_msid is None:
+        return mbid_pair, [], 0
+    if isinstance(raw_isrcs, str):
+        raw_isrcs = [raw_isrcs]
+    if not isinstance(raw_isrcs, (list, tuple, set)):
+        return mbid_pair, [], 1
+    isrc_pairs = []
+    invalid_isrc_count = 0
+    for raw_isrc in raw_isrcs:
+        isrc = re.sub(r'[-\s]', '', str(raw_isrc)).upper()
+        if not ISRC_RE.fullmatch(isrc):
+            invalid_isrc_count += 1
+            continue
+        isrc_pairs.append((normalized_msid, isrc))
+    return mbid_pair, isrc_pairs, invalid_isrc_count
 
 
 def _load_shard_pairs(result: ShardExtractionResult, *, source_version: str, source_sha256: str) -> None:
@@ -507,9 +781,12 @@ def _load_shard_pairs(result: ShardExtractionResult, *, source_version: str, sou
             status='succeeded',
             source_sha256=source_sha256,
             output_path=result.output_path,
+            extraction_schema_version=EXTRACTION_SCHEMA_VERSION,
             source_row_count=result.source_row_count,
             mapped_row_count=result.mapped_row_count,
             unique_pair_count=result.unique_pair_count,
+            isrc_observation_count=result.isrc_observation_count,
+            unique_isrc_pair_count=result.unique_isrc_pair_count,
             malformed_row_count=result.malformed_row_count,
             completed_at=timezone.now(),
             last_error='',
@@ -524,6 +801,16 @@ def _copy_pair_file(cursor, path: Path) -> None:
             raw_cursor.copy_expert(sql, handle)
             return
     raise RuntimeError('ListenBrainz identity bridge requires PostgreSQL COPY support')
+
+
+def _copy_isrc_file(cursor, path: Path) -> None:
+    sql = 'COPY mlcore_lb_isrc_candidate_stage (recording_msid, isrc) FROM STDIN'
+    raw_cursor = getattr(cursor, 'cursor', cursor)
+    with path.open('r', encoding='utf-8', newline='') as handle:
+        if hasattr(raw_cursor, 'copy_expert'):
+            raw_cursor.copy_expert(sql, handle)
+            return
+    raise RuntimeError('ListenBrainz ISRC alias materialization requires PostgreSQL COPY support')
 
 
 def _count_missing_msid_canonical_items(source_version: str) -> int:

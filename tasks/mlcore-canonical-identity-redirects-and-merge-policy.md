@@ -1,7 +1,7 @@
 ---
 id: mlcore-canonical-identity-redirects-merge-policy
 title: MLCore canonical identity redirects and merge policy
-status: in_progress
+status: review
 priority: p1
 owner: codex
 area: platform
@@ -12,7 +12,7 @@ labels:
   - backend
   - identity
 complexity: 4
-updated_at: 2026-06-17
+updated_at: 2026-06-22
 ---
 
 ## Goal

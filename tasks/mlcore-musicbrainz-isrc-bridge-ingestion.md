@@ -1,7 +1,7 @@
 ---
 id: mlcore-musicbrainz-isrc-bridge-ingestion
 title: MLCore MusicBrainz MBID to ISRC bridge ingestion
-status: in_progress
+status: review
 priority: p1
 owner: codex
 area: platform
@@ -13,7 +13,7 @@ labels:
   - data-ingestion
   - identity
 complexity: 4
-updated_at: 2026-06-15
+updated_at: 2026-06-22
 ---
 
 ## Goal
@@ -63,6 +63,6 @@ Build a compact, replay-safe bridge from MusicBrainz recording MBIDs to ISRCs us
 
 - Completed: cold bridge schema, one-pass streaming importer, replay-safe materialization, provenance counters, provider URL classification, operator command, and database-backed tests.
 - Validation: 500 backend tests pass with 6 expected skips; focused MusicBrainz suite has 13 passing tests.
-- Live execution: official release `20260613-002047` staged and verified; detached bridge import is running in `juke-musicbrainz-bridge`.
-- Next: observe the live import through completion, record production row/storage counts, then hand its compact evidence to the separate canonical alias hydration task.
+- Live execution: official release `20260613-002047` staged, verified, and imported; its compact evidence was handed to canonical alias hydration.
+- Next: review and merge.
 - Blockers: none.

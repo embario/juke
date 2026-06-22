@@ -10,8 +10,10 @@ from django.utils import timezone
 
 from mlcore.models import SourceIngestionRun
 from mlcore.services.listenbrainz_identity_bridge import (
+    EXTRACTION_SCHEMA_VERSION,
     expand_listenbrainz_identity_graph,
     import_listenbrainz_identity_bridge,
+    materialize_listenbrainz_isrc_aliases,
     resolve_listenbrainz_identity_conflicts,
 )
 from mlcore.services.listenbrainz_shards import materialize_listenbrainz_shards
@@ -37,6 +39,13 @@ class IncrementalIdentityVersionResult:
     expansion_created_msid_count: int
     conflict_resolved_msid_count: int
     conflict_resolution_redirect_count: int
+    isrc_observation_count: int
+    unique_msid_isrc_pair_count: int
+    distinct_isrc_count: int
+    materialized_isrc_alias_count: int
+    ambiguous_isrc_count: int
+    existing_isrc_alias_conflict_count: int
+    unresolved_isrc_pair_count: int
 
 
 @dataclass(frozen=True)
@@ -176,6 +185,7 @@ def _process_listenbrainz_identity_version(source_version: str) -> IncrementalId
     bridge = import_listenbrainz_identity_bridge(materialized.manifest_path)
     expansion = expand_listenbrainz_identity_graph(source_version)
     conflict = resolve_listenbrainz_identity_conflicts(source_version)
+    isrc_aliases = materialize_listenbrainz_isrc_aliases(source_version)
     return IncrementalIdentityVersionResult(
         source_version=source_version,
         archive_path=archive_path,
@@ -188,6 +198,13 @@ def _process_listenbrainz_identity_version(source_version: str) -> IncrementalId
         expansion_created_msid_count=expansion.created_msid_count,
         conflict_resolved_msid_count=conflict.resolved_msid_count,
         conflict_resolution_redirect_count=conflict.redirect_count,
+        isrc_observation_count=isrc_aliases.isrc_observation_count,
+        unique_msid_isrc_pair_count=isrc_aliases.unique_msid_isrc_pair_count,
+        distinct_isrc_count=isrc_aliases.distinct_isrc_count,
+        materialized_isrc_alias_count=isrc_aliases.materialized_alias_count,
+        ambiguous_isrc_count=isrc_aliases.ambiguous_isrc_count,
+        existing_isrc_alias_conflict_count=isrc_aliases.existing_alias_conflict_count,
+        unresolved_isrc_pair_count=isrc_aliases.unresolved_pair_count,
     )
 
 
@@ -205,12 +222,15 @@ def _latest_listenbrainz_source_run(source_version: str) -> SourceIngestionRun:
 
 
 def _existing_unprocessed_listenbrainz_versions(*, limit: int) -> list[str]:
-    successful_identity_versions = set(
-        SourceIngestionRun.objects.filter(
+    successful_identity_versions = {
+        source_version
+        for source_version, metadata in SourceIngestionRun.objects.filter(
             source=LISTENBRAINZ_IDENTITY_SOURCE_ID,
             status='succeeded',
-        ).values_list('source_version', flat=True)
-    )
+        ).values_list('source_version', 'metadata')
+        if int((metadata or {}).get('extraction_schema_version') or 0) >= EXTRACTION_SCHEMA_VERSION
+        and bool((metadata or {}).get('isrc_aliases_materialized'))
+    }
     versions: list[str] = []
     for source_version in SourceIngestionRun.objects.filter(
         source=LISTENBRAINZ_SOURCE_ID,

@@ -8,7 +8,7 @@ from mlcore.services.listenbrainz_shards import configured_listenbrainz_shard_ro
 
 
 class Command(BaseCommand):
-    help = 'Extract exact MSID-to-MBID evidence from cold ListenBrainz shards and materialize canonical redirects.'
+    help = 'Extract MSID-to-MBID and MSID-to-ISRC identity candidates from cold ListenBrainz shards.'
 
     def add_arguments(self, parser):
         parser.add_argument('--manifest', help='Path to a materialized ListenBrainz shard manifest.')
@@ -25,13 +25,14 @@ class Command(BaseCommand):
             if event == 'extract_progress':
                 self.stderr.write(
                     'event=extract_progress shard={shard_key} rows={source_row_count} mapped={mapped_row_count} '
-                    'malformed={malformed_row_count}'.format(**progress)
+                    'isrc_observations={isrc_observation_count} malformed={malformed_row_count}'.format(**progress)
                 )
             elif event == 'shard_complete':
                 eta = progress.get('eta_seconds')
                 self.stderr.write(
                     'event=shard_complete shard={current_shard} completed={completed_shards}/{shard_count} '
                     'rows={source_row_count} mapped={mapped_row_count} unique_pairs={unique_pair_count} '
+                    'isrc_observations={isrc_observation_count} unique_isrc_pairs={unique_isrc_pair_count} '
                     'throughput_bps={throughput_bytes_per_second:.0f} eta_seconds={eta}'.format(
                         eta='unknown' if eta is None else f'{eta:.0f}',
                         **progress,

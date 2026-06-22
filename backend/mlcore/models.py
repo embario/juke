@@ -61,6 +61,16 @@ CANONICAL_REDIRECT_STATUS_CHOICES = (
     ('retired', 'Retired'),
 )
 
+HYDRATION_STATUS_CHOICES = (
+    ('pending', 'Pending'),
+    ('running', 'Running'),
+    ('retry', 'Retry'),
+    ('matched', 'Matched'),
+    ('no_match', 'No match'),
+    ('ambiguous', 'Ambiguous'),
+    ('dead', 'Dead'),
+)
+
 
 def _binary_to_hex(value):
     if isinstance(value, memoryview):
@@ -228,10 +238,13 @@ class ListenBrainzIdentityShard(models.Model):
     shard_key = models.CharField(max_length=255)
     source_sha256 = models.CharField(max_length=64)
     output_path = models.CharField(max_length=1024)
+    extraction_schema_version = models.IntegerField(default=1)
     status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
     source_row_count = models.BigIntegerField(default=0)
     mapped_row_count = models.BigIntegerField(default=0)
     unique_pair_count = models.BigIntegerField(default=0)
+    isrc_observation_count = models.BigIntegerField(default=0)
+    unique_isrc_pair_count = models.BigIntegerField(default=0)
     malformed_row_count = models.BigIntegerField(default=0)
     started_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -463,6 +476,86 @@ class CanonicalItemAlias(models.Model):
 
     def __str__(self):
         return f'{self.source}:{self.resource_type}:{self.source_id}'
+
+
+class ProviderHydrationRun(models.Model):
+    """Auditable execution and throughput counters for provider hydration."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=32)
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='running')
+    requested_limit = models.BigIntegerField(null=True, blank=True)
+    attempted_count = models.BigIntegerField(default=0)
+    matched_count = models.BigIntegerField(default=0)
+    no_match_count = models.BigIntegerField(default=0)
+    ambiguous_count = models.BigIntegerField(default=0)
+    retry_count = models.BigIntegerField(default=0)
+    rate_limited_count = models.BigIntegerField(default=0)
+    dead_count = models.BigIntegerField(default=0)
+    request_count = models.BigIntegerField(default=0)
+    configured_rps = models.FloatField(default=1.0)
+    metadata = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mlcore_provider_hydration_run'
+        db_tablespace = 'juke_mlcore_cold'
+        indexes = [
+            models.Index(fields=['provider', 'started_at'], name='mlcore_phr_prov_start_idx'),
+            models.Index(fields=['status'], name='mlcore_phr_status_idx'),
+        ]
+        ordering = ['-started_at']
+
+
+class ProviderHydrationItem(models.Model):
+    """Durable queue and latest provider-resolution evidence for one identifier."""
+
+    id = models.BigAutoField(primary_key=True)
+    canonical_item = models.ForeignKey(CanonicalItem, on_delete=models.CASCADE, related_name='hydration_items')
+    provider = models.CharField(max_length=32)
+    identifier_type = models.CharField(max_length=32)
+    identifier = models.CharField(max_length=512)
+    priority = models.IntegerField(default=100)
+    status = models.CharField(max_length=16, choices=HYDRATION_STATUS_CHOICES, default='pending')
+    attempt_count = models.IntegerField(default=0)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
+    leased_by = models.CharField(max_length=128, blank=True, default='')
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    last_http_status = models.IntegerField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    evidence = models.JSONField(default=dict, blank=True)
+    source_version = models.CharField(max_length=255, blank=True, default='')
+    last_run = models.ForeignKey(
+        ProviderHydrationRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='items',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mlcore_provider_hydration_item'
+        db_tablespace = 'juke_mlcore_cold'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['provider', 'identifier_type', 'identifier'],
+                name='mlcore_phi_provider_identifier_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['provider', 'status', 'next_attempt_at', 'priority'],
+                name='mlcore_phi_claim_idx',
+            ),
+            models.Index(fields=['canonical_item', 'provider'], name='mlcore_phi_canon_prov_idx'),
+            models.Index(fields=['lease_expires_at'], name='mlcore_phi_lease_idx'),
+        ]
+        ordering = ['priority', 'id']
 
 
 class CanonicalItemRedirect(models.Model):

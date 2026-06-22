@@ -222,6 +222,21 @@ docker compose -f docker-compose.yml exec backend python manage.py shell -c \
 - `NormalizedInteraction.track` may be null when MBID/Spotify fallback resolution fails. Those rows remain valuable for audit metrics but do not form baskets until resolved.
 - Manual full/incremental import tasks remain available for one-off backfills and local testing against explicit files.
 
+### Incremental identity enrichment
+
+`ingest_incremental_identity` extracts both MSID-to-MBID and MSID-to-ISRC
+facts in one shard pass. MSID-to-MBID evidence remains in cold bridge tables
+for conflict-aware canonical redirects. ISRC candidates are transient: after
+redirect resolution, unambiguous ISRCs are written directly to
+`mlcore_canonical_item_alias` with `source=isrc`; no second durable ISRC bridge
+table is created. ISRCs that resolve to multiple canonical items or conflict
+with an existing alias are counted and excluded.
+
+Per-version output reports ISRC observations, unique MSID/ISRC pairs, distinct
+ISRCs, aliases materialized, ambiguous ISRCs, existing-alias conflicts, and
+unresolved pairs. Extraction schema checkpoints cause releases processed by an
+older extractor to be replayed once and make later runs idempotent.
+
 ## MusicBrainz identity bridge
 
 The MusicBrainz bridge imports recording MBID-to-ISRC evidence and direct
@@ -246,6 +261,18 @@ Each bridge execution creates a `SourceIngestionRun` with recording, ISRC,
 malformed, duplicate, provider URL, and inserted-row counters. Replaying the
 same source version is safe: durable ISRC and URL evidence has source-versioned
 uniqueness constraints.
+
+Promote unambiguous MusicBrainz ISRCs into the shared identity graph with:
+
+```bash
+docker compose run --rm backend python manage.py materialize_musicbrainz_isrc_aliases \
+  --source-version <version> --batch-size 100000
+```
+
+The promoter checkpoints by ISRC, writes directly to
+`mlcore_canonical_item_alias`, excludes ISRCs associated with multiple MBIDs,
+and never reassigns an existing conflicting alias. Interrupted runs can resume
+with `--resume-run-id <uuid>`.
 
 ## Serving interfaces (integration)
 

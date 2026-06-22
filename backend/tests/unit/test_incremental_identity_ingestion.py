@@ -9,6 +9,7 @@ from mlcore.services.incremental_identity import run_incremental_identity_ingest
 from mlcore.services.listenbrainz_identity_bridge import (
     ConflictResolutionResult,
     IdentityGraphExpansionResult,
+    ISRCAliasMaterializationResult,
     ListenBrainzIdentityBridgeResult,
 )
 from mlcore.services.listenbrainz_shards import ListenBrainzShardMaterializationResult
@@ -30,6 +31,7 @@ class IncrementalIdentityIngestionTests(TestCase):
             status='succeeded',
         )
 
+    @mock.patch('mlcore.services.incremental_identity.materialize_listenbrainz_isrc_aliases')
     @mock.patch('mlcore.services.incremental_identity.resolve_listenbrainz_identity_conflicts')
     @mock.patch('mlcore.services.incremental_identity.expand_listenbrainz_identity_graph')
     @mock.patch('mlcore.services.incremental_identity.import_listenbrainz_identity_bridge')
@@ -42,6 +44,7 @@ class IncrementalIdentityIngestionTests(TestCase):
         mock_bridge,
         mock_expand,
         mock_conflict,
+        mock_isrc_aliases,
     ):
         mock_sync.return_value = RemoteSyncResult(
             status='succeeded',
@@ -66,6 +69,8 @@ class IncrementalIdentityIngestionTests(TestCase):
             source_row_count=10,
             mapped_row_count=8,
             unique_pair_count=6,
+            isrc_observation_count=4,
+            unique_isrc_pair_count=3,
             malformed_row_count=0,
             active_mapping_count=5,
             conflict_msid_count=1,
@@ -95,6 +100,16 @@ class IncrementalIdentityIngestionTests(TestCase):
             min_winner_share=0.95,
             min_winner_shards=2,
         )
+        mock_isrc_aliases.return_value = ISRCAliasMaterializationResult(
+            source_version=self.source_version,
+            isrc_observation_count=4,
+            unique_msid_isrc_pair_count=3,
+            distinct_isrc_count=2,
+            materialized_alias_count=2,
+            ambiguous_isrc_count=0,
+            existing_alias_conflict_count=0,
+            unresolved_pair_count=0,
+        )
 
         result = run_incremental_identity_ingestion(max_incrementals=3)
 
@@ -105,6 +120,8 @@ class IncrementalIdentityIngestionTests(TestCase):
         mock_bridge.assert_called_once_with('/tmp/shards/manifest.json')
         mock_expand.assert_called_once_with(self.source_version)
         mock_conflict.assert_called_once_with(self.source_version)
+        mock_isrc_aliases.assert_called_once_with(self.source_version)
+        self.assertEqual(result.processed_versions[0].materialized_isrc_alias_count, 2)
         run = SourceIngestionRun.objects.get(source='mlcore-incremental-identity')
         self.assertEqual(run.status, 'succeeded')
         self.assertEqual(run.imported_row_count, 5)

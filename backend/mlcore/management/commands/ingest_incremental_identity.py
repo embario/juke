@@ -32,7 +32,9 @@ class Command(BaseCommand):
             elif event == 'incremental_identity_version_complete':
                 self.stderr.write(
                     'event=incremental_identity_version_complete '
-                    'source_version={source_version} redirects={redirect_count} conflicts={conflict_msid_count}'.format(
+                    'source_version={source_version} redirects={redirect_count} conflicts={conflict_msid_count} '
+                    'distinct_isrcs={distinct_isrc_count} isrc_aliases={materialized_isrc_alias_count} '
+                    'ambiguous_isrcs={ambiguous_isrc_count}'.format(
                         **progress
                     )
                 )
