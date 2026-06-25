@@ -156,3 +156,49 @@ python manage.py materialize_canonical_aliases --resume-run-id <run-uuid>
 ```
 
 Prometheus textfile metrics remain the live observability surface, while PostgreSQL is the source of truth for run status, counters, checkpoints, and source/algorithm versions.
+
+## MusicBrainz Dump Staging
+
+MLCore stages the official MusicBrainz core database dump on cold storage before
+the MBID-to-ISRC bridge importer reads it. The core `mbdump.tar.bz2` archive is
+the only required artifact: it contains `recording`, `isrc`, `url`,
+`l_recording_url`, `link`, and `link_type`. The derived and edit-history dumps
+are not needed for this bridge.
+
+Preview the current official release and capacity requirement without
+downloading it:
+
+```bash
+docker compose run --rm backend \
+  python manage.py stage_musicbrainz_dump --plan --json
+```
+
+Stage and verify the release:
+
+```bash
+docker compose run --rm backend \
+  python manage.py stage_musicbrainz_dump
+```
+
+The default cold path is
+`/srv/data/backups/juke/musicbrainz/releases/<source-version>/`:
+
+```text
+manifest.json
+raw/mbdump.tar.bz2
+staging/
+```
+
+The command discovers `LATEST`, reads `SHA256SUMS` from the same official
+release directory, checks free space, downloads through an atomic `.part`
+file, verifies SHA-256 and required archive members, then records the release
+in `mlcore_source_ingestion_run`. Reruns reuse a verified archive. A corrupt or
+incomplete download never replaces the previous artifact.
+
+The default pre-download requirement is **100 GiB free**. As of the
+`20260613-002047` export, the core archive is 7,260,740,543 bytes (about
+6.76 GiB). Budget **80 GiB expanded** until the first selective extraction
+records exact table sizes; the command requires the larger of compressed plus
+estimated-expanded bytes or the configured 100 GiB floor. Override the reserve
+with `MLCORE_MUSICBRAINZ_MINIMUM_FREE_BYTES` only after accounting for
+downstream staging needs.

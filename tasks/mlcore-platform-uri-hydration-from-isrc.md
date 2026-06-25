@@ -1,9 +1,9 @@
 ---
 id: mlcore-platform-uri-hydration-from-isrc
 title: MLCore platform URI hydration from ISRC inventory
-status: ready
+status: review
 priority: p1
-owner: unassigned
+owner: codex
 area: platform
 label: BACKEND/ML
 labels:
@@ -13,7 +13,7 @@ labels:
   - identity
   - design
 complexity: 3
-updated_at: 2026-06-11
+updated_at: 2026-06-22
 ---
 
 ## Goal
@@ -150,6 +150,20 @@ That keeps future Apple Music/YouTube Music/etc. integrations from changing cano
 
 ## Handoff
 
-- Completed: design task created.
-- Next: draft ADR and first bounded Spotify hydration prototype.
-- Blockers: ISRC alias inventory from `mlcore-isrc-alias-enrichment`.
+- Implemented durable cold-storage hydration queue/run models, exact-ISRC Spotify
+  provider adapter, singleton PostgreSQL worker lease, expiring item leases, bounded
+  retry/backoff, adaptive `429` handling, textfile metrics, and management command.
+- Added dedicated hydration credential settings; shared social-auth credentials are a
+  development fallback.
+- Production migration `0033` applied on Neptune.
+- Pilot run `8ce3f580-6e29-4c98-99de-f8335654675f` completed 300 requests in 299.5s:
+  170 matched, 124 no-match, 6 ambiguous, 0 retries, and 0 rate limits.
+- Exact starting backlog: 1,857,666 ISRCs. Measured-rate ETA is 21.46 days, or 23.6
+  days with a 10% operational contingency.
+- Full queue seed and 1 request/s background hydration launched on 2026-06-22.
+- Full queue contains 1,857,660 cold rows and occupies 613,629,952 bytes including
+  indexes immediately after seeding. Production run:
+  `85865fd9-2c33-43c6-9c54-6d5fcf0d65a9`.
+- Next: monitor rate limits and observed ETA; configure a dedicated Spotify app before
+  increasing the rate ceiling; add explicit reconciliation policy for ambiguous rows.
+- Blockers: none for the conservative 1 request/s run.

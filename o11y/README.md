@@ -37,6 +37,9 @@ What the dashboard covers:
   `mlcore_tablespace_mlcore_*` textfile metrics
 - canonical alias materialization progress from
   `mlcore_canonical_alias_materialization_*` textfile metrics
+- canonical identity inventory from `mlcore_canonical_items`,
+  `mlcore_canonical_aliases`, `mlcore_musicbrainz_*`,
+  `mlcore_identity_redirects`, and `mlcore_listenbrainz_*` textfile metrics
 
 Operational note:
 
@@ -49,6 +52,8 @@ Operational note:
 - Refresh table residency metrics with `scripts/mlcore_tablespace_metrics.sh`.
 - Refresh completed evaluation history metrics with
   `scripts/mlcore_evaluation_history_metrics.sh`.
+- Refresh canonical identity inventory metrics with
+  `scripts/mlcore_identity_metrics.sh`.
 - `materialize_canonical_aliases` writes live progress metrics to
   `/srv/monitoring/node-exporter/textfile/mlcore_canonical_alias_materialization.prom`
   by default.

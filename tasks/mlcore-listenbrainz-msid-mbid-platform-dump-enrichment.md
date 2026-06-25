@@ -1,9 +1,9 @@
 ---
 id: mlcore-listenbrainz-msid-mbid-platform-dump-enrichment
 title: MLCore ListenBrainz dump enrichment for MSID, MBID, ISRC, and platform IDs
-status: ready
+status: in_progress
 priority: p1
-owner: unassigned
+owner: codex
 area: platform
 label: BACKEND/ML
 labels:
@@ -13,7 +13,7 @@ labels:
   - data-ingestion
   - identity
 complexity: 5
-updated_at: 2026-06-11
+updated_at: 2026-06-21
 ---
 
 ## Goal
@@ -68,6 +68,20 @@ Mine ListenBrainz dumps for identity evidence that enriches MLCore's local ident
 
 ## Handoff
 
-- Completed: task created from identity graph hydration design.
-- Next: implement manifest discovery and a small extractor prototype against one monthly dump.
+- Completed: confirmed exact MSID-to-MBID evidence is embedded in the locally materialized ListenBrainz shards.
+- Completed: added resumable per-shard extraction, cold evidence/checkpoint tables, exact conflict classification, 64-bit ingestion counters, progress/throughput/ETA reporting, and safe hot canonical redirects.
+- Completed: real-data validation scanned 8 shards and materialized 6 exact redirects with no conflicts.
+- Completed: full 261-shard production backfill succeeded; run ID `699b2eb7-4d4b-48f2-a713-dff7765f342c`.
+- Completed: scanned 1,751,330,064 listens, found 252,222,425 mapped observations, stored 24,133,470 global unique MSID-to-MBID rows, classified 15,481,819 clean active mappings, and excluded 4,085,990 conflicting MSIDs.
+- Completed: identity graph expansion inserted all 7,691,107 missing MSID canonical rows for clean mappings whose MBID target already existed.
+- Completed: clean MSID-to-MBID coverage reached 15,481,819 active canonical redirects.
+- Completed: strict conflict resolver `shard-dominance-v1` promoted 40,198 additional conflict MSIDs using `winner_share >= 0.95` and `winner_shard_observation_count >= 2`; 0 redirect conflicts.
+- Current totals: 15,522,017 active redirects from ListenBrainz identity work; conflict-resolution evidence table is 20 MB cold storage.
+- Completed: added `ingest_incremental_identity`, an incremental ListenBrainz identity ingestion engine that syncs new deltas, materializes shards, imports bridge evidence, expands clean canonical MSIDs, and applies strict conflict resolution.
+- Completed: upgraded the shard extractor to collect normalized ISRCs in the same pass, with resumable observation and unique-pair counters.
+- Completed: unambiguous ISRC candidates now materialize directly into `mlcore_canonical_item_alias` after canonical redirect resolution; no duplicate durable ListenBrainz ISRC evidence table is retained.
+- Completed: ambiguous ISRCs, conflicts with existing aliases, malformed values, and unresolved MSID pairs are counted and excluded without overwriting graph identity.
+- Completed: extraction schema versioning automatically replays pre-ISRC incremental checkpoints once, while subsequent runs remain idempotent.
+- Completed: added `scripts/mlcore_identity_metrics.sh` and a Grafana canonical identity inventory panel for MSIDs, MBIDs, ISRC evidence, vendor aliases, redirects, and bridge/conflict counts.
+- Next: let the active legacy incremental run finish, then rerun the upgraded engine to backfill ISRC aliases for those releases and record live coverage counts.
 - Blockers: none.

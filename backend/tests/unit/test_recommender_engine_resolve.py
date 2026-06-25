@@ -41,6 +41,7 @@ class ResolveEndpointTests(SimpleTestCase):
                 }]
             self.assertIn('mlcore_canonical_item_alias', sql)
             self.assertIn('unnest', sql)
+            self.assertIn('redirect_chain', sql)
             self.assertEqual(
                 params,
                 [
@@ -164,7 +165,8 @@ class ResolveEndpointTests(SimpleTestCase):
                     'identity_graph_algorithm_version': 'canonical-alias-v2',
                 }]
             if 'mlcore_item_cooccurrence' in sql:
-                self.assertEqual(params, [[seed_id], [seed_id]])
+                self.assertEqual(params, [[seed_id]])
+                self.assertIn('mlcore_canonical_item_redirect', sql)
                 return [
                     {'neighbour': candidate_id, 'pmi_score': 2.5, 'co_count': 4},
                     {'neighbour': exclude_id, 'pmi_score': 9.0, 'co_count': 1},

@@ -1,6 +1,6 @@
 # MLCore Identity Graph Hydration Design
 
-Updated: 2026-06-11
+Updated: 2026-06-22
 
 ## Goal
 
@@ -29,11 +29,11 @@ MLCore returning canonical IDs is acceptable until provider alias hydration is m
 
 ## Current Shape
 
-Current canonical item counts on Neptune:
+Current canonical item counts on Neptune (2026-06-22):
 
 ```text
-recording_msid   112,431,541
-recording_mbid    10,924,175
+recording_msid   120,150,287
+recording_mbid    10,926,124
 spotify_track              1
 ```
 
@@ -42,10 +42,9 @@ Current canonical aliases:
 ```text
 listenbrainz:recording   112,431,541
 musicbrainz:recording     10,924,175
-spotify:track                     1
+isrc:recording              1,857,666
+spotify:track                   171
 ```
-
-There is not yet an ISRC bridge materialized in MLCore.
 
 ## Desired Identity Graph
 
@@ -91,6 +90,60 @@ This workstream should be storage-heavy but API-cheap. It should run mostly on c
 Use the current graph's ISRC aliases as an input queue. Resolve ISRCs into Spotify track candidates using Spotify Search, respecting rate limits and backoff. Store successful results back into the same identity graph.
 
 This workstream should be API-quota-heavy but storage-light compared with dump ingestion. It can run indefinitely at a conservative rate.
+
+#### Production execution contract
+
+Spotify hydration is a resumable background projection. It never runs in a request
+path and it never creates a second identity graph.
+
+```text
+hot:  canonical alias (source=isrc, status=active)
+  -> cold: provider hydration item (lease, retry, latest evidence)
+  -> Spotify Search: q=isrc:<normalized ISRC>, type=track, limit=10
+  -> hot:  canonical alias (source=spotify, status=active)
+  -> cold: provider hydration run (throughput and outcome counters)
+```
+
+The provider response must return the normalized query ISRC in
+`track.external_ids.isrc`; search results that merely resemble the query are ignored.
+Zero exact candidates become `no_match`, one becomes an active alias, and multiple
+exact candidates or an alias already owned by another canonical item become
+`ambiguous` for explicit reconciliation.
+
+Only one worker may use the Spotify application credentials at a time. A PostgreSQL
+advisory lock enforces this across hosts. Queue rows use expiring leases so an
+interrupted worker can be replaced without losing work. Network and `5xx` failures use
+bounded exponential backoff with jitter. A `429` honors `Retry-After`, pauses the whole
+worker, halves its request rate, and preserves the item for retry. A `401` refreshes
+the client-credentials token exactly once.
+
+Production should assign this worker a dedicated Spotify application through
+`SPOTIFY_HYDRATION_CLIENT_ID` and `SPOTIFY_HYDRATION_CLIENT_SECRET`. This prevents
+interactive OAuth/catalog traffic from consuming the same app-level quota outside the
+worker's limiter. The shared social-auth credentials remain a development fallback.
+
+The initial production rate is one request per second. Spotify uses an
+application-specific rolling 30-second limit and does not publish its exact value, so
+raising this ceiling requires a bounded pilot with zero `429`s. Runtime metrics expose
+backlog, outcomes, rate-limit count, accepted throughput, and observed-rate ETA.
+
+#### Completion estimate
+
+Spotify Search resolves one ISRC per request. Batching unrelated ISRCs into one search
+would make completeness unverifiable because Search caps the returned track list. For
+backlog `B`, sustained accepted rate `R`, and measured retry overhead `E`:
+
+```text
+requests = B * (1 + E)
+seconds  = requests / R
+```
+
+Before subtracting already hydrated items, the current 1,857,666 active ISRC inventory
+would take 43.0 days at 0.5 requests/s, 21.5 days at 1 request/s, 10.8 days at 2
+requests/s, or 4.3 days at 5 requests/s without retries. These are capacity scenarios,
+not quota claims. The bounded live pilot supplies accepted throughput and retry
+overhead for the operational P50/P90 estimate. `no_match` outcomes are not retried
+until a deliberate later source refresh.
 
 ## Canonical Merge Problem
 
@@ -149,7 +202,7 @@ Estimated cold-storage needs:
 
 | Source | Current Known/Expected Size |
 | --- | ---: |
-| MusicBrainz `mbdump.tar.bz2` | 7 GB compressed in 2026-06 full export |
+| MusicBrainz `mbdump.tar.bz2` | 7,260,740,543 bytes (6.76 GiB) in `20260613-002047` |
 | MusicBrainz derived dump | 476 MB compressed in 2026-06 full export |
 | MusicBrainz edit history | 15 GB compressed, not needed for this plan |
 | Expanded MusicBrainz staging | plan for tens to low hundreds of GB |
@@ -214,6 +267,9 @@ The design should make vendor data another provider evidence source, not a diffe
 
 ## Source Notes
 
-- MusicBrainz full export checked on 2026-06-09 listed `mbdump.tar.bz2` at 7 GB compressed, `mbdump-derived.tar.bz2` at 476 MB, and `mbdump-edit.tar.bz2` at 15 GB.
+- MusicBrainz full export `20260613-002047`, checked on 2026-06-13, listed
+  `mbdump.tar.bz2` at 7,260,740,543 bytes. This core artifact contains the
+  recording/ISRC/URL relationship tables required by the first bridge. The
+  derived and edit-history dumps are not required for that import.
 - ListenBrainz docs describe full dumps and incremental dumps, with listens stored as monthly JSON-lines files.
 - Spotify Search supports `isrc` filters for tracks. Spotify rate limits are rolling-window based and return `429` when exceeded.
