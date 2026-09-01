@@ -10,6 +10,8 @@ import JukeWorldRoute from './features/world/routes/JukeWorldRoute';
 import OnboardingVisualizations from './features/auth/components/onboarding/visualizations';
 import OnboardingRoute from './features/auth/routes/OnboardingRoute';
 import MessageDesignLabRoute from './features/messages/routes/MessageDesignLabRoute';
+import PasswordResetRoute from './features/auth/routes/PasswordResetRoute';
+import ResetPasswordConfirmRoute from './features/auth/routes/ResetPasswordConfirmRoute';
 
 const router = createBrowserRouter(
   [
@@ -26,8 +28,24 @@ const router = createBrowserRouter(
           element: <LoginRoute />,
         },
         {
+          path: 'accounts/login',
+          element: <LoginRoute />,
+        },
+        {
           path: 'register',
           element: <RegisterRoute />,
+        },
+        {
+          path: 'accounts/signup',
+          element: <RegisterRoute />,
+        },
+        {
+          path: 'accounts/password/reset',
+          element: <PasswordResetRoute />,
+        },
+        {
+          path: 'reset-password',
+          element: <ResetPasswordConfirmRoute />,
         },
         {
           path: 'verify-user/',

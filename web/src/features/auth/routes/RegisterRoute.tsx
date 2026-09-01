@@ -10,6 +10,7 @@ import StatusBanner from '@uikit/components/StatusBanner';
 const RegisterRoute = () => {
   const { register, resendRegistrationVerification } = useAuth();
   const navigate = useNavigate();
+  const vibeSearch = typeof window === 'undefined' ? '' : window.location.search;
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
@@ -34,7 +35,7 @@ const RegisterRoute = () => {
     try {
       await register(payload);
       setSuccess('Registration submitted! Verify your inbox before signing in.');
-      setTimeout(() => navigate('/login'), 800);
+      setTimeout(() => navigate(`/accounts/login${vibeSearch}`), 800);
     } catch (err) {
       if (err instanceof ApiError) {
         const fieldMessage = formatFieldErrors(err.payload);
