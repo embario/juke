@@ -19,7 +19,7 @@ usage() {
 Usage: $(basename "$0") -p <project> [-s simulator] [-o os] [--ios-only | --android-only] [--include-jukekit-tests]
 
 Options:
-  -p  Project name (required): juke, shotclock, or tunetrivia
+  -p  Project name (required): juke, jukevibe, shotclock, or tunetrivia
   -s  Simulator name or UUID (default: ${SIM_TARGET_DEFAULT})
   -o  Simulator OS version (default: ${SIM_OS_DEFAULT})
   --ios-only      Run only iOS tests
@@ -83,8 +83,13 @@ if [[ -z "${PROJECT_NAME}" ]]; then
     exit 2
 fi
 
-if [[ "${PROJECT_NAME}" != "juke" && "${PROJECT_NAME}" != "shotclock" && "${PROJECT_NAME}" != "tunetrivia" ]]; then
-    echo "Unsupported project '${PROJECT_NAME}'. Use 'juke', 'shotclock', or 'tunetrivia'." >&2
+if [[ "${PROJECT_NAME}" != "juke" && "${PROJECT_NAME}" != "jukevibe" && "${PROJECT_NAME}" != "shotclock" && "${PROJECT_NAME}" != "tunetrivia" ]]; then
+    echo "Unsupported project '${PROJECT_NAME}'. Use 'juke', 'jukevibe', 'shotclock', or 'tunetrivia'." >&2
+    exit 2
+fi
+
+if [[ "${PROJECT_NAME}" == "jukevibe" && "${run_android}" == "true" ]]; then
+    echo "Juke Vibe is currently iOS-only; pass --ios-only." >&2
     exit 2
 fi
 
@@ -112,7 +117,10 @@ run_ios_tests() {
     local ios_disable_registration="${DISABLE_REGISTRATION:-0}"
 
     if command -v xcrun >/dev/null 2>&1; then
-        if ! xcrun simctl list devices available | grep -F "${SIM_TARGET} (" >/dev/null 2>&1; then
+        if [[ "${SIM_TARGET}" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] \
+            && xcrun simctl list devices available | grep -F "(${SIM_TARGET})" >/dev/null 2>&1; then
+            destination="platform=iOS Simulator,id=${SIM_TARGET}"
+        elif ! xcrun simctl list devices available | grep -F "${SIM_TARGET} (" >/dev/null 2>&1; then
             echo "Simulator '${SIM_TARGET}' is not available. Falling back to generic iOS Simulator destination."
             destination="platform=iOS Simulator"
         fi
@@ -188,6 +196,9 @@ if "${run_ios}"; then
     case "${PROJECT_NAME}" in
         juke)
             run_ios_tests "${IOS_ROOT}/juke" "juke-iOS" "juke-iOS"
+            ;;
+        jukevibe)
+            run_ios_tests "${IOS_ROOT}/jukevibe" "JukeVibe" "JukeVibe"
             ;;
         shotclock)
             run_ios_tests "${IOS_ROOT}/shotclock" "ShotClock" "ShotClock"

@@ -77,6 +77,7 @@ export const AuthProvider = ({ children }: Props) => {
   const login = useCallback(async (payload: LoginPayload) => {
     const response = await loginRequest(payload);
     setState({ token: response.token, username: payload.username });
+    return response.token;
   }, []);
 
   const authenticateWithToken = useCallback((token: string, username: string) => {

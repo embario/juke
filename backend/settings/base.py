@@ -157,6 +157,7 @@ INSTALLED_APPS = [
     'django_filters',
     'django_extensions',
     'juke_auth',
+    'vibe',
     'catalog',
     'mlcore',
     'recommender',
@@ -292,6 +293,8 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     'DEFAULT_THROTTLE_RATES': {
         'spotify_token_issue': os.environ.get('SPOTIFY_TOKEN_ISSUE_RATE', '30/min'),
+        'vibe_auth_exchange': os.environ.get('VIBE_AUTH_EXCHANGE_RATE', '20/min'),
+        'vibe_user': os.environ.get('VIBE_USER_RATE', '120/min'),
     },
 }
 
@@ -479,6 +482,12 @@ JUKE_PROMOTION_GATE_COVERAGE_MIN = float(os.environ.get('JUKE_PROMOTION_GATE_COV
 # OpenAI / TuneTrivia
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 TUNETRIVIA_TRIVIA_MODEL = os.environ.get('TUNETRIVIA_TRIVIA_MODEL', 'gpt-4o-mini')
+VIBE_CHAT_MODEL = os.environ.get('VIBE_CHAT_MODEL', 'gpt-4o-mini')
+VIBE_AUTH_CODE_TTL_SECONDS = int(os.environ.get('VIBE_AUTH_CODE_TTL_SECONDS', '120'))
+VIBE_OAUTH_CLIENTS = {
+    'juke-vibe-mac': {'juke-vibe://auth/callback'},
+    'juke-vibe-ios': {'juke-vibe://auth/callback'},
+}
 
 
 # Static files (CSS, JavaScript, Images)

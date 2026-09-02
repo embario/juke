@@ -1,0 +1,512 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		005C08CDBD145128E6D2A19C /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48FE1052273D2080F170C6BF /* DiscoverView.swift */; };
+		00671C943E15AF43FEE3D794 /* ChatVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EB9E58CD7A6B55BB5B1B27E /* ChatVault.swift */; };
+		1371790179B9F309DF4B0BE2 /* VibeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9314E6C1E03190DF1A74987 /* VibeModels.swift */; };
+		236C056A82B588275BA4C05B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B4BE9E18E4279EF1558E431F /* Assets.xcassets */; };
+		2381C83347E3C5AF86A689B4 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E326B35FCEF49D24598ADDD /* RootView.swift */; };
+		292D6571BA50264F4032B637 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72540C61CFB528D0D7E8E96E /* SettingsView.swift */; };
+		6AF632896C83D0C266812167 /* JukeAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61CD97758120E7E55F915691 /* JukeAuthService.swift */; };
+		872837CA3B4D30EB47E4C7F2 /* VibeAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCB487CA8BF7744406F0FA5 /* VibeAppModel.swift */; };
+		B5111309AE9E7885A2A55842 /* VibeAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6AF6E7EA2C8452E7636AF2 /* VibeAPI.swift */; };
+		BD2ABDBF7DD5DA3B2341334A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 47D1043453F1FF9302B92B26 /* PrivacyInfo.xcprivacy */; };
+		C35C278B06BB895E4961EDFF /* NowPlayingPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33DD6216D9FAACD29BD31CDC /* NowPlayingPill.swift */; };
+		CD6B58D490515B6BB48422E9 /* LocalVibeIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C02FD077C9B48BE3632E49F /* LocalVibeIntelligence.swift */; };
+		DF1DA4742785A3A83200DB1A /* JukeVibeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF8A9AB48E21C3E856C14485 /* JukeVibeTests.swift */; };
+		EA514A76B8F4A424BED5BA06 /* NowPlayingObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F88F9FAB1932DB759C105D /* NowPlayingObserver.swift */; };
+		ED8B27C5FF9FEC287F9275C1 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A63B77D107A15E52DACBADDE /* ChatView.swift */; };
+		EDDBE3A07E3530118E917648 /* JukeVibeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 773FB2F892E6FE6C5D29A31F /* JukeVibeApp.swift */; };
+		FD3E4E4FEF05879C36BFBF5B /* VibeAtmosphere.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96891105150D5130926AFBC6 /* VibeAtmosphere.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		15DAB65794DCA580FB058E74 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 778B42FD038FB666BE73C0E6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6971C0DF3832AB1EC974FC4F;
+			remoteInfo = JukeVibe;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0AD71CBF404B2F27BBE70059 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		2C02FD077C9B48BE3632E49F /* LocalVibeIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalVibeIntelligence.swift; sourceTree = "<group>"; };
+		33DD6216D9FAACD29BD31CDC /* NowPlayingPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingPill.swift; sourceTree = "<group>"; };
+		3E326B35FCEF49D24598ADDD /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		3F6AF6E7EA2C8452E7636AF2 /* VibeAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeAPI.swift; sourceTree = "<group>"; };
+		47D1043453F1FF9302B92B26 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		48FE1052273D2080F170C6BF /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
+		61CD97758120E7E55F915691 /* JukeAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeAuthService.swift; sourceTree = "<group>"; };
+		72540C61CFB528D0D7E8E96E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		773FB2F892E6FE6C5D29A31F /* JukeVibeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeVibeApp.swift; sourceTree = "<group>"; };
+		96891105150D5130926AFBC6 /* VibeAtmosphere.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeAtmosphere.swift; sourceTree = "<group>"; };
+		9BCB487CA8BF7744406F0FA5 /* VibeAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeAppModel.swift; sourceTree = "<group>"; };
+		9EB9E58CD7A6B55BB5B1B27E /* ChatVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatVault.swift; sourceTree = "<group>"; };
+		A63B77D107A15E52DACBADDE /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		AF8A9AB48E21C3E856C14485 /* JukeVibeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeVibeTests.swift; sourceTree = "<group>"; };
+		B4BE9E18E4279EF1558E431F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B7E8AED740CB8D99FA066548 /* JukeVibeTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = JukeVibeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C8569C8C3DBA624BCFD15AA4 /* JukeVibe.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JukeVibe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D4F88F9FAB1932DB759C105D /* NowPlayingObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingObserver.swift; sourceTree = "<group>"; };
+		EB143CC458BEEB1AD0BFCAB5 /* JukeVibe.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JukeVibe.entitlements; sourceTree = "<group>"; };
+		F9314E6C1E03190DF1A74987 /* VibeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeModels.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		28BD708FC3B9A8C669B8ACA0 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C8569C8C3DBA624BCFD15AA4 /* JukeVibe.app */,
+				B7E8AED740CB8D99FA066548 /* JukeVibeTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3BA9B21E49E48F14862C5A3B /* JukeVibeTests */ = {
+			isa = PBXGroup;
+			children = (
+				AF8A9AB48E21C3E856C14485 /* JukeVibeTests.swift */,
+			);
+			path = JukeVibeTests;
+			sourceTree = "<group>";
+		};
+		3C17582F4FABCA7154600338 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				F9314E6C1E03190DF1A74987 /* VibeModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		5A8220C2A5AFFEA9B127533F /* JukeVibe */ = {
+			isa = PBXGroup;
+			children = (
+				B4BE9E18E4279EF1558E431F /* Assets.xcassets */,
+				0AD71CBF404B2F27BBE70059 /* Info.plist */,
+				EB143CC458BEEB1AD0BFCAB5 /* JukeVibe.entitlements */,
+				72ACD582A0C83642179F8CAA /* App */,
+				3C17582F4FABCA7154600338 /* Models */,
+				D186C20CB9FC07DE494800D5 /* Services */,
+				BAFF04EF30B3E637A5559DC3 /* Views */,
+			);
+			path = JukeVibe;
+			sourceTree = "<group>";
+		};
+		72ACD582A0C83642179F8CAA /* App */ = {
+			isa = PBXGroup;
+			children = (
+				773FB2F892E6FE6C5D29A31F /* JukeVibeApp.swift */,
+				9BCB487CA8BF7744406F0FA5 /* VibeAppModel.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		BAFF04EF30B3E637A5559DC3 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A63B77D107A15E52DACBADDE /* ChatView.swift */,
+				48FE1052273D2080F170C6BF /* DiscoverView.swift */,
+				33DD6216D9FAACD29BD31CDC /* NowPlayingPill.swift */,
+				3E326B35FCEF49D24598ADDD /* RootView.swift */,
+				72540C61CFB528D0D7E8E96E /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		D186C20CB9FC07DE494800D5 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				9EB9E58CD7A6B55BB5B1B27E /* ChatVault.swift */,
+				61CD97758120E7E55F915691 /* JukeAuthService.swift */,
+				2C02FD077C9B48BE3632E49F /* LocalVibeIntelligence.swift */,
+				D4F88F9FAB1932DB759C105D /* NowPlayingObserver.swift */,
+				3F6AF6E7EA2C8452E7636AF2 /* VibeAPI.swift */,
+				96891105150D5130926AFBC6 /* VibeAtmosphere.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		D42C30CCF13AB8CD3ECE099A = {
+			isa = PBXGroup;
+			children = (
+				47D1043453F1FF9302B92B26 /* PrivacyInfo.xcprivacy */,
+				5A8220C2A5AFFEA9B127533F /* JukeVibe */,
+				3BA9B21E49E48F14862C5A3B /* JukeVibeTests */,
+				28BD708FC3B9A8C669B8ACA0 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6971C0DF3832AB1EC974FC4F /* JukeVibe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5095CA472F32EE92A6888ABD /* Build configuration list for PBXNativeTarget "JukeVibe" */;
+			buildPhases = (
+				7CD45DD803070311296001F6 /* Sources */,
+				A89BA8C79C4BFB82DB3124F5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = JukeVibe;
+			packageProductDependencies = (
+			);
+			productName = JukeVibe;
+			productReference = C8569C8C3DBA624BCFD15AA4 /* JukeVibe.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C3AFB82D2D7510EC1BCB13C0 /* JukeVibeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9DA6D5AE5C81098D98D2212D /* Build configuration list for PBXNativeTarget "JukeVibeTests" */;
+			buildPhases = (
+				9164CD79028199CC04A6C8FD /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D7CE3EF1DC1508495065B9C9 /* PBXTargetDependency */,
+			);
+			name = JukeVibeTests;
+			packageProductDependencies = (
+			);
+			productName = JukeVibeTests;
+			productReference = B7E8AED740CB8D99FA066548 /* JukeVibeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		778B42FD038FB666BE73C0E6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					6971C0DF3832AB1EC974FC4F = {
+						DevelopmentTeam = 2WMS6785YD;
+						ProvisioningStyle = Automatic;
+					};
+					C3AFB82D2D7510EC1BCB13C0 = {
+						DevelopmentTeam = 2WMS6785YD;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 3271A76D214DEACDC04B699C /* Build configuration list for PBXProject "JukeVibe" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D42C30CCF13AB8CD3ECE099A;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6971C0DF3832AB1EC974FC4F /* JukeVibe */,
+				C3AFB82D2D7510EC1BCB13C0 /* JukeVibeTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A89BA8C79C4BFB82DB3124F5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				236C056A82B588275BA4C05B /* Assets.xcassets in Resources */,
+				BD2ABDBF7DD5DA3B2341334A /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7CD45DD803070311296001F6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				00671C943E15AF43FEE3D794 /* ChatVault.swift in Sources */,
+				ED8B27C5FF9FEC287F9275C1 /* ChatView.swift in Sources */,
+				005C08CDBD145128E6D2A19C /* DiscoverView.swift in Sources */,
+				6AF632896C83D0C266812167 /* JukeAuthService.swift in Sources */,
+				EDDBE3A07E3530118E917648 /* JukeVibeApp.swift in Sources */,
+				CD6B58D490515B6BB48422E9 /* LocalVibeIntelligence.swift in Sources */,
+				EA514A76B8F4A424BED5BA06 /* NowPlayingObserver.swift in Sources */,
+				C35C278B06BB895E4961EDFF /* NowPlayingPill.swift in Sources */,
+				2381C83347E3C5AF86A689B4 /* RootView.swift in Sources */,
+				292D6571BA50264F4032B637 /* SettingsView.swift in Sources */,
+				B5111309AE9E7885A2A55842 /* VibeAPI.swift in Sources */,
+				872837CA3B4D30EB47E4C7F2 /* VibeAppModel.swift in Sources */,
+				FD3E4E4FEF05879C36BFBF5B /* VibeAtmosphere.swift in Sources */,
+				1371790179B9F309DF4B0BE2 /* VibeModels.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9164CD79028199CC04A6C8FD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DF1DA4742785A3A83200DB1A /* JukeVibeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D7CE3EF1DC1508495065B9C9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6971C0DF3832AB1EC974FC4F /* JukeVibe */;
+			targetProxy = 15DAB65794DCA580FB058E74 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		15B47A6FF91A58D60F920B28 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.juke.vibe.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Juke Vibe.app/Juke Vibe";
+			};
+			name = Debug;
+		};
+		2A24BF602354542A0E5BDCCB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		944516DA6B54F6ABC94AB6E4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = JukeVibe/JukeVibe.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JukeVibe/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.juke.vibe;
+				PRODUCT_NAME = "Juke Vibe";
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		98F260996453FAF10116AF4F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 2WMS6785YD;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A3392C31F7835F093F675D95 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.juke.vibe.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Juke Vibe.app/Juke Vibe";
+			};
+			name = Release;
+		};
+		F8F1F604F093E18A488AB2E1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = JukeVibe/JukeVibe.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JukeVibe/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.juke.vibe;
+				PRODUCT_NAME = "Juke Vibe";
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3271A76D214DEACDC04B699C /* Build configuration list for PBXProject "JukeVibe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2A24BF602354542A0E5BDCCB /* Debug */,
+				98F260996453FAF10116AF4F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		5095CA472F32EE92A6888ABD /* Build configuration list for PBXNativeTarget "JukeVibe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				944516DA6B54F6ABC94AB6E4 /* Debug */,
+				F8F1F604F093E18A488AB2E1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9DA6D5AE5C81098D98D2212D /* Build configuration list for PBXNativeTarget "JukeVibeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				15B47A6FF91A58D60F920B28 /* Debug */,
+				A3392C31F7835F093F675D95 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 778B42FD038FB666BE73C0E6 /* Project object */;
+}

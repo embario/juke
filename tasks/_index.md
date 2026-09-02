@@ -56,6 +56,7 @@ Use this file as the first stop for work selection.
 | backend-music-generation | Music generation service - prompt to audio via external gen API | ready | p3 | unassigned | BACKEND | backend | 4 | `tasks/backend-music-generation-service.md` | 2026-03-06 |
 | dep-upgrade-phase-1 | Dependency upgrades phase 1 | ready | p1 | unassigned | ALL/GENERAL | platform | 5 | `tasks/dependency-upgrade-audit.md` | 2026-02-11 |
 | clients-feature-parity | Reach feature parity with all Juke app clients | ready | p1 | unassigned | CLIENTS | clients | 5 | `tasks/clients-feature-parity.md` | 2026-02-16 |
+| juke-vibe-apple-clients | Build Juke Vibe for macOS and iOS | done | p1 | codex | CLIENTS | clients | 5 | `tasks/juke-vibe-apple-clients.md` | 2026-09-01 |
 | web-playback-next-track | Fix playback to play the next track in the album | review | p1 | unassigned | WEB | web | 2 | `tasks/web-playback-next-track.md` | 2026-02-11 |
 | cross-platform-notifications-reengagement | Build cross-platform notifications and re-engagement journeys | ready | p2 | unassigned | ALL/GENERAL | platform | 4 | `tasks/cross-platform-notifications-and-re-engagement.md` | 2026-02-16 |
 | social-graph-activity-foundation | Build social graph and follow/activity foundations | ready | p2 | unassigned | ALL/GENERAL | platform | 5 | `tasks/social-graph-and-follow-activity-foundation.md` | 2026-02-16 |

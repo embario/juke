@@ -5,6 +5,7 @@ from rest_framework import routers
 
 from juke_auth.urls import router as auth_router
 from juke_auth import views as auth_views
+from vibe import views as vibe_views
 from catalog.urls import router as catalog_router
 
 router = routers.DefaultRouter()
@@ -13,7 +14,10 @@ router.registry.extend(catalog_router.registry)
 
 
 urlpatterns = [
+    path('api/v1/health', vibe_views.HealthView.as_view(), name='api-health'),
     path('admin/', admin.site.urls),
+    path('api/v1/auth/vibe/authorize', vibe_views.VibeAuthorizeView.as_view(), name='vibe-authorize'),
+    path('api/v1/auth/vibe/exchange', vibe_views.VibeExchangeView.as_view(), name='vibe-exchange'),
     path('api/v1/auth/', include('juke_auth.urls')),
     path('api/v1/social-auth/login/spotify/', auth_views.spotify_login, name='spotify_login'),
     path('api/v1/social-auth/complete/spotify/', auth_views.spotify_complete, name='spotify_complete'),
@@ -22,4 +26,5 @@ urlpatterns = [
     path('api/v1/', include('recommender.urls')),
     path('api/v1/', include('powerhour.urls')),
     path('api/v1/tunetrivia/', include('tunetrivia.urls')),
+    path('api/v1/vibe/', include('vibe.urls')),
 ]

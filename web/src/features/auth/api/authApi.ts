@@ -29,3 +29,23 @@ export const resendRegistrationVerificationRequest = async (email: string) => {
 export const validateTokenRequest = async (token: string) => {
   return apiClient.get('/api/v1/music-profiles/me/', { token });
 };
+
+export const sendPasswordResetRequest = async (email: string) => {
+  return apiClient.post('/api/v1/auth/accounts/send-reset-password-link/', { email });
+};
+
+export const resetPasswordRequest = async (payload: {
+  userId: string;
+  timestamp: string;
+  signature: string;
+  password: string;
+  passwordConfirm: string;
+}) => {
+  return apiClient.post('/api/v1/auth/accounts/reset-password/', {
+    user_id: payload.userId,
+    timestamp: payload.timestamp,
+    signature: payload.signature,
+    password: payload.password,
+    password_confirm: payload.passwordConfirm,
+  });
+};
