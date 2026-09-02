@@ -1,7 +1,7 @@
 ---
 id: mlcore-musicbrainz-isrc-bridge-ingestion
 title: MLCore MusicBrainz MBID to ISRC bridge ingestion
-status: review
+status: in_progress
 priority: p1
 owner: codex
 area: platform
@@ -13,7 +13,7 @@ labels:
   - data-ingestion
   - identity
 complexity: 4
-updated_at: 2026-06-22
+updated_at: 2026-06-28
 ---
 
 ## Goal
@@ -66,3 +66,7 @@ Build a compact, replay-safe bridge from MusicBrainz recording MBIDs to ISRCs us
 - Live execution: official release `20260613-002047` staged, verified, and imported; its compact evidence was handed to canonical alias hydration.
 - Next: review and merge.
 - Blockers: none.
+- In progress (2026-06-28): discovered and began verified staging of official
+  release `20260627-002124` (stage run
+  `4cb16f47-b593-4e27-8815-3577c96cb905`) for bridge import and v2 alias
+  promotion.

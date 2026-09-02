@@ -158,6 +158,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'juke_auth',
     'vibe',
+    'journal',
     'catalog',
     'mlcore',
     'recommender',
@@ -295,6 +296,8 @@ REST_FRAMEWORK = {
         'spotify_token_issue': os.environ.get('SPOTIFY_TOKEN_ISSUE_RATE', '30/min'),
         'vibe_auth_exchange': os.environ.get('VIBE_AUTH_EXCHANGE_RATE', '20/min'),
         'vibe_user': os.environ.get('VIBE_USER_RATE', '120/min'),
+        'journal_auth_exchange': os.environ.get('JOURNAL_AUTH_EXCHANGE_RATE', '20/min'),
+        'journal_user': os.environ.get('JOURNAL_USER_RATE', '120/min'),
     },
 }
 
@@ -346,6 +349,7 @@ CELERY_TASK_ROUTES = {
     'recommender.tasks.ingest_training_data': {'queue': 'recommender'},
     'mlcore.tasks.train_cooccurrence': {'queue': 'mlcore'},
     'mlcore.tasks.sync_listenbrainz_remote': {'queue': 'mlcore'},
+    'mlcore.tasks.ingest_incremental_identity': {'queue': 'mlcore'},
     'mlcore.tasks.import_listenbrainz_full': {'queue': 'mlcore'},
     'mlcore.tasks.replay_listenbrainz_incremental': {'queue': 'mlcore'},
 }
@@ -359,7 +363,7 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': 60 * 60 * 24,  # 24 hours
     },
     'mlcore-listenbrainz-remote-sync': {
-        'task': 'mlcore.tasks.sync_listenbrainz_remote',
+        'task': 'mlcore.tasks.ingest_incremental_identity',
         'schedule': int(os.environ.get('MLCORE_LISTENBRAINZ_REMOTE_SYNC_SCHEDULE_SECONDS', str(60 * 60 * 24))),
     },
 }
@@ -487,6 +491,11 @@ VIBE_AUTH_CODE_TTL_SECONDS = int(os.environ.get('VIBE_AUTH_CODE_TTL_SECONDS', '1
 VIBE_OAUTH_CLIENTS = {
     'juke-vibe-mac': {'juke-vibe://auth/callback'},
     'juke-vibe-ios': {'juke-vibe://auth/callback'},
+}
+JOURNAL_CHAT_MODEL = os.environ.get('JOURNAL_CHAT_MODEL', 'gpt-4o-mini')
+JOURNAL_AUTH_CODE_TTL_SECONDS = int(os.environ.get('JOURNAL_AUTH_CODE_TTL_SECONDS', '120'))
+JOURNAL_OAUTH_CLIENTS = {
+    'juke-journal-mac': {'juke-journal://auth/callback'},
 }
 
 

@@ -127,6 +127,33 @@ application-specific rolling 30-second limit and does not publish its exact valu
 raising this ceiling requires a bounded pilot with zero `429`s. Runtime metrics expose
 backlog, outcomes, rate-limit count, accepted throughput, and observed-rate ETA.
 
+#### Worker lifecycle hardening
+
+The management command waits for a successful database connection and `SELECT 1`
+before touching hydration state. The default five-minute window covers Docker DNS,
+PostgreSQL startup, and recovery races seen when a user-systemd unit launches a
+one-off Compose container.
+
+After database health is established, the worker acquires the provider advisory
+lock before creating a run. Because lock ownership proves that no other Spotify
+worker is live, startup reconciliation can safely:
+
+- mark leftover `running` hydration runs as `failed`, with reconciliation metadata;
+- return every orphaned `running` queue item to `pending`; and
+- clear its worker and lease fields so it is immediately claimable.
+
+Incremental queue refresh is a bounded cursor scan rather than a full alias scan.
+Every five minutes by default, the worker scans the next 10,000 active ISRC aliases
+that do not already have an active Spotify alias and inserts only missing queue
+identifiers. The source-ID cursor is stored in run metadata and inherited by the
+next run. It resets at the end of each pass so aliases added behind the cursor are
+picked up on the following pass. A long-running worker remains idle when the queue
+is empty so periodic seeding continues to discover new aliases.
+
+`--skip-seed` skips the expensive full startup seed but intentionally leaves bounded
+incremental seeding enabled. `--skip-incremental-seed` disables the periodic scan,
+and `--exit-when-empty` retains batch-job exit behavior when desired.
+
 #### Completion estimate
 
 Spotify Search resolves one ISRC per request. Batching unrelated ISRCs into one search

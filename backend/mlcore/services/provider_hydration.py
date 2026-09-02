@@ -12,7 +12,7 @@ from django.db import connection, transaction
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
-from mlcore.models import CanonicalItemAlias, ProviderHydrationItem
+from mlcore.models import CanonicalItemAlias, ProviderHydrationItem, ProviderHydrationRun
 
 
 SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token'
@@ -49,6 +49,20 @@ class SpotifyCandidate:
             'duration_ms': self.duration_ms,
             'popularity': self.popularity,
         }
+
+
+@dataclass(frozen=True)
+class IncrementalSeedResult:
+    scanned: int
+    created: int
+    next_cursor: str
+    pass_complete: bool
+
+
+@dataclass(frozen=True)
+class ReconciliationResult:
+    stale_runs: int
+    reclaimed_items: int
 
 
 def normalize_isrc(value):
@@ -180,19 +194,114 @@ def seed_spotify_hydration_queue(*, batch_size=10_000, limit=None):
     created = 0
     rows = []
     for canonical_item_id, isrc, source_version in queryset.iterator(chunk_size=batch_size):
-        rows.append(ProviderHydrationItem(
+        rows.append((canonical_item_id, isrc, source_version))
+        if len(rows) >= batch_size:
+            created += _create_spotify_hydration_items(rows)
+            rows = []
+    if rows:
+        created += _create_spotify_hydration_items(rows)
+    return created
+
+
+def seed_spotify_hydration_queue_incrementally(*, after_source_id='', scan_limit=10_000):
+    """Scan one bounded, resumable slice of active ISRC aliases.
+
+    The cursor is the source ID from the last scanned alias, not the last inserted
+    queue row. This lets each pass move across aliases that were already queued
+    without repeatedly performing a full-corpus anti-join. At the end of a pass the
+    cursor resets, so aliases inserted behind the cursor are picked up next time.
+    """
+    if scan_limit < 1:
+        raise ValueError('scan_limit must be greater than zero')
+    spotify_on_item = CanonicalItemAlias.objects.filter(
+        canonical_item_id=OuterRef('canonical_item_id'),
+        source='spotify',
+        resource_type='track',
+        status='active',
+    )
+    aliases = list(
+        CanonicalItemAlias.objects.filter(
+            source='isrc',
+            resource_type='recording',
+            status='active',
+            source_id__gt=after_source_id,
+        )
+        .annotate(has_spotify=Exists(spotify_on_item))
+        .filter(has_spotify=False)
+        .order_by('source_id')
+        .values_list('canonical_item_id', 'source_id', 'source_version')[:scan_limit]
+    )
+    created = _create_spotify_hydration_items(aliases)
+    pass_complete = len(aliases) < scan_limit
+    return IncrementalSeedResult(
+        scanned=len(aliases),
+        created=created,
+        next_cursor='' if pass_complete else aliases[-1][1],
+        pass_complete=pass_complete,
+    )
+
+
+def reconcile_stale_hydration_state(*, provider, reconciled_by):
+    """Fail orphaned runs and reclaim queue leases while holding the provider lock.
+
+    The caller must own the provider's singleton advisory lock. That proves there is
+    no live worker for this provider, so every remaining ``running`` row is stale,
+    including leases whose expiry is still a few seconds in the future.
+    """
+    now = timezone.now()
+    stale_runs = list(ProviderHydrationRun.objects.filter(provider=provider, status='running'))
+    reclaimed_items = ProviderHydrationItem.objects.filter(
+        provider=provider,
+        status='running',
+    ).update(
+        status='pending',
+        leased_by='',
+        lease_expires_at=None,
+        next_attempt_at=None,
+        last_error='Reclaimed after the previous hydration worker stopped.',
+        updated_at=now,
+    )
+    for stale_run in stale_runs:
+        stale_run.status = 'failed'
+        stale_run.completed_at = now
+        stale_run.last_error = 'Reconciled as stale: no hydration worker held the provider lease.'
+        stale_run.metadata = {
+            **stale_run.metadata,
+            'reconciled_at': now.isoformat(),
+            'reconciled_by': reconciled_by,
+        }
+        stale_run.save(update_fields=['status', 'completed_at', 'last_error', 'metadata', 'updated_at'])
+    return ReconciliationResult(stale_runs=len(stale_runs), reclaimed_items=reclaimed_items)
+
+
+def _create_spotify_hydration_items(alias_rows):
+    candidates = {}
+    for canonical_item_id, isrc, source_version in alias_rows:
+        identifier = normalize_isrc(isrc)
+        if identifier:
+            candidates.setdefault(identifier, (canonical_item_id, source_version))
+    if not candidates:
+        return 0
+    existing = set(
+        ProviderHydrationItem.objects.filter(
+            provider='spotify',
+            identifier_type='isrc',
+            identifier__in=candidates,
+        ).values_list('identifier', flat=True)
+    )
+    rows = [
+        ProviderHydrationItem(
             canonical_item_id=canonical_item_id,
             provider='spotify',
             identifier_type='isrc',
-            identifier=normalize_isrc(isrc),
+            identifier=identifier,
             source_version=source_version,
-        ))
-        if len(rows) >= batch_size:
-            created += len(ProviderHydrationItem.objects.bulk_create(rows, ignore_conflicts=True))
-            rows = []
-    if rows:
-        created += len(ProviderHydrationItem.objects.bulk_create(rows, ignore_conflicts=True))
-    return created
+        )
+        for identifier, (canonical_item_id, source_version) in candidates.items()
+        if identifier not in existing
+    ]
+    ProviderHydrationItem.objects.bulk_create(rows, ignore_conflicts=True)
+    return len(rows)
 
 
 def claim_hydration_item(*, run, worker_id, lease_seconds=120):

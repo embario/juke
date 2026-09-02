@@ -1,7 +1,7 @@
 ---
 id: mlcore-isrc-alias-enrichment
 title: MLCore ISRC alias enrichment for canonical items
-status: review
+status: in_progress
 priority: p1
 owner: codex
 area: platform
@@ -12,7 +12,7 @@ labels:
   - backend
   - identity
 complexity: 3
-updated_at: 2026-06-21
+updated_at: 2026-06-28
 ---
 
 ## Goal
@@ -67,3 +67,11 @@ Attach ISRC identities to MLCore canonical recording items through the existing 
 - Result: created 1,857,666 active ISRC aliases, excluded 131,695 ambiguous ISRCs, and recorded 3,891,550 unresolved ISRCs whose MBIDs are absent from the current canonical corpus.
 - Next: review and package the implementation; use unresolved MBIDs to prioritize future canonical-corpus expansion.
 - Blockers: none.
+- In progress (2026-06-28): MusicBrainz alias reconciliation now accepts
+  multiple MBIDs only when every MBID is locally known and their active canonical
+  redirects converge on one recording. The algorithm version is bumped to v2;
+  focused tests pass.
+- Targeted expansion preflight found zero unresolved MusicBrainz MBIDs with ISRCs
+  that also occur in the active ListenBrainz MSID-to-MBID mapping set. Bulk-creating
+  the remaining 3.89M absent MBIDs would not improve current serving coverage, so
+  no low-value canonical rows were inserted.

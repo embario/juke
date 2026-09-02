@@ -120,6 +120,18 @@ def import_listenbrainz_identity_bridge(
             raise ValueError('max_shards must be greater than zero')
         shards = shards[:max_shards]
 
+    schema_upgrade_required = ListenBrainzIdentityShard.objects.filter(
+        source_version=source_version,
+        extraction_schema_version__lt=EXTRACTION_SCHEMA_VERSION,
+    ).exists()
+    if schema_upgrade_required and max_shards is not None and not force:
+        raise ValueError('An extraction-schema upgrade requires a full replay; omit --max-shards or pass --force.')
+    if schema_upgrade_required:
+        # Aggregate mapping rows do not retain enough per-shard provenance to
+        # subtract an older extraction safely. Replace the source version so
+        # shard observation counts cannot accumulate across schema upgrades.
+        force = True
+
     fingerprint = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     if force:
         with transaction.atomic(), connection.cursor() as cursor:

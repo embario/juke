@@ -237,6 +237,23 @@ ISRCs, aliases materialized, ambiguous ISRCs, existing-alias conflicts, and
 unresolved pairs. Extraction schema checkpoints cause releases processed by an
 older extractor to be replayed once and make later runs idempotent.
 
+Celery beat schedules `mlcore.tasks.ingest_incremental_identity`, which performs
+the remote sync and the complete shard/identity/ISRC promotion pipeline. Keep the
+`worker` and `beat` Compose services running; the lower-level
+`mlcore.tasks.sync_listenbrainz_remote` task only downloads and imports listens.
+
+To upgrade an existing full-dump extraction and promote its ISRC evidence:
+
+```bash
+docker compose run --rm backend python manage.py import_listenbrainz_identity_bridge \
+  --manifest /path/to/shards/<source-version>/manifest.json --force --json
+docker compose run --rm backend python manage.py materialize_listenbrainz_isrc_aliases \
+  --source-version <source-version> --json
+```
+
+Schema upgrades replace the source version's aggregate mapping evidence so
+per-shard observation counts cannot be accumulated twice.
+
 ## MusicBrainz identity bridge
 
 The MusicBrainz bridge imports recording MBID-to-ISRC evidence and direct
@@ -273,6 +290,12 @@ The promoter checkpoints by ISRC, writes directly to
 `mlcore_canonical_item_alias`, excludes ISRCs associated with multiple MBIDs,
 and never reassigns an existing conflicting alias. Interrupted runs can resume
 with `--resume-run-id <uuid>`.
+
+For each MusicBrainz refresh, run the stage, bridge, and promoter commands in
+that order. `stage_musicbrainz_dump` discovers the latest official full export
+when `--source-version` is omitted; use `--plan` first for a no-write capacity
+check. The promoter treats multiple MBIDs as one safe candidate when their
+active canonical redirects already converge on the same recording.
 
 ## Serving interfaces (integration)
 

@@ -6,6 +6,7 @@ import LoginForm from '../components/LoginForm';
 import { useAuth } from '../hooks/useAuth';
 import type { LoginPayload } from '../types';
 import { authorizeVibeRequest, parseVibeAuthorizationRequest } from '../api/vibeAuth';
+import { authorizeJournalRequest, parseJournalAuthorizationRequest } from '../api/journalAuth';
 
 const LoginRoute = () => {
   const { login, isAuthenticated, token } = useAuth();
@@ -13,12 +14,17 @@ const LoginRoute = () => {
   const location = useLocation();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const vibeAuthorizationStarted = useRef(false);
+  const clientAuthorizationStarted = useRef(false);
   const redirectTo = (location.state as { redirectTo?: string } | null)?.redirectTo ?? '/';
   const vibeRequest = useMemo(
     () => parseVibeAuthorizationRequest(location.search),
     [location.search],
   );
+  const journalRequest = useMemo(
+    () => parseJournalAuthorizationRequest(location.search),
+    [location.search],
+  );
+  const clientRequest = vibeRequest ?? journalRequest;
 
   const oauthError = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -37,29 +43,30 @@ const LoginRoute = () => {
   }, [location.search]);
 
   useEffect(() => {
-    if (isAuthenticated && !vibeRequest) {
+    if (isAuthenticated && !clientRequest) {
       navigate(redirectTo, { replace: true });
     }
-  }, [isAuthenticated, navigate, redirectTo, vibeRequest]);
+  }, [clientRequest, isAuthenticated, navigate, redirectTo]);
 
   useEffect(() => {
-    if (!isAuthenticated || !token || !vibeRequest || vibeAuthorizationStarted.current) {
+    if (!isAuthenticated || !token || !clientRequest || clientAuthorizationStarted.current) {
       return;
     }
-    vibeAuthorizationStarted.current = true;
+    clientAuthorizationStarted.current = true;
     let active = true;
-    authorizeVibeRequest(token, location.search)
+    const authorizeRequest = vibeRequest ? authorizeVibeRequest : authorizeJournalRequest;
+    authorizeRequest(token, location.search)
       .then(({ redirect_to }) => {
         if (active) window.location.assign(redirect_to);
       })
       .catch((err) => {
         if (active) {
-          vibeAuthorizationStarted.current = false;
-          setError(err instanceof Error ? err.message : 'Unable to return to Juke Vibe.');
+          clientAuthorizationStarted.current = false;
+          setError(err instanceof Error ? err.message : 'Unable to return to the Juke app.');
         }
       });
     return () => { active = false; };
-  }, [isAuthenticated, location.search, token, vibeRequest]);
+  }, [clientRequest, isAuthenticated, location.search, token, vibeRequest]);
 
   useEffect(() => {
     document.body.classList.add('no-scroll');
@@ -73,9 +80,10 @@ const LoginRoute = () => {
     setError(null);
     try {
       const issuedToken = await login(payload);
-      if (vibeRequest) {
-        vibeAuthorizationStarted.current = true;
-        const { redirect_to } = await authorizeVibeRequest(issuedToken, location.search);
+      if (clientRequest) {
+        clientAuthorizationStarted.current = true;
+        const authorizeRequest = vibeRequest ? authorizeVibeRequest : authorizeJournalRequest;
+        const { redirect_to } = await authorizeRequest(issuedToken, location.search);
         window.location.assign(redirect_to);
       } else {
         navigate(redirectTo, { replace: true });
@@ -98,7 +106,7 @@ const LoginRoute = () => {
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}
         serverError={oauthError ?? error}
-        accountSearch={vibeRequest ? location.search : ''}
+        accountSearch={clientRequest ? location.search : ''}
       />
     </section>
   );

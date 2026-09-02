@@ -23,8 +23,7 @@ services:
 
   redis:
     image: redis:7
-    ports:
-      - "${REDIS_PORT:?Set REDIS_PORT}:${REDIS_PORT:?Set REDIS_PORT}"
+    # Redis is an internal dependency; do not publish it on the host.
 
   backend:
     build:
@@ -32,7 +31,7 @@ services:
     command: bash run_dev.sh
     working_dir: /app
     ports:
-      - "${BACKEND_PORT:?Set BACKEND_PORT}:${BACKEND_PORT:?Set BACKEND_PORT}"
+      - "${JUKE_BIND_IP:-127.0.0.1}:${BACKEND_PORT:?Set BACKEND_PORT}:${BACKEND_PORT:?Set BACKEND_PORT}"
     volumes:
       - ./backend:/app
       - ${JUKE_HOST_FULL_INGESTION_DATA_PATH:-./data/juke}:/srv/data/juke
@@ -88,8 +87,6 @@ services:
     build:
       context: ./backend/recommender_engine
     command: uvicorn app.main:app --host 0.0.0.0 --port ${RECOMMENDER_PORT:?Set RECOMMENDER_PORT}
-    ports:
-      - "${RECOMMENDER_PORT:?Set RECOMMENDER_PORT}:${RECOMMENDER_PORT:?Set RECOMMENDER_PORT}"
     volumes:
       - ./backend/recommender_engine:/app
     env_file: .env
@@ -105,7 +102,7 @@ services:
         PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-${BACKEND_URL:?Set BACKEND_URL in .env}}
         WEB_PORT: ${WEB_PORT:?Set WEB_PORT}
     ports:
-      - "${WEB_PORT:?Set WEB_PORT}:${WEB_PORT:?Set WEB_PORT}"
+      - "${JUKE_BIND_IP:-127.0.0.1}:${WEB_PORT:?Set WEB_PORT}:${WEB_PORT:?Set WEB_PORT}"
     volumes:
       - ./web:/app
       - /app/node_modules

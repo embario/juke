@@ -8,7 +8,7 @@ from mlcore.services.musicbrainz_bridge import BRIDGE_SOURCE_ID
 from mlcore.models import SourceIngestionRun
 
 
-ALGORITHM_VERSION = 'musicbrainz-isrc-alias-v1'
+ALGORITHM_VERSION = 'musicbrainz-isrc-alias-v2'
 
 
 @dataclass(frozen=True)
@@ -72,19 +72,24 @@ def materialize_musicbrainz_isrc_alias_batch(
                 SELECT
                     batch.isrc,
                     COUNT(DISTINCT evidence.recording_mbid) AS mbid_count,
-                    MIN(item.id::text)::uuid AS canonical_item_id
+                    COUNT(*) FILTER (WHERE item.id IS NULL) AS missing_mbid_count,
+                    COUNT(DISTINCT COALESCE(redirect.to_canonical_item_id, item.id)) AS canonical_count,
+                    MIN(COALESCE(redirect.to_canonical_item_id, item.id)::text)::uuid AS canonical_item_id
                 FROM batch_isrcs batch
                 JOIN mlcore_musicbrainz_recording_isrc evidence
                   ON evidence.isrc = batch.isrc
                  AND evidence.source_version = %s
                 LEFT JOIN mlcore_canonical_item item
                   ON item.canonical_key = 'recording_mbid:' || evidence.recording_mbid::text
+                LEFT JOIN mlcore_canonical_item_redirect redirect
+                  ON redirect.from_canonical_item_id = item.id
+                 AND redirect.status = 'active'
                 GROUP BY batch.isrc
             ), candidates AS MATERIALIZED (
                 SELECT isrc, canonical_item_id
                 FROM resolved
-                WHERE mbid_count = 1
-                  AND canonical_item_id IS NOT NULL
+                WHERE missing_mbid_count = 0
+                  AND canonical_count = 1
             ), existing AS MATERIALIZED (
                 SELECT
                     candidate.isrc,
@@ -140,12 +145,17 @@ def materialize_musicbrainz_isrc_alias_batch(
                     FROM existing
                     WHERE existing_canonical_item_id = canonical_item_id
                 ),
-                (SELECT COUNT(*) FROM resolved WHERE mbid_count > 1),
+                (
+                    SELECT COUNT(*)
+                    FROM resolved
+                    WHERE canonical_count > 1
+                       OR (mbid_count > 1 AND missing_mbid_count > 0)
+                ),
                 (
                     SELECT COUNT(*)
                     FROM resolved
                     WHERE mbid_count = 1
-                      AND canonical_item_id IS NULL
+                      AND missing_mbid_count > 0
                 ),
                 (
                     SELECT COUNT(*)

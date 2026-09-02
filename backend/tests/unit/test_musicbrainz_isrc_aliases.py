@@ -9,6 +9,7 @@ from mlcore.models import (
     CanonicalAliasMaterializationRun,
     CanonicalItem,
     CanonicalItemAlias,
+    CanonicalItemRedirect,
     MusicBrainzRecordingISRC,
     SourceIngestionRun,
 )
@@ -92,6 +93,31 @@ class MusicBrainzISRCAliasTests(TestCase):
         self.assertEqual(result.existing_alias_conflict_count, 1)
         alias = CanonicalItemAlias.objects.get(source='isrc', source_id='USAAA2400001')
         self.assertEqual(alias.canonical_item, self.item_two)
+
+    def test_multiple_mbids_converging_through_redirect_create_one_alias(self):
+        converged_isrc = 'USAAA2400005'
+        MusicBrainzRecordingISRC.objects.bulk_create([
+            self._evidence(self.mbid_one, converged_isrc),
+            self._evidence(self.mbid_two, converged_isrc),
+        ])
+        CanonicalItemRedirect.objects.create(
+            from_canonical_item=self.item_two,
+            to_canonical_item=self.item_one,
+            source='test',
+            source_version=self.source_version,
+            status='active',
+        )
+
+        result = materialize_musicbrainz_isrc_alias_batch(
+            source_version=self.source_version,
+            last_isrc=None,
+            batch_size=10,
+        )
+
+        self.assertEqual(result.created_count, 4)
+        self.assertEqual(result.ambiguous_count, 0)
+        alias = CanonicalItemAlias.objects.get(source='isrc', source_id=converged_isrc)
+        self.assertEqual(alias.canonical_item, self.item_one)
 
     def test_batches_resume_after_last_isrc(self):
         first = materialize_musicbrainz_isrc_alias_batch(

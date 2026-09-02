@@ -13,7 +13,7 @@ labels:
   - data-ingestion
   - identity
 complexity: 5
-updated_at: 2026-06-21
+updated_at: 2026-07-01
 ---
 
 ## Goal
@@ -85,3 +85,14 @@ Mine ListenBrainz dumps for identity evidence that enriches MLCore's local ident
 - Completed: added `scripts/mlcore_identity_metrics.sh` and a Grafana canonical identity inventory panel for MSIDs, MBIDs, ISRC evidence, vendor aliases, redirects, and bridge/conflict counts.
 - Next: let the active legacy incremental run finish, then rerun the upgraded engine to backfill ISRC aliases for those releases and record live coverage counts.
 - Blockers: none.
+- In progress (2026-06-28): started clean schema-v2 full-dump replay run
+  `11d4c5e5-7998-4bc5-a1cc-d8c57f254257` with replacement semantics so v1
+  per-shard observations cannot be double-counted.
+- Added an operator command for promoting full-dump MSID-to-ISRC evidence and
+  changed Celery beat to schedule the end-to-end incremental identity pipeline,
+  rather than stopping after raw ListenBrainz sync/import.
+- Hardened schema upgrades to automatically replace aggregate mapping evidence;
+  bounded partial upgrades now require an explicit `--force` decision.
+- Added a five-minute user-systemd guardian and restartable incremental catch-up
+  service. User lingering is enabled, so the active finalizer remains supervised
+  across logout and future host restarts.

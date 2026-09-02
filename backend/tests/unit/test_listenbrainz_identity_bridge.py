@@ -204,6 +204,11 @@ class ListenBrainzIdentityBridgeTests(TestCase):
 
         self.assertEqual(first.isrc_observation_count, 6)
         self.assertEqual(replay.isrc_observation_count, 6)
+        repeated = ListenBrainzMSIDMBIDMapping.objects.get(
+            recording_msid=self.msid_one,
+            recording_mbid=self.mbid_one,
+        )
+        self.assertEqual(repeated.shard_observation_count, 2)
         self.assertTrue(
             all(
                 version == 2

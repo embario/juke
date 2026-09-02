@@ -1,19 +1,30 @@
 import tempfile
 import uuid
+from datetime import timedelta
+from io import StringIO
 from unittest import mock
 
 import requests
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.db import OperationalError
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 
+from mlcore.management.commands.hydrate_spotify_from_isrc import wait_for_database
 from mlcore.models import CanonicalItem, CanonicalItemAlias, ProviderHydrationItem, ProviderHydrationRun
 from mlcore.services.provider_hydration import (
     ProviderHydrationError,
+    IncrementalSeedResult,
+    ReconciliationResult,
     RequestPacer,
     SpotifyCandidate,
     SpotifyClient,
     claim_hydration_item,
     hydrate_spotify_item,
     normalize_isrc,
+    reconcile_stale_hydration_state,
+    seed_spotify_hydration_queue_incrementally,
     write_hydration_metrics,
 )
 
@@ -101,6 +112,112 @@ class RequestPacerTests(SimpleTestCase):
         self.assertEqual(normalize_isrc('us-rc1-76-07839'), 'USRC17607839')
 
 
+class DatabaseHealthWaitTests(SimpleTestCase):
+    @mock.patch('mlcore.management.commands.hydrate_spotify_from_isrc.connection')
+    def test_retries_until_database_query_succeeds(self, database):
+        database.ensure_connection.side_effect = [OperationalError('starting'), None]
+        cursor = database.cursor.return_value.__enter__.return_value
+        sleep = mock.Mock()
+
+        wait_for_database(
+            timeout_seconds=5,
+            interval_seconds=1,
+            sleep=sleep,
+            monotonic=mock.Mock(side_effect=[0, 0]),
+        )
+
+        self.assertEqual(database.ensure_connection.call_count, 2)
+        database.close.assert_called_once_with()
+        sleep.assert_called_once_with(1)
+        cursor.execute.assert_called_once_with('SELECT 1')
+
+    @mock.patch('mlcore.management.commands.hydrate_spotify_from_isrc.connection')
+    def test_raises_after_database_wait_timeout(self, database):
+        database.ensure_connection.side_effect = OperationalError('still down')
+
+        with self.assertRaisesMessage(CommandError, 'Database did not become healthy within 1s'):
+            wait_for_database(
+                timeout_seconds=1,
+                interval_seconds=1,
+                sleep=mock.Mock(),
+                monotonic=mock.Mock(side_effect=[0, 2]),
+            )
+
+
+class HydrationCommandTests(TestCase):
+    @mock.patch('mlcore.management.commands.hydrate_spotify_from_isrc.claim_hydration_item')
+    @mock.patch('mlcore.management.commands.hydrate_spotify_from_isrc.SpotifyClient')
+    @mock.patch('mlcore.management.commands.hydrate_spotify_from_isrc.seed_spotify_hydration_queue')
+    @mock.patch(
+        'mlcore.management.commands.hydrate_spotify_from_isrc.'
+        'seed_spotify_hydration_queue_incrementally'
+    )
+    @mock.patch('mlcore.management.commands.hydrate_spotify_from_isrc.reconcile_stale_hydration_state')
+    @mock.patch('mlcore.management.commands.hydrate_spotify_from_isrc.spotify_worker_lock')
+    @mock.patch('mlcore.management.commands.hydrate_spotify_from_isrc.wait_for_database')
+    def test_production_cli_finalizes_run_before_releasing_lock_and_inherits_cursor(
+        self,
+        wait_for_database_mock,
+        worker_lock_mock,
+        reconcile_mock,
+        incremental_seed_mock,
+        full_seed_mock,
+        spotify_client_mock,
+        claim_mock,
+    ):
+        previous = ProviderHydrationRun.objects.create(
+            provider='spotify',
+            status='succeeded',
+            completed_at=timezone.now(),
+            metadata={'incremental_seed_cursor': 'OLD_CURSOR'},
+        )
+        observed = {}
+
+        class ObservingLock:
+            def __enter__(self):
+                return True
+
+            def __exit__(self, exc_type, exc, traceback):
+                current = ProviderHydrationRun.objects.exclude(id=previous.id).get()
+                observed['status_at_unlock'] = current.status
+                observed['completed_at_at_unlock'] = current.completed_at
+
+        worker_lock_mock.return_value = ObservingLock()
+        reconcile_mock.return_value = ReconciliationResult(stale_runs=0, reclaimed_items=0)
+        incremental_seed_mock.return_value = IncrementalSeedResult(
+            scanned=10,
+            created=3,
+            next_cursor='NEW_CURSOR',
+            pass_complete=False,
+        )
+        claim_mock.return_value = None
+        output = StringIO()
+
+        call_command(
+            'hydrate_spotify_from_isrc',
+            skip_seed=True,
+            rps=1,
+            max_items=1,
+            json=True,
+            metrics_path='',
+            stdout=output,
+        )
+
+        wait_for_database_mock.assert_called_once()
+        reconcile_mock.assert_called_once()
+        full_seed_mock.assert_not_called()
+        incremental_seed_mock.assert_called_once_with(
+            after_source_id='OLD_CURSOR',
+            scan_limit=10_000,
+        )
+        spotify_client_mock.assert_called_once()
+        self.assertEqual(observed['status_at_unlock'], 'succeeded')
+        self.assertIsNotNone(observed['completed_at_at_unlock'])
+        current = ProviderHydrationRun.objects.exclude(id=previous.id).get()
+        self.assertEqual(current.metadata['incremental_seed_cursor'], 'NEW_CURSOR')
+        self.assertEqual(current.metadata['incremental_seed_created_total'], 3)
+
+
 @override_settings(SPOTIFY_HYDRATION_MAX_ATTEMPTS=3)
 class HydrationStateTests(TestCase):
     def setUp(self):
@@ -167,6 +284,26 @@ class HydrationStateTests(TestCase):
         self.assertEqual(claimed.id, self.item.id)
         self.assertEqual(claimed.leased_by, 'replacement')
 
+    def test_stale_state_reconciliation_fails_run_and_reclaims_lease(self):
+        self.item.status = 'running'
+        self.item.leased_by = 'dead-worker'
+        self.item.lease_expires_at = timezone.now() + timedelta(minutes=2)
+        self.item.last_run = self.run
+        self.item.save()
+
+        result = reconcile_stale_hydration_state(provider='spotify', reconciled_by='replacement')
+
+        self.assertEqual(result.stale_runs, 1)
+        self.assertEqual(result.reclaimed_items, 1)
+        self.run.refresh_from_db()
+        self.item.refresh_from_db()
+        self.assertEqual(self.run.status, 'failed')
+        self.assertEqual(self.run.metadata['reconciled_by'], 'replacement')
+        self.assertIsNotNone(self.run.completed_at)
+        self.assertEqual(self.item.status, 'pending')
+        self.assertEqual(self.item.leased_by, '')
+        self.assertIsNone(self.item.lease_expires_at)
+
     def test_metrics_include_backlog_and_eta(self):
         self.run.attempted_count = 10
         self.run.matched_count = 7
@@ -177,6 +314,36 @@ class HydrationStateTests(TestCase):
             payload = open(path, encoding='ascii').read()
         self.assertIn('mlcore_provider_hydration_backlog', payload)
         self.assertIn('mlcore_provider_hydration_eta_seconds', payload)
+
+    def test_incremental_seeding_advances_a_bounded_cursor(self):
+        for isrc in ('AAA000000001', 'BBB000000002'):
+            canonical = CanonicalItem.objects.create(
+                id=uuid.uuid4(),
+                item_type='recording_mbid',
+                canonical_key=f'recording_mbid:{uuid.uuid4()}',
+            )
+            CanonicalItemAlias.objects.create(
+                canonical_item=canonical,
+                source='isrc',
+                resource_type='recording',
+                source_id=isrc,
+                status='active',
+            )
+
+        first = seed_spotify_hydration_queue_incrementally(scan_limit=1)
+        second = seed_spotify_hydration_queue_incrementally(
+            after_source_id=first.next_cursor,
+            scan_limit=1,
+        )
+        completed = seed_spotify_hydration_queue_incrementally(
+            after_source_id=second.next_cursor,
+            scan_limit=1,
+        )
+
+        self.assertEqual((first.scanned, first.created, first.pass_complete), (1, 1, False))
+        self.assertEqual((second.scanned, second.created, second.pass_complete), (1, 1, False))
+        self.assertEqual((completed.scanned, completed.created, completed.pass_complete), (0, 0, True))
+        self.assertEqual(completed.next_cursor, '')
 
     @staticmethod
     def _candidate(track_id):

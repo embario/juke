@@ -2,6 +2,7 @@ import logging
 from uuid import uuid4
 
 from celery import shared_task
+from django.conf import settings
 from django.utils import timezone
 
 from mlcore.ingestion.listenbrainz import (
@@ -17,6 +18,7 @@ from mlcore.services.dataset_orchestration import (
     run_dataset_orchestration_loop,
 )
 from mlcore.services.full_ingestion import full_ingestion_conflict_metadata
+from mlcore.services.incremental_identity import run_incremental_identity_ingestion
 from mlcore.services.listenbrainz_source import sync_listenbrainz_remote_dumps
 
 logger = logging.getLogger(__name__)
@@ -409,4 +411,33 @@ def sync_listenbrainz_remote_task(self, *, max_incrementals_per_run: int | None 
         'incremental_source_versions': result.incremental_source_versions,
         'downloaded_paths': result.downloaded_paths,
         'skipped_source_versions': result.skipped_source_versions,
+    }
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={'max_retries': 3},
+    name='mlcore.tasks.ingest_incremental_identity',
+)
+def ingest_incremental_identity_task(self, *, max_incrementals: int | None = None):
+    effective_limit = max_incrementals or settings.MLCORE_LISTENBRAINZ_REMOTE_SYNC_MAX_INCREMENTALS_PER_RUN
+    logger.info('incremental identity task starting max_incrementals=%d', effective_limit)
+
+    def report(progress):
+        self.update_state(state='PROGRESS', meta=progress)
+
+    result = run_incremental_identity_ingestion(
+        max_incrementals=effective_limit,
+        progress_callback=report,
+    )
+    logger.info(
+        'incremental identity task finished status=%s processed=%d',
+        result.status,
+        len(result.processed_versions),
+    )
+    return {
+        **result.__dict__,
+        'processed_versions': [version.__dict__ for version in result.processed_versions],
     }

@@ -4,6 +4,7 @@ Use this file as the first stop for work selection.
 
 | ID | Title | Status | Priority | Owner | Label | Area | Complexity | File | Updated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| juke-journal-backend-foundation | Juke Journal backend authentication, encrypted sync, and private AI boundaries | review | p1 | codex | BACKEND | backend | 4 | `tasks/juke-journal-backend-foundation.md` | 2026-08-31 |
 | music-resource-text-descriptor-indexing | Define best route for text descriptor indexing across music resources with async refresh | ready | p1 | unassigned | BACKEND/ML | platform | 4 | `tasks/music-resource-text-descriptor-indexing-and-async-refresh.md` | 2026-02-11 |
 | mlcore-phase0-catalog-identity-adapters | ML Core Phase 0 - Catalog identity augmentation and adapter IDs | review | p1 | codex | BACKEND/ML | platform | 4 | `tasks/mlcore-phase0-catalog-identity-and-adapters.md` | 2026-03-05 |
 | mlcore-phase0-corpus-license-policy | ML Core Phase 0 - Corpus manifest and fail-closed license policy | review | p1 | codex | BACKEND/ML | platform | 4 | `tasks/mlcore-phase0-corpus-manifest-and-license-policy.md` | 2026-03-05 |
@@ -13,12 +14,12 @@ Use this file as the first stop for work selection.
 | mlcore-phase1-metadata-cooccurrence | ML Core Phase 1 - Metadata and cooccurrence recommendation baselines | review | p1 | codex | BACKEND/ML | platform | 5 | `tasks/mlcore-phase1-metadata-and-cooccurrence-rankers.md` | 2026-05-28 |
 | mlcore-shared-identity-alias-resolver | MLCore shared identity alias resolver for A/B isolation | review | p1 | codex | BACKEND/ML | platform | 4 | `tasks/mlcore-shared-identity-alias-resolver.md` | 2026-05-31 |
 | mlcore-musicbrainz-dump-sourcing-storage | MLCore MusicBrainz dump sourcing and storage plan | review | p1 | codex | BACKEND/ML | platform | 2 | `tasks/mlcore-musicbrainz-dump-sourcing-and-storage.md` | 2026-06-13 |
-| mlcore-musicbrainz-isrc-bridge-ingestion | MLCore MusicBrainz MBID to ISRC bridge ingestion | review | p1 | codex | BACKEND/ML | platform | 4 | `tasks/mlcore-musicbrainz-isrc-bridge-ingestion.md` | 2026-06-22 |
-| mlcore-listenbrainz-msid-mbid-platform-dump-enrichment | MLCore ListenBrainz dump enrichment for MSID, MBID, ISRC, and platform IDs | in_progress | p1 | codex | BACKEND/ML | platform | 5 | `tasks/mlcore-listenbrainz-msid-mbid-platform-dump-enrichment.md` | 2026-06-21 |
+| mlcore-musicbrainz-isrc-bridge-ingestion | MLCore MusicBrainz MBID to ISRC bridge ingestion | in_progress | p1 | codex | BACKEND/ML | platform | 4 | `tasks/mlcore-musicbrainz-isrc-bridge-ingestion.md` | 2026-06-28 |
+| mlcore-listenbrainz-msid-mbid-platform-dump-enrichment | MLCore ListenBrainz dump enrichment for MSID, MBID, ISRC, and platform IDs | in_progress | p1 | codex | BACKEND/ML | platform | 5 | `tasks/mlcore-listenbrainz-msid-mbid-platform-dump-enrichment.md` | 2026-07-01 |
 | mlcore-canonical-identity-redirects-merge-policy | MLCore canonical identity redirects and merge policy | review | p1 | codex | BACKEND/ML | platform | 4 | `tasks/mlcore-canonical-identity-redirects-and-merge-policy.md` | 2026-06-22 |
-| mlcore-isrc-alias-enrichment | MLCore ISRC alias enrichment for canonical items | review | p1 | codex | BACKEND/ML | platform | 3 | `tasks/mlcore-isrc-alias-enrichment.md` | 2026-06-22 |
+| mlcore-isrc-alias-enrichment | MLCore ISRC alias enrichment for canonical items | in_progress | p1 | codex | BACKEND/ML | platform | 3 | `tasks/mlcore-isrc-alias-enrichment.md` | 2026-06-28 |
 | mlcore-spotify-output-resolution-from-isrc | MLCore Spotify output resolution from ISRC aliases | ready | p1 | unassigned | BACKEND/ML | platform | 4 | `tasks/mlcore-spotify-output-resolution-from-isrc.md` | 2026-06-09 |
-| mlcore-platform-uri-hydration-from-isrc | MLCore platform URI hydration from ISRC inventory | review | p1 | codex | BACKEND/ML | platform | 3 | `tasks/mlcore-platform-uri-hydration-from-isrc.md` | 2026-06-22 |
+| mlcore-platform-uri-hydration-from-isrc | MLCore platform URI hydration from ISRC inventory | review | p1 | codex | BACKEND/ML | platform | 3 | `tasks/mlcore-platform-uri-hydration-from-isrc.md` | 2026-07-01 |
 | mlcore-identity-resolution-coverage-observability | MLCore identity resolution coverage and observability | ready | p1 | unassigned | BACKEND/ML | platform | 3 | `tasks/mlcore-identity-resolution-coverage-observability.md` | 2026-06-09 |
 | mlcore-identity-graph-resource-cost-dashboard | MLCore identity graph resource cost and long-run progress dashboard | ready | p1 | unassigned | BACKEND/ML | platform | 3 | `tasks/mlcore-identity-graph-resource-cost-dashboard.md` | 2026-06-11 |
 | mlcore-service-api-keys | Add service API keys for shared MLCore endpoints | ready | p2 | unassigned | BACKEND/ML | platform | 3 | `tasks/mlcore-service-api-keys.md` | 2026-06-07 |

@@ -36,7 +36,7 @@ const ResetPasswordConfirmRoute = () => {
         password,
         passwordConfirm: confirmation,
       });
-      setMessage('Your password has been reset. Return to Juke Vibe and sign in again.');
+      setMessage('Your password has been reset. Return to your Juke app and sign in again.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to reset the password.');
     } finally {

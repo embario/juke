@@ -13,7 +13,7 @@ labels:
   - identity
   - design
 complexity: 3
-updated_at: 2026-06-22
+updated_at: 2026-08-31
 ---
 
 ## Goal
@@ -166,4 +166,17 @@ That keeps future Apple Music/YouTube Music/etc. integrations from changing cano
   `85865fd9-2c33-43c6-9c54-6d5fcf0d65a9`.
 - Next: monitor rate limits and observed ETA; configure a dedicated Spotify app before
   increasing the rate ceiling; add explicit reconciliation policy for ambiguous rows.
-- Blockers: none for the conservative 1 request/s run.
+- Hydration resumed on 2026-07-01 under the enabled user-systemd service
+  `juke-spotify-hydration.service` with `Restart=on-failure`; historical run
+  `c3ab87a3-5feb-4b64-8e3d-248c923d17b9` advanced at the configured 1 rps.
+- Current operational status on 2026-08-31: the service is `inactive/failed`
+  (`ExecMainStatus=1`) and has not advanced since July. Restart remains pending;
+  there is no known code blocker after the lifecycle-hardening changes below.
+- Hardened worker startup on 2026-08-31: the command now waits up to five minutes
+  for database health, reconciles stale run rows and orphaned queue leases while
+  holding the provider advisory lock, and performs bounded cursor-based incremental
+  queue seeding every five minutes. `--skip-seed` now skips only the expensive full
+  startup scan; periodic incremental discovery remains active unless explicitly
+  disabled with `--skip-incremental-seed`.
+- The production service was not restarted as part of this change. Its existing
+  command line is compatible and will pick up all three behaviors on its next start.
