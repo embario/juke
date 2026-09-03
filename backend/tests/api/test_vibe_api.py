@@ -216,7 +216,11 @@ class VibeAPITests(APITestCase):
         )
         self.assertEqual(accepted.status_code, status.HTTP_200_OK)
         self.assertEqual(accepted.data['reply'], 'A thoughtful reply.')
-        generate.assert_called_once_with(message='I love this bridge.', current_track='Song — Artist')
+        generate.assert_called_once_with(
+            message='I love this bridge.',
+            current_track='Song — Artist',
+            listener_name='Quiet Listener',
+        )
 
     def test_health_is_public(self):
         self.client.credentials()

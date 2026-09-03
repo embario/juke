@@ -11,6 +11,22 @@ visual atmosphere to the current track.
    `project.yml`.
 2. Open `JukeVibeMac.xcodeproj` in Xcode.
 3. Select the `JukeVibeMac` scheme and the paid Juke development team.
+
+## Testing
+
+The default `JukeVibeMac` scheme runs the permission-free unit and integration
+suite. It does not launch or control other applications:
+
+```sh
+xcodebuild -project JukeVibeMac.xcodeproj \
+  -scheme JukeVibeMac \
+  -destination 'platform=macOS' test
+```
+
+UI-driving tests are intentionally isolated in the
+`JukeVibeMacUIAutomation` scheme. They are opt-in because macOS requires the
+person running them to grant Xcode or the invoking terminal Automation and
+Accessibility access. Juke Vibe does not attempt to bypass those protections.
 4. Run the Debug build.
 
 The app signs in through `https://neptune.tail647b75.ts.net` and returns through

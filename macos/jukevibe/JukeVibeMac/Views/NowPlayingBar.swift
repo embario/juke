@@ -99,27 +99,52 @@ struct NowPlayingBar: View {
         )
     }
 
-    @ViewBuilder private var playbackAccessBadge: some View {
-        if model.detection.providerName == PlayerMetadataSnapshot.Provider.spotify.rawValue {
-            switch model.detection.spotifyPlaybackAccess {
-            case .available:
-                EmptyView()
-            case .checking:
-                Label("Checking playback", systemImage: "ellipsis")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            case .spectator:
-                Label("Spectator", systemImage: "eye")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(.regularMaterial, in: Capsule())
-                    .help("Spotify is not connected for playback. Listening context remains available.")
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("nowPlaying.spectatorMode")
+    private var playbackAccessBadge: some View {
+        Menu {
+            Picker("Listening mode", selection: playbackModeSelection) {
+                Label("Spectator mode", systemImage: "eye").tag("spectator")
+                Label("Playback mode", systemImage: "play.circle").tag("playback")
             }
+            if model.detection.isSpotifySpectatorMode {
+                Divider()
+                Button("Connect Spotify in Juke…") { model.openSpotifyConnection() }
+            }
+        } label: {
+            Image(systemName: model.detection.isSpotifySpectatorMode ? "eye" : "play.circle")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+                .background(.regularMaterial, in: Circle())
+                .contentShape(Circle())
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(playbackModeHelp)
+        .accessibilityLabel(model.detection.isSpotifySpectatorMode ? "Spectator mode" : "Playback mode")
+        .accessibilityHint(playbackModeHelp)
+        .accessibilityIdentifier(
+            model.detection.isSpotifySpectatorMode
+                ? "nowPlaying.spectatorMode"
+                : "nowPlaying.playbackMode"
+        )
+    }
+
+    private var playbackModeSelection: Binding<String> {
+        Binding(
+            get: { model.detection.isSpotifySpectatorMode ? "spectator" : "playback" },
+            set: { mode in
+                if mode == "spectator" { model.useSpotifySpectatorMode() }
+                else { model.useSpotifyPlaybackMode() }
+            }
+        )
+    }
+
+    private var playbackModeHelp: String {
+        if model.detection.isSpotifySpectatorMode {
+            return "Spectator mode is on. If you wish to provide your streaming credentials, click here."
+        }
+        return "Playback mode is on. Click here to switch to spectator mode."
     }
 
     private var detectionMenu: some View {
@@ -135,6 +160,7 @@ struct NowPlayingBar: View {
             Image(systemName: "ellipsis").frame(width: 28, height: 28)
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
     }
 

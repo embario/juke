@@ -15,11 +15,14 @@ struct VibeChatView: View {
                             Text(model.openingQuestion).font(.system(size: 30, weight: .medium, design: .rounded)).textSelection(.enabled)
                         }
                         .padding(.bottom, 18)
-                        ForEach(model.messages) { message in ChatBubble(message: message) }
+                        ForEach(model.messages) { message in
+                            ChatBubble(message: message, textSize: model.chatTextSize)
+                        }
                         if model.isAwaitingReply { JukeTypingBubble() }
                         Color.clear.frame(height: 1).id("bottom")
                     }.padding(34).frame(maxWidth: 780)
                 }
+                .scrollIndicators(.hidden)
                 .defaultScrollAnchor(.bottom)
                 .onAppear { scrollToBottom(proxy, animated: false) }
                 .onChange(of: model.messages.last?.id) { _, _ in scrollToBottom(proxy) }
@@ -44,13 +47,14 @@ struct VibeChatView: View {
             ZStack(alignment: .topLeading) {
                 if model.draft.isEmpty && !focused {
                     Text("Ask about what you're hearing…")
+                        .font(.system(size: model.chatTextSize))
                         .foregroundStyle(.tertiary)
                         .padding(.leading, 5)
                         .padding(.top, 8)
                         .allowsHitTesting(false)
                 }
                 TextEditor(text: Bindable(model).draft)
-                    .font(.body)
+                    .font(.system(size: model.chatTextSize))
                     .foregroundStyle(.primary)
                     .scrollContentBackground(.hidden)
                     .focused($focused)
@@ -79,16 +83,6 @@ struct VibeChatView: View {
                 .accessibilityLabel("Send message")
                 .accessibilityIdentifier("chat.send")
                 .help("Send message (Return). Use Shift-Return for a new line.")
-        }
-        .overlay(alignment: .topLeading) {
-            if let syncNotice = model.syncNotice {
-                Label(syncNotice, systemImage: "icloud.slash")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 20)
-                    .offset(y: -17)
-                    .accessibilityIdentifier("chat.syncStatus")
-            }
         }
         .padding(18)
         .background(.thickMaterial)
@@ -143,6 +137,7 @@ private struct JukeTypingBubble: View {
 
 private struct ChatBubble: View {
     let message: DisplayChatMessage
+    let textSize: Double
     var body: some View {
         HStack {
             if message.role == .assistant { content; Spacer(minLength: 90) }
@@ -150,7 +145,12 @@ private struct ChatBubble: View {
         }
     }
     private var content: some View {
-        Text(message.content).textSelection(.enabled).padding(.horizontal, 16).padding(.vertical, 12)
+        Text(message.content)
+            .font(.system(size: textSize))
+            .lineSpacing(2)
+            .textSelection(.enabled)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .background(message.role == .assistant ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(Color.accentColor.opacity(0.2)), in: RoundedRectangle(cornerRadius: 17))
     }
 }

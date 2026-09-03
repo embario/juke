@@ -64,8 +64,14 @@ schemes:
       targets:
         JukeVibeMac: all
         JukeVibeMacTests: [test]
-        JukeVibeMacUITests: [test]
     test:
       targets:
         - JukeVibeMacTests
+  JukeVibeMacUIAutomation:
+    build:
+      targets:
+        JukeVibeMac: all
+        JukeVibeMacUITests: [test]
+    test:
+      targets:
         - JukeVibeMacUITests

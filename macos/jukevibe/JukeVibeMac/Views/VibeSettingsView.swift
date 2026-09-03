@@ -10,6 +10,24 @@ struct VibeSettingsView: View {
                     Toggle("Let the interface respond to the music", isOn: Bindable(model.atmosphere).isEnabled)
                     Text("Artwork shapes the palette; active audio gently raises the visual intensity. Reduce Motion is always respected.").font(.caption).foregroundStyle(.secondary)
                 }
+                Section("Chat appearance") {
+                    HStack {
+                        Text("Text size")
+                        Slider(
+                            value: Bindable(model).chatTextSize,
+                            in: AppModel.chatTextSizeRange,
+                            step: 1
+                        )
+                        .accessibilityIdentifier("settings.chatTextSize")
+                        Text("\(Int(model.chatTextSize)) pt")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 42, alignment: .trailing)
+                    }
+                    Text("Juke keeps chat text between 14 and 22 points so conversations remain readable without crowding the window.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Section("Privacy lock") {
                     Picker("Lock after", selection: Bindable(model.lock).lockAfterMinutes) {
                         Text("Immediately").tag(0); Text("1 minute").tag(1); Text("5 minutes").tag(5); Text("15 minutes").tag(15)

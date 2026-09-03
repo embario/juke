@@ -27,6 +27,8 @@ user flows.
 - Repair native Settings presentation.
 - Add deterministic macOS UI-test seams and an XCUITest target covering signed
   out, chat, search, navigation, Now Playing, and Settings surfaces.
+- Keep UI-driving automation out of the default scheme so routine verification
+  never requests macOS Accessibility or Automation permission.
 - Eliminate the chat composer's focus-driven SwiftUI layout loop and move
   Spotify/Apple Music polling off the main actor with background-aware cadence.
 - Replace legacy per-binary Keychain ACL access with the signed app's stable,
@@ -41,6 +43,13 @@ user flows.
   unavailable.
 - Give transport controls a distinct, responsive row that never compresses song
   metadata, and visually separate the conversation from its composer.
+- Add bounded, persistent chat text sizing, compact-by-default navigation, and
+  overlay-only chat scroll indicators.
+- Let users explicitly choose spectator mode or begin Juke's Spotify connection
+  flow from a compact Now Playing menu without coupling catalog access to playback.
+- Navigate catalog results into rich album and artist detail surfaces while
+  preserving read-only discovery for Juke-authenticated spectators.
+- Personalize and shorten cloud responses using the authenticated Juke profile.
 
 ## Out of Scope
 
@@ -59,11 +68,17 @@ user flows.
   the reply arrives asynchronously without blocking navigation or typing.
 - The sidebar Settings control opens the native Settings scene.
 - macOS unit and UI tests exercise every primary interactive surface and pass.
+- The default macOS test scheme runs without UI-driving system permissions;
+  XCUITest remains available only through an explicitly selected opt-in scheme.
 - The Debug application builds successfully.
 - Repeated application focus changes remain responsive without runaway CPU or
   memory growth, and playback polling publishes only meaningful state changes.
 - Spotify controls and search playback remain unavailable until Neptune verifies
   working provider credentials; catalog browsing and local observation continue.
+- Chat text is configurable from 14–22 points and remains legible without
+  destabilizing message or composer layout.
+- Album and artist searches navigate to detailed, internally linked catalog views;
+  track results open their album with the selected track highlighted.
 
 ## Execution Notes
 
@@ -126,3 +141,18 @@ user flows.
   enlarges controls with hover/press feedback, strengthens the transcript-to-
   composer boundary, and replaces unavailable Spotify actions with an explicit
   spectator state across Now Playing and catalog search.
+- Chat text now scales persistently from 14–22 points, cloud and local replies
+  use the authenticated profile name and a concise default, and the encrypted
+  local transcript no longer emits repetitive status notices.
+- The sidebar starts collapsed. A compact Now Playing capability menu lets a
+  Juke-authenticated user remain in spectator mode or open Juke's Spotify
+  connection flow; catalog browsing remains available without playback access.
+- Search results navigate into animated album and artist pages with artwork,
+  track lists, selected-track emphasis, durations, related resources, and
+  Spotify attribution/link-back. Neptune's existing `external=true` route was
+  verified as live Spotify read-through search with write-through catalog
+  caching, rather than a database-only query.
+- The normal `JukeVibeMac` scheme is permission-free and passed all 16 tests.
+  UI automation is isolated in the explicit `JukeVibeMacUIAutomation` scheme;
+  its seven-test bundle compiles successfully, but was not executed because
+  macOS requires Accessibility/Automation authorization to drive application UI.

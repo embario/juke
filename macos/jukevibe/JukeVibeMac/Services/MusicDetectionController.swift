@@ -31,6 +31,7 @@ final class MusicDetectionController {
     var playbackDeviceName: String?
     var isPlaybackBusy = false
     var spotifyPlaybackAccess: SpotifyPlaybackAccess = .checking
+    var prefersSpotifySpectatorMode = UserDefaults.standard.bool(forKey: "vibe.prefersSpotifySpectatorMode")
     var mode: Mode = .playerMetadata
     var errorMessage: String?
 
@@ -73,6 +74,7 @@ final class MusicDetectionController {
         guard ProcessInfo.processInfo.arguments.contains("--uitesting") else { return }
         forceSpectatorModeForUITests = ProcessInfo.processInfo.arguments.contains("--uitesting-spectator")
             || ProcessInfo.processInfo.environment["JUKE_VIBE_UI_SPECTATOR"] == "1"
+        prefersSpotifySpectatorMode = forceSpectatorModeForUITests
         accessToken = token
         spotifyServerAvailable = !forceSpectatorModeForUITests
         spotifyPlaybackAccess = forceSpectatorModeForUITests ? .spectator : .available
@@ -90,6 +92,9 @@ final class MusicDetectionController {
         applicationIsActive = isActive
         monitor.setApplicationActive(isActive)
         if isActive, !forceSpectatorModeForUITests {
+            if spotifyPlaybackAccess == .spectator, !prefersSpotifySpectatorMode {
+                spotifyServerAvailable = true
+            }
             Task { await refreshSpotifyState() }
         }
     }
@@ -138,7 +143,8 @@ final class MusicDetectionController {
     }
 
     var canControlPlayback: Bool {
-        switch providerName {
+        guard !isSpotifySpectatorMode else { return false }
+        return switch providerName {
         case PlayerMetadataSnapshot.Provider.spotify.rawValue:
             canStartSpotifyPlayback
         case PlayerMetadataSnapshot.Provider.appleMusic.rawValue:
@@ -149,7 +155,30 @@ final class MusicDetectionController {
     }
 
     var canStartSpotifyPlayback: Bool {
-        accessToken != nil && spotifyPlaybackAccess == .available
+        accessToken != nil && hasVerifiedSpotifyPlayback && !prefersSpotifySpectatorMode
+    }
+
+    var hasVerifiedSpotifyPlayback: Bool {
+        spotifyPlaybackAccess == .available
+    }
+
+    var isSpotifySpectatorMode: Bool {
+        prefersSpotifySpectatorMode || spotifyPlaybackAccess == .spectator
+    }
+
+    func useSpotifySpectatorMode() {
+        prefersSpotifySpectatorMode = true
+        UserDefaults.standard.set(true, forKey: "vibe.prefersSpotifySpectatorMode")
+        errorMessage = nil
+    }
+
+    func useSpotifyPlaybackMode() {
+        prefersSpotifySpectatorMode = false
+        UserDefaults.standard.set(false, forKey: "vibe.prefersSpotifySpectatorMode")
+        guard !hasVerifiedSpotifyPlayback else { return }
+        spotifyServerAvailable = true
+        spotifyPlaybackAccess = .checking
+        Task { await refreshSpotifyState() }
     }
 
     func estimatedPlaybackPosition(at date: Date = .now) -> TimeInterval {
@@ -158,13 +187,14 @@ final class MusicDetectionController {
     }
 
     func togglePlayback() async {
+        guard canControlPlayback else { return }
         if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
             await performLocalPlaybackAction {
                 try await self.localPlaybackController.toggleAppleMusicPlayback()
             }
             return
         }
-        guard canControlPlayback, let token = accessToken else { return }
+        guard let token = accessToken else { return }
         await performPlaybackAction {
             if self.isPlaying {
                 return try await self.playbackClient.pause(token: token, deviceID: self.playbackDeviceID)
@@ -174,28 +204,31 @@ final class MusicDetectionController {
     }
 
     func previousTrack() async {
+        guard canControlPlayback else { return }
         if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
             await performLocalPlaybackAction {
                 try await self.localPlaybackController.previousAppleMusicTrack()
             }
             return
         }
-        guard canControlPlayback, let token = accessToken else { return }
+        guard let token = accessToken else { return }
         await performPlaybackAction { try await self.playbackClient.previous(token: token, deviceID: self.playbackDeviceID) }
     }
 
     func nextTrack() async {
+        guard canControlPlayback else { return }
         if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
             await performLocalPlaybackAction {
                 try await self.localPlaybackController.nextAppleMusicTrack()
             }
             return
         }
-        guard canControlPlayback, let token = accessToken else { return }
+        guard let token = accessToken else { return }
         await performPlaybackAction { try await self.playbackClient.next(token: token, deviceID: self.playbackDeviceID) }
     }
 
     func seek(to position: TimeInterval) async {
+        guard canControlPlayback else { return }
         playbackPosition = min(playbackDuration, max(0, position))
         playbackUpdatedAt = .now
         if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
@@ -204,7 +237,7 @@ final class MusicDetectionController {
             }
             return
         }
-        guard canControlPlayback, let token = accessToken else { return }
+        guard let token = accessToken else { return }
         await performPlaybackAction {
             try await self.playbackClient.seek(token: token, deviceID: self.playbackDeviceID, position: position)
         }

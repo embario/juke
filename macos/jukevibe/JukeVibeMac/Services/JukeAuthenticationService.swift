@@ -36,6 +36,18 @@ actor JukeAuthenticationService {
     private var pendingAttempt: PendingAttempt?
     private let session: URLSession
 
+    nonisolated static func spotifyConnectionURL(token: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "neptune.tail647b75.ts.net"
+        components.path = "/api/v1/auth/connect/spotify/"
+        components.queryItems = [
+            URLQueryItem(name: "token", value: token),
+            URLQueryItem(name: "return_to", value: "https://neptune.tail647b75.ts.net/"),
+        ]
+        return components.url
+    }
+
     init() {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData

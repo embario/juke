@@ -28,9 +28,9 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "0E50EAC583BC354C91947AC8"
-               BuildableName = "JukeVibeMacTests.xctest"
-               BlueprintName = "JukeVibeMacTests"
+               BlueprintIdentifier = "ABD861129F4A6CE1F73FC611"
+               BuildableName = "JukeVibeMacUITests.xctest"
+               BlueprintName = "JukeVibeMacUITests"
                ReferencedContainer = "container:JukeVibeMac.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -52,13 +52,12 @@
       </MacroExpansion>
       <Testables>
          <TestableReference
-            skipped = "NO"
-            parallelizable = "NO">
+            skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "0E50EAC583BC354C91947AC8"
-               BuildableName = "JukeVibeMacTests.xctest"
-               BlueprintName = "JukeVibeMacTests"
+               BlueprintIdentifier = "ABD861129F4A6CE1F73FC611"
+               BuildableName = "JukeVibeMacUITests.xctest"
+               BlueprintName = "JukeVibeMacUITests"
                ReferencedContainer = "container:JukeVibeMac.xcodeproj">
             </BuildableReference>
          </TestableReference>

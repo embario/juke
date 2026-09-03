@@ -23,6 +23,13 @@ final class JukeVibeMacUITests: XCTestCase {
         XCTAssertTrue(app.buttons["authentication.createAccount"].exists)
     }
 
+    func testSidebarStartsCompressed() {
+        launch(arguments: ["--uitesting-authenticated"])
+
+        XCTAssertTrue(element("chat.composer").waitForExistence(timeout: 4))
+        XCTAssertFalse(app.buttons["sidebar.discover"].exists)
+    }
+
     func testChatRespondsAsynchronouslyWithTypingFeedback() {
         launchAuthenticated()
         let composer = element("chat.composer")
@@ -59,10 +66,11 @@ final class JukeVibeMacUITests: XCTestCase {
         search.click()
         search.typeText("Miles Davis")
         app.buttons["discover.search"].click()
-        XCTAssertTrue(app.staticTexts["Kind of Blue"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Blue in Green"].waitForExistence(timeout: 4))
         XCTAssertFalse(app.buttons["Ask Juke about this"].exists)
-        app.staticTexts["Kind of Blue"].doubleClick()
-        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 2))
+        element("discover.result.1959").click()
+        XCTAssertTrue(element("catalog.albumDetail").waitForExistence(timeout: 4))
+        XCTAssertTrue(element("catalog.track.highlighted").exists)
 
         app.buttons["sidebar.library"].click()
         XCTAssertTrue(app.staticTexts["Your Juke library"].waitForExistence(timeout: 3))
@@ -70,6 +78,7 @@ final class JukeVibeMacUITests: XCTestCase {
         app.buttons["sidebar.settings"].click()
         XCTAssertTrue(element("settings.view").waitForExistence(timeout: 4))
         XCTAssertTrue(app.staticTexts["Conversation privacy"].exists)
+        XCTAssertTrue(element("settings.chatTextSize").exists)
     }
 
     func testEncryptionEducationIsAOneTimeLoginMoment() {
@@ -93,6 +102,9 @@ final class JukeVibeMacUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Play"].exists)
         XCTAssertFalse(app.sliders["Playback position"].exists)
         XCTAssertTrue(element("nowPlaying.passiveProgress").exists)
+        element("nowPlaying.spectatorMode").click()
+        XCTAssertTrue(app.staticTexts["Playback mode"].waitForExistence(timeout: 2))
+        app.typeKey(.escape, modifierFlags: [])
 
         app.buttons["sidebar.discover"].click()
         XCTAssertTrue(element("discover.spectatorMode").waitForExistence(timeout: 3))
@@ -100,10 +112,11 @@ final class JukeVibeMacUITests: XCTestCase {
         search.click()
         search.typeText("Miles Davis")
         app.buttons["discover.search"].click()
-        XCTAssertTrue(app.staticTexts["Kind of Blue"].waitForExistence(timeout: 4))
-        app.staticTexts["Kind of Blue"].doubleClick()
+        XCTAssertTrue(app.staticTexts["Blue in Green"].waitForExistence(timeout: 4))
+        element("discover.result.1959").click()
+        XCTAssertTrue(element("catalog.albumDetail").waitForExistence(timeout: 4))
+        XCTAssertTrue(element("catalog.spectatorHint").exists)
         XCTAssertFalse(app.buttons["Pause"].exists)
-        XCTAssertTrue(element("discover.spectatorMode").exists)
     }
 
     func testChatRemainsResponsiveAcrossFocusChanges() {
@@ -124,7 +137,7 @@ final class JukeVibeMacUITests: XCTestCase {
     }
 
     private func launchAuthenticated(additionalArguments: [String] = []) {
-        launch(arguments: ["--uitesting-authenticated"] + additionalArguments)
+        launch(arguments: ["--uitesting-authenticated", "--uitesting-expanded-sidebar"] + additionalArguments)
     }
 
     private func launch(arguments: [String] = []) {

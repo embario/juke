@@ -13,6 +13,9 @@ struct DisplayChatMessage: Identifiable, Equatable {
 @MainActor
 @Observable
 final class AppModel {
+    static let chatTextSizeRange = 14.0...22.0
+    static let defaultChatTextSize = 17.0
+
     enum Route: String, CaseIterable, Identifiable {
         case vibe, discover, library
         var id: String { rawValue }
@@ -31,7 +34,13 @@ final class AppModel {
     var isAwaitingReply = false
     var banner: String?
     var privacyWelcomePresented = false
-    var syncNotice: String?
+    var chatTextSize = AppModel.defaultChatTextSize {
+        didSet {
+            let bounded = min(Self.chatTextSizeRange.upperBound, max(Self.chatTextSizeRange.lowerBound, chatTextSize))
+            if bounded != chatTextSize { chatTextSize = bounded }
+            UserDefaults.standard.set(bounded, forKey: Self.chatTextSizeKey)
+        }
+    }
     let lock = AppLockController()
     let detection = MusicDetectionController()
     let atmosphere = VisualAtmosphere()
@@ -44,11 +53,17 @@ final class AppModel {
     @ObservationIgnored private var replyTask: Task<Void, Never>?
     @ObservationIgnored private var chatVault: ChatVault?
     @ObservationIgnored private var chatVaultAccountID: String?
+    nonisolated private static let chatTextSizeKey = "vibe.chatTextSize"
 
     init(container: ModelContainer) {
         let arguments = ProcessInfo.processInfo.arguments
         isUITesting = arguments.contains("--uitesting")
         context = ModelContext(container)
+        let savedTextSize = UserDefaults.standard.object(forKey: Self.chatTextSizeKey) as? Double
+        chatTextSize = min(
+            Self.chatTextSizeRange.upperBound,
+            max(Self.chatTextSizeRange.lowerBound, savedTextSize ?? Self.defaultChatTextSize)
+        )
         if arguments.contains("--uitesting-authenticated") {
             session = JukeSession(
                 account: .localPreview,
@@ -153,6 +168,7 @@ final class AppModel {
                 reply = try await localIntelligence.respond(
                     message: text,
                     currentTrack: currentTrack,
+                    listenerName: session.account.displayName,
                     recentConversation: messages.map { "\($0.role.rawValue): \($0.content)" }
                 )
             }
@@ -169,6 +185,7 @@ final class AppModel {
         do {
             openingQuestion = try await localIntelligence.openingQuestion(
                 currentTrack: trackLabel,
+                listenerName: session?.account.displayName,
                 recentConversation: messages.map { "\($0.role.rawValue): \($0.content)" }
             )
         } catch { }
@@ -205,9 +222,8 @@ final class AppModel {
                 guard let self else { return }
                 do {
                     try await neptune.upload(envelope, token: token)
-                    syncNotice = nil
                 } catch {
-                    syncNotice = "Saved privately on this Mac · cross-device sync is temporarily unavailable"
+                    // The encrypted local record remains canonical while sync is unavailable.
                 }
             }
         }
@@ -277,6 +293,56 @@ final class AppModel {
             kind: kind,
             optimisticTrack: kind == "tracks" ? result.recognizedTrack : nil
         )
+    }
+
+    func play(_ track: CatalogTrackDetail, albumName: String, artistName: String? = nil) async {
+        guard detection.canStartSpotifyPlayback else {
+            banner = "Spotify playback is not connected. You can still browse and listen along in spectator mode."
+            return
+        }
+        guard let spotifyID = track.spotifyID else {
+            banner = "This track does not have a playable Spotify reference yet."
+            return
+        }
+        await detection.playSpotify(
+            id: spotifyID,
+            kind: "tracks",
+            optimisticTrack: RecognizedTrack(
+                title: track.name,
+                artist: artistName ?? "Juke catalog",
+                album: albumName,
+                isrc: nil,
+                artworkURL: nil,
+                appleMusicURL: nil,
+                shazamID: nil,
+                trackDuration: track.durationMs.map { TimeInterval($0) / 1_000 },
+                providerNamespace: "spotify",
+                providerTrackID: spotifyID
+            )
+        )
+    }
+
+    func useSpotifySpectatorMode() {
+        detection.useSpotifySpectatorMode()
+    }
+
+    func useSpotifyPlaybackMode() {
+        let needsConnection = !detection.hasVerifiedSpotifyPlayback
+        detection.useSpotifyPlaybackMode()
+        if needsConnection { openSpotifyConnection() }
+    }
+
+    func openSpotifyConnection() {
+        guard let token = session?.accessToken,
+              let url = JukeAuthenticationService.spotifyConnectionURL(token: token) else {
+            banner = "Sign in to Juke before connecting Spotify."
+            return
+        }
+        if isUITesting {
+            banner = "Spotify connection would open in Juke."
+        } else {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func vault(for accountID: String) -> ChatVault {

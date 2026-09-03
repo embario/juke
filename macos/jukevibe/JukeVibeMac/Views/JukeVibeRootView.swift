@@ -3,6 +3,12 @@ import SwiftUI
 struct JukeVibeRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @State private var columnVisibility: NavigationSplitViewVisibility
+
+    init() {
+        let keepSidebarOpen = ProcessInfo.processInfo.arguments.contains("--uitesting-expanded-sidebar")
+        _columnVisibility = State(initialValue: keepSidebarOpen ? .all : .detailOnly)
+    }
 
     var body: some View {
         ZStack {
@@ -34,7 +40,7 @@ struct JukeVibeRootView: View {
     }
 
     private var signedInContent: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             VStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("JUKE").font(.caption.weight(.bold)).tracking(2.5).foregroundStyle(.secondary)
@@ -76,6 +82,7 @@ struct JukeVibeRootView: View {
                 NowPlayingBar()
             }
         }
+        .navigationSplitViewStyle(.balanced)
     }
 }
 

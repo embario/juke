@@ -75,6 +75,18 @@ final class VibeNetworkContractTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Token secret-token")
     }
 
+    func testSpotifyConnectionUsesJukeAuthenticatedConnectFlow() throws {
+        let url = try XCTUnwrap(JukeAuthenticationService.spotifyConnectionURL(token: "secret token"))
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+
+        XCTAssertEqual(components.path, "/api/v1/auth/connect/spotify/")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "token" })?.value, "secret token")
+        XCTAssertEqual(
+            components.queryItems?.first(where: { $0.name == "return_to" })?.value,
+            "https://neptune.tail647b75.ts.net/"
+        )
+    }
+
     func testPlaybackStateDecodesSpotifyMetadataAndProgress() throws {
         let data = Data(
             """
@@ -146,10 +158,38 @@ final class VibeNetworkContractTests: XCTestCase {
         XCTAssertEqual(url.host, "open.spotify.com")
         XCTAssertEqual(components.queryItems?.first?.value, "spotify:track:0aWMVrwxPNYkKmFthzmpRi")
     }
+
+    func testAlbumDetailDecodesTracksAndRelatedAlbums() throws {
+        let data = Data(
+            """
+            {
+              "pk":1959,
+              "name":"Kind of Blue",
+              "description":"A landmark recording.",
+              "total_tracks":2,
+              "tracks":[
+                {"pk":1,"name":"So What","spotify_id":"track-1","duration_ms":560000,"track_number":1,"disc_number":1}
+              ],
+              "related_albums":[{"pk":2,"name":"Sketches of Spain","total_tracks":5}]
+            }
+            """.utf8
+        )
+
+        let album = try JSONDecoder().decode(CatalogAlbumDetail.self, from: data)
+
+        XCTAssertEqual(album.tracks.first?.name, "So What")
+        XCTAssertEqual(album.tracks.first?.durationMs, 560_000)
+        XCTAssertEqual(album.relatedAlbums.first?.name, "Sketches of Spain")
+    }
 }
 
 @MainActor
 final class PlayerMetadataMonitorTests: XCTestCase {
+    func testChatTextSizeRangeProtectsCompactAndReadableLayouts() {
+        XCTAssertEqual(AppModel.chatTextSizeRange, 14.0...22.0)
+        XCTAssertTrue(AppModel.chatTextSizeRange.contains(AppModel.defaultChatTextSize))
+    }
+
     func testPlaybackPositionDoesNotChangePublishedContentIdentity() {
         let track = RecognizedTrack(
             title: "Blue in Green",
