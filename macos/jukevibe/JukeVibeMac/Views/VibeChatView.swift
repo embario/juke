@@ -51,6 +51,7 @@ struct VibeChatView: View {
                 }
                 TextEditor(text: Bindable(model).draft)
                     .font(.body)
+                    .foregroundStyle(.primary)
                     .scrollContentBackground(.hidden)
                     .focused($focused)
                     .accessibilityLabel("Message Juke")
@@ -65,6 +66,13 @@ struct VibeChatView: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(
+                        focused ? model.atmosphere.primary.opacity(0.85) : Color.white.opacity(0.34),
+                        lineWidth: focused ? 1.5 : 1
+                    )
+            }
             Button { model.send() } label: { Image(systemName: "arrow.up").font(.headline).frame(width: 34, height: 34) }
                 .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(model.atmosphere.primary)
                 .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isSending)

@@ -37,6 +37,7 @@ final class MusicDetectionController {
     @ObservationIgnored private var playbackDeviceID: String?
     @ObservationIgnored private var playbackUpdatedAt = Date()
     @ObservationIgnored private var applicationIsActive = true
+    @ObservationIgnored private var spotifyServerAvailable = true
     @ObservationIgnored private var playbackNotificationTokens: [NSObjectProtocol] = []
 
     init() {
@@ -81,6 +82,7 @@ final class MusicDetectionController {
 
     func start(token: String? = nil) async {
         errorMessage = nil
+        spotifyServerAvailable = true
         let desiredToken = token ?? accessToken
         await stopServices()
         accessToken = desiredToken
@@ -222,20 +224,27 @@ final class MusicDetectionController {
             while !Task.isCancelled {
                 guard let self else { return }
                 await refreshSpotifyState()
-                let seconds = applicationIsActive ? (isPlaying ? 2 : 3) : (isPlaying ? 4 : 6)
+                let seconds = spotifyServerAvailable
+                    ? (applicationIsActive ? (isPlaying ? 2 : 3) : (isPlaying ? 4 : 6))
+                    : 300
                 do { try await Task.sleep(for: .seconds(seconds)) }
                 catch { return }
+                // Account linking can change in the Juke web app. Retry slowly
+                // without hammering Neptune while local metadata remains active.
+                if !spotifyServerAvailable { spotifyServerAvailable = true }
             }
         }
     }
 
     private func refreshSpotifyState() async {
-        guard mode == .playerMetadata, let accessToken else { return }
+        guard mode == .playerMetadata, spotifyServerAvailable, let accessToken else { return }
         do {
             if let state = try await playbackClient.fetchSpotifyState(token: accessToken) {
                 apply(state)
                 errorMessage = nil
             }
+        } catch PlaybackClientError.providerNotConnected {
+            spotifyServerAvailable = false
         } catch {
             // Local player metadata remains available if Neptune or Spotify is transiently unavailable.
         }

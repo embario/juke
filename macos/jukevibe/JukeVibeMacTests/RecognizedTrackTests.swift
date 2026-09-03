@@ -104,6 +104,48 @@ final class VibeNetworkContractTests: XCTestCase {
         XCTAssertEqual(state.track?.artists?.first?.name, "Miles Davis")
         XCTAssertEqual(state.device?.name, "This Mac")
     }
+
+    func testCatalogResultDecodesDirectArtworkURL() throws {
+        let data = Data(
+            """
+            {
+              "pk":1959,
+              "name":"Blue in Green",
+              "spotify_id":"0aWMVrwxPNYkKmFthzmpRi",
+              "album_name":"Kind of Blue",
+              "artist_names":"Miles Davis",
+              "duration_ms":327000,
+              "album_link":null,
+              "artwork_url":"https://i.scdn.co/image/example",
+              "spotify_data":{"uri":"spotify:track:0aWMVrwxPNYkKmFthzmpRi"}
+            }
+            """.utf8
+        )
+
+        let result = try JSONDecoder().decode(CatalogSearchResult.self, from: data)
+
+        XCTAssertEqual(result.resolvedArtworkURL?.absoluteString, "https://i.scdn.co/image/example")
+        XCTAssertEqual(result.recognizedTrack.artworkURL, result.resolvedArtworkURL)
+    }
+
+    func testCatalogBuildsSpotifyOEmbedArtworkFallback() throws {
+        let data = Data(
+            """
+            {
+              "pk":1959,
+              "name":"Blue in Green",
+              "spotify_id":"0aWMVrwxPNYkKmFthzmpRi",
+              "spotify_data":{"uri":"spotify:track:0aWMVrwxPNYkKmFthzmpRi"}
+            }
+            """.utf8
+        )
+        let result = try JSONDecoder().decode(CatalogSearchResult.self, from: data)
+        let url = try XCTUnwrap(CatalogClient.spotifyOEmbedURL(for: result))
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+
+        XCTAssertEqual(url.host, "open.spotify.com")
+        XCTAssertEqual(components.queryItems?.first?.value, "spotify:track:0aWMVrwxPNYkKmFthzmpRi")
+    }
 }
 
 @MainActor

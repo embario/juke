@@ -57,7 +57,7 @@ private struct CatalogResultCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            AsyncImage(url: artworkURL ?? result.artworkURL) { image in
+            AsyncImage(url: artworkURL ?? result.resolvedArtworkURL) { image in
                 image.resizable().scaledToFill()
             } placeholder: {
                 Rectangle()

@@ -25,6 +25,7 @@ struct CatalogSearchResult: Decodable, Identifiable, Sendable {
     let artistNames: String?
     let durationMs: Int?
     let albumLink: URL?
+    let artworkURL: URL?
     let spotifyData: SpotifyData?
 
     var id: Int { pk }
@@ -40,18 +41,19 @@ struct CatalogSearchResult: Decodable, Identifiable, Sendable {
         case artistNames = "artist_names"
         case durationMs = "duration_ms"
         case albumLink = "album_link"
+        case artworkURL = "artwork_url"
         case spotifyData = "spotify_data"
     }
 
     var subtitle: String { artistNames ?? albumName ?? "Juke catalog" }
-    var artworkURL: URL? { spotifyData?.images?.first.flatMap(URL.init(string:)) }
+    var resolvedArtworkURL: URL? { artworkURL ?? spotifyData?.images?.first.flatMap(URL.init(string:)) }
     var recognizedTrack: RecognizedTrack {
         RecognizedTrack(
             title: name,
             artist: artistNames ?? "Unknown artist",
             album: albumName,
             isrc: nil,
-            artworkURL: artworkURL,
+            artworkURL: resolvedArtworkURL,
             appleMusicURL: nil,
             shazamID: nil,
             trackDuration: durationMs.map { TimeInterval($0) / 1_000 },
@@ -64,6 +66,13 @@ struct CatalogSearchResult: Decodable, Identifiable, Sendable {
 
 actor CatalogClient {
     private struct Page: Decodable { let results: [CatalogSearchResult] }
+    private struct SpotifyOEmbed: Decodable {
+        let thumbnailURL: URL?
+
+        enum CodingKeys: String, CodingKey {
+            case thumbnailURL = "thumbnail_url"
+        }
+    }
     private let baseURL = URL(string: "https://neptune.tail647b75.ts.net/api/v1/")!
     private let usesFixtures = ProcessInfo.processInfo.arguments.contains("--uitesting")
 
@@ -78,6 +87,7 @@ actor CatalogClient {
                 artistNames: "Miles Davis",
                 durationMs: 327_000,
                 albumLink: nil,
+                artworkURL: URL(string: "https://i.scdn.co/image/example"),
                 spotifyData: nil
             )]
         }
@@ -98,18 +108,41 @@ actor CatalogClient {
     }
 
     func artwork(for result: CatalogSearchResult, token: String) async -> URL? {
-        if let artworkURL = result.artworkURL { return artworkURL }
-        guard let albumLink = result.albumLink,
-              albumLink.scheme == "https",
-              albumLink.host == baseURL.host else { return nil }
-        var request = Self.authorizedRequest(url: albumLink, token: token)
+        if let artworkURL = result.resolvedArtworkURL { return artworkURL }
+        if let albumLink = result.albumLink,
+           albumLink.scheme == "https",
+           albumLink.host == baseURL.host {
+            var request = Self.authorizedRequest(url: albumLink, token: token)
+            request.timeoutInterval = 8
+            if let (data, response) = try? await URLSession.shared.data(for: request),
+               data.count <= 1_048_576,
+               let http = response as? HTTPURLResponse,
+               http.statusCode == 200,
+               let album = try? JSONDecoder().decode(AlbumArtwork.self, from: data),
+               let artworkURL = album.spotifyData?.images?.first.flatMap(URL.init(string:)) {
+                return artworkURL
+            }
+        }
+
+        // Older Neptune responses did not preserve the album image embedded in
+        // Spotify track search results. Spotify oEmbed supplies the same cover
+        // without requiring a user's Spotify account or exposing credentials.
+        guard let oEmbedURL = Self.spotifyOEmbedURL(for: result) else { return nil }
+        var request = URLRequest(url: oEmbedURL)
         request.timeoutInterval = 8
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               data.count <= 1_048_576,
               let http = response as? HTTPURLResponse,
-              http.statusCode == 200,
-              let album = try? JSONDecoder().decode(AlbumArtwork.self, from: data) else { return nil }
-        return album.spotifyData?.images?.first.flatMap(URL.init(string:))
+              http.statusCode == 200 else { return nil }
+        return try? JSONDecoder().decode(SpotifyOEmbed.self, from: data).thumbnailURL
+    }
+
+    nonisolated static func spotifyOEmbedURL(for result: CatalogSearchResult) -> URL? {
+        let uri = result.spotifyData?.uri ?? result.spotifyID.map { "spotify:track:\($0)" }
+        guard let uri, uri.hasPrefix("spotify:") else { return nil }
+        var components = URLComponents(string: "https://open.spotify.com/oembed")
+        components?.queryItems = [URLQueryItem(name: "url", value: uri)]
+        return components?.url
     }
 
     nonisolated static func authorizedRequest(url: URL, token: String) -> URLRequest {

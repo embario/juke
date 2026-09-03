@@ -105,7 +105,7 @@ class SpotifyTrackSerializerTests(TestCase):
                 'total_tracks': 1,
                 'release_date': '2020-08-01',
                 'release_date_precision': 'day',
-                'images': [],
+                'images': [{'url': 'https://img.example/track-album.jpg'}],
                 'artists': [{'id': 'artist-track', 'name': 'Artist Track'}],
             },
         }
@@ -119,3 +119,7 @@ class SpotifyTrackSerializerTests(TestCase):
         self.assertEqual(Album.objects.count(), 1)
         self.assertEqual(Track.objects.count(), 1)
         self.assertEqual(track.spotify_data['uri'], 'spotify:track:track-1')
+        self.assertEqual(track.album.spotify_data['images'], ['https://img.example/track-album.jpg'])
+        self.assertEqual(list(track.album.artists.values_list('name', flat=True)), ['Artist Track'])
+        self.assertEqual(serializer.data['artwork_url'], 'https://img.example/track-album.jpg')
+        self.assertEqual(serializer.data['artist_names'], 'Artist Track')

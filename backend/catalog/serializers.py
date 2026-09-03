@@ -142,13 +142,33 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
 
     def create(self, validated_data):
         with transaction.atomic():
+            album_data = validated_data['album']
             album, album_created = Album.get_or_create_with_validated_data(
-                data=validated_data['album']
+                data=album_data
             )
             if album_created:
                 logger.info(f"Album '{album.name}' created.")
             else:
                 logger.debug(f"Album '{album.name}' updated.")
+
+            # Track search responses embed the album rather than passing through
+            # SpotifyAlbumSerializer. Preserve its artists and artwork so clients
+            # can render complete results immediately.
+            artists = []
+            for artist_data in album_data.get('artists', []):
+                artist, _ = Artist.objects.get_or_create(
+                    name=artist_data['name'],
+                    spotify_id=artist_data['id'],
+                )
+                artists.append(artist)
+            if artists:
+                album.artists.set(artists)
+            album.spotify_data = {
+                'type': album_data.get('type', 'album'),
+                'uri': album_data.get('uri', f"spotify:album:{album_data['id']}"),
+                'images': [image['url'] for image in album_data.get('images', []) if image.get('url')],
+            }
+            album.save(update_fields=['spotify_data'])
 
             instance, track_created = Track.get_or_create_with_validated_data(album=album, data=validated_data)
             if track_created:
@@ -172,8 +192,11 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
         data['album_name'] = instance.album.name if instance.album else ''
         if instance.album:
             data['artist_names'] = ', '.join(a.name for a in instance.album.artists.all())
+            images = (instance.album.spotify_data or {}).get('images') or []
+            data['artwork_url'] = images[0] if images else None
         else:
             data['artist_names'] = ''
+            data['artwork_url'] = None
         return data
 
 

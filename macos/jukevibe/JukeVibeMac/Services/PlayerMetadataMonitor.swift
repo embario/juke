@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import ScriptingBridge
 
 struct PlayerMetadataSnapshot: Sendable {
     enum Provider: String, Sendable {
@@ -25,7 +26,7 @@ final class PlayerMetadataMonitor {
         case playing(String)
     }
 
-    private let reader = AppleScriptPlayerMetadataReader()
+    private let reader = ScriptingBridgePlayerMetadataReader()
     private var safetyRefreshTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
     private var notificationTokens: [NSObjectProtocol] = []
@@ -119,12 +120,12 @@ extension PlayerMetadataSnapshot {
     }
 }
 
-/// Runs player queries serially on a utility queue. The scripts execute in an
-/// out-of-process AppleScript runner because `NSAppleScript` is main-thread-only.
-/// Keeping one serial queue also guarantees that slow queries never overlap.
-private final class AppleScriptPlayerMetadataReader: @unchecked Sendable {
+/// Reads scriptable-player metadata in the signed app process so the automation
+/// permission belongs to Juke Vibe. Launching `/usr/bin/osascript` from a
+/// sandboxed app loses that entitlement and can silently return no metadata.
+/// All synchronous Apple events remain isolated from the main thread.
+private final class ScriptingBridgePlayerMetadataReader: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.juke.vibe.player-metadata", qos: .utility)
-    private let scriptRunner = AppleScriptProcessRunner()
 
     func readCurrentPlayback() async -> PlayerMetadataSnapshot? {
         await withCheckedContinuation { continuation in
@@ -135,36 +136,60 @@ private final class AppleScriptPlayerMetadataReader: @unchecked Sendable {
     }
 
     private func readCurrentPlaybackSynchronously() -> PlayerMetadataSnapshot? {
-        if NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client").isEmpty == false,
-           let values = scriptRunner.executeList(source: Self.spotifySource), values.count >= 9 {
-            return snapshot(provider: .spotify, values: values, durationIsMilliseconds: true)
+        if let snapshot = snapshot(
+            provider: .spotify,
+            bundleIdentifier: "com.spotify.client",
+            durationIsMilliseconds: true
+        ) {
+            return snapshot
         }
-        if NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Music").isEmpty == false,
-           let values = scriptRunner.executeList(source: Self.musicSource), values.count >= 9 {
-            return snapshot(provider: .appleMusic, values: values, durationIsMilliseconds: false)
+        if let snapshot = snapshot(
+            provider: .appleMusic,
+            bundleIdentifier: "com.apple.Music",
+            durationIsMilliseconds: false
+        ) {
+            return snapshot
         }
         return nil
     }
 
     private func snapshot(
         provider: PlayerMetadataSnapshot.Provider,
-        values: [String],
+        bundleIdentifier: String,
         durationIsMilliseconds: Bool
     ) -> PlayerMetadataSnapshot? {
-        guard !values[1].isEmpty, !values[2].isEmpty else { return nil }
-        let isPlaying = values[0].caseInsensitiveCompare("playing") == .orderedSame
-        var duration = TimeInterval(values[7])
+        guard NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).isEmpty == false,
+              let application = SBApplication(bundleIdentifier: bundleIdentifier),
+              application.isRunning,
+              let state = application.value(forKey: "playerState") as? NSNumber,
+              state.uint32Value != Self.stoppedState,
+              let currentTrack = application.value(forKey: "currentTrack") as? SBObject,
+              let title = currentTrack.value(forKey: "name") as? String,
+              let artist = currentTrack.value(forKey: "artist") as? String,
+              !title.isEmpty,
+              !artist.isEmpty else { return nil }
+
+        let isPlaying = state.uint32Value == Self.playingState
+        var duration = (currentTrack.value(forKey: "duration") as? NSNumber)?.doubleValue
         if durationIsMilliseconds, let value = duration { duration = value / 1_000 }
-        let position = TimeInterval(values[8]) ?? 0
-        let externalURL = URL(string: values[6])
-        let providerID = values[4].nilIfEmpty
+        let position = (application.value(forKey: "playerPosition") as? NSNumber)?.doubleValue ?? 0
+        let rawProviderID = stringValue(
+            currentTrack,
+            keys: provider == .spotify ? ["id", "applescriptID"] : ["persistentID"]
+        )
+        let providerID = provider == .spotify
+            ? rawProviderID?.split(separator: ":").last.map(String.init)
+            : rawProviderID
+        let playbackURLString = stringValue(currentTrack, keys: ["spotifyUrl", "spotifyURL"])
+        let externalURL = playbackURLString.flatMap(URL.init(string:))
+        let artworkURLString = stringValue(currentTrack, keys: ["artworkUrl", "coverURL"])
         let namespace = provider == .spotify ? "spotify" : "apple_music"
         let track = RecognizedTrack(
-            title: values[1],
-            artist: values[2],
-            album: values[3].nilIfEmpty,
+            title: title,
+            artist: artist,
+            album: (currentTrack.value(forKey: "album") as? String)?.nilIfEmpty,
             isrc: nil,
-            artworkURL: URL(string: values[5]),
+            artworkURL: artworkURLString.flatMap(URL.init(string:)),
             appleMusicURL: provider == .appleMusic ? externalURL : nil,
             shazamID: nil,
             matchOffset: position,
@@ -183,41 +208,15 @@ private final class AppleScriptPlayerMetadataReader: @unchecked Sendable {
         )
     }
 
-    private static let spotifySource =
-        """
-        with timeout of 2 seconds
-            tell application id "com.spotify.client"
-                set playbackState to player state as string
-                if playbackState is not "stopped" then
-                    set t to current track
-                    set outputValues to {playbackState, name of t, artist of t, album of t, id of t, artwork url of t, spotify url of t, (duration of t as string), (player position as string)}
-                    set AppleScript's text item delimiters to ASCII character 31
-                    return outputValues as text
-                end if
-            end tell
-        end timeout
-        return {}
-        """
+    private func stringValue(_ object: SBObject, keys: [String]) -> String? {
+        for key in keys {
+            if let value = object.value(forKey: key) as? String, !value.isEmpty { return value }
+        }
+        return nil
+    }
 
-    private static let musicSource =
-        """
-        with timeout of 2 seconds
-            tell application id "com.apple.Music"
-                set playbackState to player state as string
-                if playbackState is not "stopped" then
-                    set t to current track
-                    set stableID to ""
-                    try
-                        set stableID to persistent ID of t
-                    end try
-                    set outputValues to {playbackState, name of t, artist of t, album of t, stableID, "", "", (duration of t as string), (player position as string)}
-                    set AppleScript's text item delimiters to ASCII character 31
-                    return outputValues as text
-                end if
-            end tell
-        end timeout
-        return {}
-        """
+    private static let stoppedState: UInt32 = 0x6B50_5353 // 'kPSS'
+    private static let playingState: UInt32 = 0x6B50_5350 // 'kPSP'
 }
 
 struct AppleScriptProcessRunner: Sendable {
