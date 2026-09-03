@@ -264,6 +264,10 @@ final class AppModel {
     }
 
     func play(_ result: CatalogSearchResult, kind: String) async {
+        guard detection.canStartSpotifyPlayback else {
+            banner = "Spotify playback is not connected. You can still browse and listen along in spectator mode."
+            return
+        }
         guard let spotifyID = result.spotifyID else {
             banner = "This catalog result does not have a playable Spotify reference yet."
             return

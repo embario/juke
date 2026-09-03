@@ -53,7 +53,7 @@ final class PlayerMetadataMonitor {
 
     func setApplicationActive(_ isActive: Bool) {
         applicationIsActive = isActive
-        if isActive { requestRefresh() }
+        if isActive, safetyRefreshTask != nil { requestRefresh() }
     }
 
     func refreshNow() {

@@ -90,7 +90,14 @@ struct VibeChatView: View {
                     .accessibilityIdentifier("chat.syncStatus")
             }
         }
-        .padding(18).background(.ultraThinMaterial)
+        .padding(18)
+        .background(.thickMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.18))
+                .frame(height: 1)
+                .shadow(color: .black.opacity(0.16), radius: 3, y: -1)
+        }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {

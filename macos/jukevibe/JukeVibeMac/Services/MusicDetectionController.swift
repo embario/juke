@@ -4,6 +4,12 @@ import Observation
 @MainActor
 @Observable
 final class MusicDetectionController {
+    enum SpotifyPlaybackAccess: Equatable {
+        case checking
+        case available
+        case spectator
+    }
+
     enum Mode: String, CaseIterable, Identifiable {
         case playerMetadata, microphone, systemAudio
         var id: String { rawValue }
@@ -24,6 +30,7 @@ final class MusicDetectionController {
     var playbackDuration: TimeInterval = 0
     var playbackDeviceName: String?
     var isPlaybackBusy = false
+    var spotifyPlaybackAccess: SpotifyPlaybackAccess = .checking
     var mode: Mode = .playerMetadata
     var errorMessage: String?
 
@@ -38,6 +45,7 @@ final class MusicDetectionController {
     @ObservationIgnored private var playbackUpdatedAt = Date()
     @ObservationIgnored private var applicationIsActive = true
     @ObservationIgnored private var spotifyServerAvailable = true
+    @ObservationIgnored private var forceSpectatorModeForUITests = false
     @ObservationIgnored private var playbackNotificationTokens: [NSObjectProtocol] = []
 
     init() {
@@ -63,7 +71,11 @@ final class MusicDetectionController {
 
     func configureUITestPlayback(token: String) {
         guard ProcessInfo.processInfo.arguments.contains("--uitesting") else { return }
+        forceSpectatorModeForUITests = ProcessInfo.processInfo.arguments.contains("--uitesting-spectator")
+            || ProcessInfo.processInfo.environment["JUKE_VIBE_UI_SPECTATOR"] == "1"
         accessToken = token
+        spotifyServerAvailable = !forceSpectatorModeForUITests
+        spotifyPlaybackAccess = forceSpectatorModeForUITests ? .spectator : .available
         providerName = PlayerMetadataSnapshot.Provider.spotify.rawValue
         isPlaying = true
         isAudioPresent = true
@@ -77,12 +89,15 @@ final class MusicDetectionController {
     func setApplicationActive(_ isActive: Bool) {
         applicationIsActive = isActive
         monitor.setApplicationActive(isActive)
-        if isActive { Task { await refreshSpotifyState() } }
+        if isActive, !forceSpectatorModeForUITests {
+            Task { await refreshSpotifyState() }
+        }
     }
 
     func start(token: String? = nil) async {
         errorMessage = nil
-        spotifyServerAvailable = true
+        spotifyServerAvailable = !forceSpectatorModeForUITests
+        spotifyPlaybackAccess = forceSpectatorModeForUITests ? .spectator : .checking
         let desiredToken = token ?? accessToken
         await stopServices()
         accessToken = desiredToken
@@ -100,6 +115,7 @@ final class MusicDetectionController {
     func stop() async {
         await stopServices()
         accessToken = nil
+        spotifyPlaybackAccess = .checking
     }
 
     private func stopServices() async {
@@ -124,12 +140,16 @@ final class MusicDetectionController {
     var canControlPlayback: Bool {
         switch providerName {
         case PlayerMetadataSnapshot.Provider.spotify.rawValue:
-            accessToken != nil
+            canStartSpotifyPlayback
         case PlayerMetadataSnapshot.Provider.appleMusic.rawValue:
             true
         default:
             false
         }
+    }
+
+    var canStartSpotifyPlayback: Bool {
+        accessToken != nil && spotifyPlaybackAccess == .available
     }
 
     func estimatedPlaybackPosition(at date: Date = .now) -> TimeInterval {
@@ -144,7 +164,7 @@ final class MusicDetectionController {
             }
             return
         }
-        guard let token = accessToken else { return }
+        guard canControlPlayback, let token = accessToken else { return }
         await performPlaybackAction {
             if self.isPlaying {
                 return try await self.playbackClient.pause(token: token, deviceID: self.playbackDeviceID)
@@ -160,7 +180,7 @@ final class MusicDetectionController {
             }
             return
         }
-        guard let token = accessToken else { return }
+        guard canControlPlayback, let token = accessToken else { return }
         await performPlaybackAction { try await self.playbackClient.previous(token: token, deviceID: self.playbackDeviceID) }
     }
 
@@ -171,7 +191,7 @@ final class MusicDetectionController {
             }
             return
         }
-        guard let token = accessToken else { return }
+        guard canControlPlayback, let token = accessToken else { return }
         await performPlaybackAction { try await self.playbackClient.next(token: token, deviceID: self.playbackDeviceID) }
     }
 
@@ -184,7 +204,7 @@ final class MusicDetectionController {
             }
             return
         }
-        guard let token = accessToken else { return }
+        guard canControlPlayback, let token = accessToken else { return }
         await performPlaybackAction {
             try await self.playbackClient.seek(token: token, deviceID: self.playbackDeviceID, position: position)
         }
@@ -195,8 +215,8 @@ final class MusicDetectionController {
         kind: String,
         optimisticTrack: RecognizedTrack?
     ) async {
-        guard let token = accessToken else {
-            errorMessage = "Connect Spotify to your Juke account to start playback."
+        guard canStartSpotifyPlayback, let token = accessToken else {
+            errorMessage = "Spotify is not connected for playback. Juke Vibe is listening in spectator mode."
             return
         }
         if let optimisticTrack {
@@ -237,14 +257,18 @@ final class MusicDetectionController {
     }
 
     private func refreshSpotifyState() async {
+        guard !forceSpectatorModeForUITests else { return }
         guard mode == .playerMetadata, spotifyServerAvailable, let accessToken else { return }
         do {
-            if let state = try await playbackClient.fetchSpotifyState(token: accessToken) {
+            let state = try await playbackClient.fetchSpotifyState(token: accessToken)
+            spotifyPlaybackAccess = .available
+            if let state {
                 apply(state)
                 errorMessage = nil
             }
         } catch PlaybackClientError.providerNotConnected {
             spotifyServerAvailable = false
+            spotifyPlaybackAccess = .spectator
         } catch {
             // Local player metadata remains available if Neptune or Spotify is transiently unavailable.
         }
@@ -260,6 +284,10 @@ final class MusicDetectionController {
             if let state = try await operation() { apply(state) }
             try? await Task.sleep(for: .milliseconds(350))
             await refreshSpotifyState()
+        } catch PlaybackClientError.providerNotConnected(let detail) {
+            spotifyServerAvailable = false
+            spotifyPlaybackAccess = .spectator
+            errorMessage = "\(detail) Juke Vibe remains available in spectator mode."
         } catch {
             errorMessage = error.localizedDescription
         }

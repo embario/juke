@@ -18,12 +18,19 @@ struct NowPlayingBar: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+                .layoutPriority(1)
                 Spacer(minLength: 12)
-                playbackControls
+                playbackAccessBadge
                 Circle()
                     .fill(model.detection.isAudioPresent ? model.atmosphere.primary : .secondary.opacity(0.35))
                     .frame(width: 8, height: 8)
                 detectionMenu
+            }
+
+            if model.detection.track != nil, model.detection.canControlPlayback {
+                playbackControls
+                    .frame(maxWidth: .infinity)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
 
             if model.detection.playbackDuration > 0 {
@@ -58,33 +65,61 @@ struct NowPlayingBar: View {
     }
 
     private var playbackControls: some View {
-        HStack(spacing: 5) {
-            controlButton("Previous track", symbol: "backward.end.fill") {
+        HStack(spacing: 10) {
+            controlButton("Previous track", symbol: "backward.end.fill", prominent: false) {
                 await model.detection.previousTrack()
             }
             controlButton(
                 model.detection.isPlaying ? "Pause" : "Play",
-                symbol: model.detection.isPlaying ? "pause.fill" : "play.fill"
+                symbol: model.detection.isPlaying ? "pause.fill" : "play.fill",
+                prominent: true
             ) {
                 await model.detection.togglePlayback()
             }
-            controlButton("Next track", symbol: "forward.end.fill") {
+            controlButton("Next track", symbol: "forward.end.fill", prominent: false) {
                 await model.detection.nextTrack()
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: model.detection.canControlPlayback)
     }
 
     private func controlButton(
         _ label: String,
         symbol: String,
+        prominent: Bool,
         action: @escaping @MainActor () async -> Void
     ) -> some View {
-        Button { Task { await action() } } label: {
-            Image(systemName: symbol).frame(width: 24, height: 24)
+        ResponsivePlaybackButton(
+            label: label,
+            symbol: symbol,
+            tint: model.atmosphere.primary,
+            prominent: prominent,
+            isBusy: model.detection.isPlaybackBusy,
+            action: action
+        )
+    }
+
+    @ViewBuilder private var playbackAccessBadge: some View {
+        if model.detection.providerName == PlayerMetadataSnapshot.Provider.spotify.rawValue {
+            switch model.detection.spotifyPlaybackAccess {
+            case .available:
+                EmptyView()
+            case .checking:
+                Label("Checking playback", systemImage: "ellipsis")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            case .spectator:
+                Label("Spectator", systemImage: "eye")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(.regularMaterial, in: Capsule())
+                    .help("Spotify is not connected for playback. Listening context remains available.")
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("nowPlaying.spectatorMode")
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(!model.detection.canControlPlayback || model.detection.isPlaybackBusy)
-        .accessibilityLabel(label)
     }
 
     private var detectionMenu: some View {
@@ -108,31 +143,54 @@ struct NowPlayingBar: View {
         let displayedPosition = isScrubbing ? scrubPosition : livePosition
         return HStack(spacing: 10) {
             Text(format(displayedPosition)).monospacedDigit()
-            Slider(
-                value: Binding(
-                    get: { isScrubbing ? scrubPosition : livePosition },
-                    set: { scrubPosition = $0 }
-                ),
-                in: 0...max(1, model.detection.playbackDuration),
-                onEditingChanged: { editing in
-                    if editing {
-                        scrubPosition = livePosition
-                        isScrubbing = true
-                    } else {
-                        let destination = scrubPosition
-                        isScrubbing = false
-                        Task { await model.detection.seek(to: destination) }
+            if model.detection.canControlPlayback {
+                Slider(
+                    value: Binding(
+                        get: { isScrubbing ? scrubPosition : livePosition },
+                        set: { scrubPosition = $0 }
+                    ),
+                    in: 0...max(1, model.detection.playbackDuration),
+                    onEditingChanged: { editing in
+                        if editing {
+                            scrubPosition = livePosition
+                            isScrubbing = true
+                        } else {
+                            let destination = scrubPosition
+                            isScrubbing = false
+                            Task { await model.detection.seek(to: destination) }
+                        }
                     }
-                }
-            )
-            .tint(model.atmosphere.primary)
-            .controlSize(.large)
-            .disabled(!model.detection.canControlPlayback || model.detection.isPlaybackBusy)
-            .accessibilityLabel("Playback position")
+                )
+                .tint(model.atmosphere.primary)
+                .controlSize(.large)
+                .disabled(model.detection.isPlaybackBusy)
+                .accessibilityLabel("Playback position")
+            } else {
+                passiveProgress(position: displayedPosition)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Playback progress")
+                    .accessibilityValue("\(format(displayedPosition)) of \(format(model.detection.playbackDuration))")
+                    .accessibilityIdentifier("nowPlaying.passiveProgress")
+            }
             Text(format(model.detection.playbackDuration)).monospacedDigit()
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
+    }
+
+    private func passiveProgress(position: TimeInterval) -> some View {
+        GeometryReader { proxy in
+            let duration = max(1, model.detection.playbackDuration)
+            let fraction = min(1, max(0, position / duration))
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.secondary.opacity(0.2)).frame(height: 5)
+                Capsule()
+                    .fill(model.atmosphere.primary.opacity(0.8))
+                    .frame(width: proxy.size.width * fraction, height: 5)
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .frame(height: 14)
     }
 
     @ViewBuilder private var artwork: some View {
@@ -152,5 +210,72 @@ struct NowPlayingBar: View {
         guard seconds.isFinite else { return "0:00" }
         let total = max(0, Int(seconds))
         return "\(total / 60):\(String(format: "%02d", total % 60))"
+    }
+}
+
+private struct ResponsivePlaybackButton: View {
+    let label: String
+    let symbol: String
+    let tint: Color
+    let prominent: Bool
+    let isBusy: Bool
+    let action: @MainActor () async -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button { Task { await action() } } label: {
+            Image(systemName: symbol)
+                .font(prominent ? .title3.weight(.semibold) : .body.weight(.semibold))
+                .frame(width: prominent ? 46 : 40, height: prominent ? 46 : 40)
+                .contentShape(Circle())
+        }
+        .buttonStyle(ResponsivePlaybackButtonStyle(
+            tint: tint,
+            prominent: prominent,
+            isHovered: isHovered
+        ))
+        .disabled(isBusy)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
+        }
+        .accessibilityLabel(label)
+        .help(label)
+    }
+}
+
+private struct ResponsivePlaybackButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    let tint: Color
+    let prominent: Bool
+    let isHovered: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(isEnabled ? .primary : .tertiary)
+            .background {
+                Circle().fill(backgroundColor(configuration: configuration))
+            }
+            .overlay {
+                Circle().strokeBorder(
+                    tint.opacity(isHovered && isEnabled ? 0.5 : 0.16),
+                    lineWidth: isHovered ? 1.5 : 1
+                )
+            }
+            .scaleEffect(configuration.isPressed ? 0.91 : (isHovered && isEnabled ? 1.07 : 1))
+            .shadow(
+                color: tint.opacity(isHovered && isEnabled ? 0.24 : 0),
+                radius: isHovered ? 8 : 0
+            )
+            .animation(.spring(response: 0.2, dampingFraction: 0.72), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: isHovered)
+    }
+
+    private func backgroundColor(configuration: Configuration) -> Color {
+        guard isEnabled else { return Color.secondary.opacity(0.06) }
+        if configuration.isPressed { return tint.opacity(0.3) }
+        if isHovered { return tint.opacity(prominent ? 0.24 : 0.16) }
+        return tint.opacity(prominent ? 0.16 : 0.08)
     }
 }

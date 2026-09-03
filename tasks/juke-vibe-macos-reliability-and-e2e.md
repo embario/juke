@@ -7,7 +7,7 @@ owner: codex
 area: clients
 label: CLIENTS
 complexity: 3
-updated_at: 2026-09-02
+updated_at: 2026-09-03
 ---
 
 ## Goal
@@ -36,6 +36,11 @@ user flows.
   state, transport controls, scrubbing, and double-click playback from search.
 - Present richer catalog result metadata and artwork without conversation-only
   actions.
+- Treat Juke authentication and provider playback authorization as separate
+  capabilities, with a read-only spectator experience when Spotify playback is
+  unavailable.
+- Give transport controls a distinct, responsive row that never compresses song
+  metadata, and visually separate the conversation from its composer.
 
 ## Out of Scope
 
@@ -57,6 +62,8 @@ user flows.
 - The Debug application builds successfully.
 - Repeated application focus changes remain responsive without runaway CPU or
   memory growth, and playback polling publishes only meaningful state changes.
+- Spotify controls and search playback remain unavailable until Neptune verifies
+  working provider credentials; catalog browsing and local observation continue.
 
 ## Execution Notes
 
@@ -78,7 +85,7 @@ user flows.
 - Chat now submits immediately, renders an animated typing bubble, and completes
   the reply on a retained cancellable task. Settings uses the native
   `SettingsLink` route.
-- Added five deterministic XCUITest journeys covering signed-out account flows,
+- Added six deterministic XCUITest journeys covering signed-out account flows,
   asynchronous chat, search/navigation/Now Playing/Settings, and one-time privacy
   education.
 - Neptune's public health endpoint returned HTTP 200 over the configured
@@ -112,6 +119,10 @@ user flows.
 - Chat pins itself to the newest response, uses only an animated three-dot reply
   indicator while a response is pending, and keeps placeholder and insertion
   geometry separate so focus does not displace the caret.
-- The developer-signed Debug build, all 11 unit tests (including a signed Data
+- The developer-signed Debug build, all 13 unit tests (including a signed Data
   Protection Keychain round trip and playback API contract coverage), and all
-  five XCUITest journeys pass on the active Mac desktop.
+  six XCUITest journeys pass on an active Mac desktop.
+- Follow-up interaction polish separates the transport row from song metadata,
+  enlarges controls with hover/press feedback, strengthens the transcript-to-
+  composer boundary, and replaces unavailable Spotify actions with an explicit
+  spectator state across Now Playing and catalog search.

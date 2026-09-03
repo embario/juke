@@ -85,6 +85,27 @@ final class JukeVibeMacUITests: XCTestCase {
         XCTAssertFalse(app.sheets.firstMatch.buttons["Got it"].waitForExistence(timeout: 1))
     }
 
+    func testSpotifySpectatorModeRemovesPlaybackActions() {
+        launchAuthenticated(additionalArguments: ["--uitesting-spectator"])
+
+        XCTAssertTrue(element("nowPlaying.spectatorMode").waitForExistence(timeout: 4))
+        XCTAssertFalse(app.buttons["Pause"].exists)
+        XCTAssertFalse(app.buttons["Play"].exists)
+        XCTAssertFalse(app.sliders["Playback position"].exists)
+        XCTAssertTrue(element("nowPlaying.passiveProgress").exists)
+
+        app.buttons["sidebar.discover"].click()
+        XCTAssertTrue(element("discover.spectatorMode").waitForExistence(timeout: 3))
+        let search = element("discover.query")
+        search.click()
+        search.typeText("Miles Davis")
+        app.buttons["discover.search"].click()
+        XCTAssertTrue(app.staticTexts["Kind of Blue"].waitForExistence(timeout: 4))
+        app.staticTexts["Kind of Blue"].doubleClick()
+        XCTAssertFalse(app.buttons["Pause"].exists)
+        XCTAssertTrue(element("discover.spectatorMode").exists)
+    }
+
     func testChatRemainsResponsiveAcrossFocusChanges() {
         launchAuthenticated()
         let composer = element("chat.composer")

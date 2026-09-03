@@ -12,7 +12,16 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Follow a sound").font(.system(size: 32, weight: .semibold, design: .rounded))
-                Text("Browse Juke's connected music catalog. Double-click any result to begin listening in Spotify.").foregroundStyle(.secondary)
+                if model.detection.canStartSpotifyPlayback {
+                    Text("Browse Juke's connected music catalog. Double-click any result to begin listening in Spotify.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Spectator mode · browse freely while Spotify playback is disconnected", systemImage: "eye")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("discover.spectatorMode")
+                }
             }
             HStack {
                 TextField("Search songs, artists, or albums", text: $query)
@@ -86,15 +95,44 @@ private struct CatalogResultCard: View {
         .padding(12)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
         .contentShape(RoundedRectangle(cornerRadius: 18))
-        .onTapGesture(count: 2) { Task { await model.play(result, kind: kind) } }
+        .onTapGesture(count: 2) {
+            guard isPlayable else { return }
+            Task { await model.play(result, kind: kind) }
+        }
         .task(id: result.pk) {
             guard artworkURL == nil, let token = model.session?.accessToken else { return }
             artworkURL = await catalog.artwork(for: result, token: token)
         }
-        .help(result.spotifyID == nil ? "This result is not playable yet" : "Double-click to play in Spotify")
-        .accessibilityHint(result.spotifyID == nil ? "No Spotify playback reference" : "Double-click to play")
-        .accessibilityAction(named: "Play in Spotify") { Task { await model.play(result, kind: kind) } }
+        .help(playbackHint)
+        .accessibilityHint(playbackHint)
+        .modifier(CatalogPlaybackActionModifier(isEnabled: isPlayable) {
+            Task { await model.play(result, kind: kind) }
+        })
         .accessibilityIdentifier("discover.result.\(result.pk)")
+    }
+
+    private var isPlayable: Bool {
+        result.spotifyID != nil && model.detection.canStartSpotifyPlayback
+    }
+
+    private var playbackHint: String {
+        if result.spotifyID == nil { return "This result does not have a Spotify playback reference" }
+        if !model.detection.canStartSpotifyPlayback { return "Spectator mode · connect Spotify playback to listen here" }
+        return "Double-click to play in Spotify"
+    }
+}
+
+private struct CatalogPlaybackActionModifier: ViewModifier {
+    let isEnabled: Bool
+    let action: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.accessibilityAction(named: "Play in Spotify", action)
+        } else {
+            content
+        }
     }
 }
 
