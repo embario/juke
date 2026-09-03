@@ -20,7 +20,11 @@ struct VibeSettingsView: View {
                     Label("Chat is encrypted before it reaches local storage.", systemImage: "lock.shield")
                     Text("Past conversation stays on your devices. Cloud chat receives only the message you deliberately send and current-track metadata.").font(.caption).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped).scrollContentBackground(.hidden).padding()
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .padding()
+            .accessibilityIdentifier("settings.view")
         }.navigationTitle("Juke Vibe Settings")
     }
 }

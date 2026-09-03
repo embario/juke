@@ -28,8 +28,10 @@ final class AppModel {
     var openingQuestion = "What are you hearing differently right now?"
     var draft = ""
     var isSending = false
+    var isAwaitingReply = false
     var banner: String?
-    var settingsPresented = false
+    var privacyWelcomePresented = false
+    var syncNotice: String?
     let lock = AppLockController()
     let detection = MusicDetectionController()
     let atmosphere = VisualAtmosphere()
@@ -38,10 +40,50 @@ final class AppModel {
     private let auth = JukeAuthenticationService()
     private let neptune = NeptuneVibeClient()
     private let localIntelligence = LocalVibeIntelligence()
+    private let isUITesting: Bool
+    @ObservationIgnored private var replyTask: Task<Void, Never>?
+    @ObservationIgnored private var chatVault: ChatVault?
+    @ObservationIgnored private var chatVaultAccountID: String?
 
     init(container: ModelContainer) {
+        let arguments = ProcessInfo.processInfo.arguments
+        isUITesting = arguments.contains("--uitesting")
         context = ModelContext(container)
-        Task { await restoreSession() }
+        if arguments.contains("--uitesting-authenticated") {
+            session = JukeSession(
+                account: .localPreview,
+                accessToken: "ui-test-token",
+                authenticatedAt: .now
+            )
+            detection.track = RecognizedTrack(
+                title: "Blue in Green",
+                artist: "Miles Davis",
+                album: "Kind of Blue",
+                isrc: "USSM15900122",
+                artworkURL: nil,
+                appleMusicURL: nil,
+                shazamID: nil,
+                providerNamespace: "apple_music",
+                providerTrackID: "ui-test-blue-in-green"
+            )
+            detection.providerName = "Apple Music"
+            detection.isAudioPresent = true
+            detection.configureUITestPlayback(token: "ui-test-token")
+            syncAtmosphere()
+            if arguments.contains("--uitesting-reset-privacy-welcome") {
+                UserDefaults.standard.removeObject(forKey: privacyWelcomeKey(accountID: JukeAccount.localPreview.id))
+            }
+        } else if !isUITesting {
+            Task { await restoreSession() }
+        }
+    }
+
+    func prepareUITestPresentationIfNeeded() async {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard isUITesting, arguments.contains("--uitesting-show-privacy-welcome") else { return }
+        try? await Task.sleep(for: .milliseconds(500))
+        guard !Task.isCancelled else { return }
+        presentPrivacyWelcomeIfNeeded()
     }
 
     var trackLabel: String? {
@@ -57,42 +99,69 @@ final class AppModel {
     func completeAuthentication(_ url: URL) async {
         do {
             session = try await auth.complete(callbackURL: url)
+            presentPrivacyWelcomeIfNeeded()
             await synchronizeEncryptedHistory()
             loadMessages()
             await refreshOpeningQuestion()
-            await detection.start()
+            await detection.start(token: session?.accessToken)
         } catch { banner = error.localizedDescription }
     }
 
     func logout() async {
+        replyTask?.cancel()
+        replyTask = nil
         await detection.stop()
         do { try await auth.logout() } catch { banner = error.localizedDescription }
         session = nil
         messages = []
+        chatVault = nil
+        chatVaultAccountID = nil
         lock.lockNow()
     }
 
-    func send() async {
+    func send() {
         guard let session, let token = session.accessToken else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSending else { return }
         draft = ""
         isSending = true
-        defer { isSending = false }
+        let currentTrack = trackLabel
+        replyTask = Task { [weak self] in
+            guard let self else { return }
+            await self.completeSend(text: text, currentTrack: currentTrack, session: session, token: token)
+        }
+    }
+
+    private func completeSend(text: String, currentTrack: String?, session: JukeSession, token: String) async {
+        defer {
+            isSending = false
+            isAwaitingReply = false
+            replyTask = nil
+        }
         do {
             try await store(text, role: .user)
+            isAwaitingReply = true
             let reply: String
-            if session.account.cloudAIEnabled {
-                reply = try await neptune.chat(message: text, currentTrack: trackLabel, token: token)
+            if isUITesting {
+                // Leave enough time for macOS accessibility to observe the
+                // transient typing state during an end-to-end test run.
+                try await Task.sleep(for: .seconds(3))
+                reply = "That muted trumpet opens a spacious conversation. What part of the performance draws you back in?"
+            } else if session.account.cloudAIEnabled {
+                reply = try await neptune.chat(message: text, currentTrack: currentTrack, token: token)
             } else {
                 reply = try await localIntelligence.respond(
                     message: text,
-                    currentTrack: trackLabel,
+                    currentTrack: currentTrack,
                     recentConversation: messages.map { "\($0.role.rawValue): \($0.content)" }
                 )
             }
             try await store(reply, role: .assistant)
-        } catch { banner = error.localizedDescription }
+        } catch is CancellationError {
+            return
+        } catch {
+            banner = error.localizedDescription
+        }
     }
 
     func refreshOpeningQuestion() async {
@@ -115,7 +184,7 @@ final class AppModel {
             if session != nil {
                 await synchronizeEncryptedHistory()
                 loadMessages()
-                await detection.start()
+                await detection.start(token: session?.accessToken)
                 await refreshOpeningQuestion()
             }
         } catch { banner = error.localizedDescription }
@@ -126,14 +195,21 @@ final class AppModel {
         let id = UUID()
         let createdAt = Date()
         let payload = PrivateChatPayload(role: role.rawValue, content: text, trackIdentity: trackLabel, createdAt: createdAt)
-        let encrypted = try await ChatVault(accountID: accountID).seal(payload, messageID: id)
+        let encrypted = try await vault(for: accountID).seal(payload, messageID: id)
         context.insert(ChatMessage(id: id, accountID: accountID, role: role, encryptedContent: encrypted, trackIdentity: trackLabel, createdAt: createdAt))
         try context.save()
         messages.append(DisplayChatMessage(id: id, role: role, content: text, createdAt: createdAt))
-        if let token = session?.accessToken {
+        if let token = session?.accessToken, !isUITesting {
             let envelope = NeptuneVibeClient.EncryptedEnvelope(recordID: id, accountID: accountID, kind: "chatMessage", ciphertext: encrypted, modifiedAt: createdAt, encryptionVersion: 1)
-            do { try await neptune.upload(envelope, token: token) }
-            catch { banner = "This message is safe on this Mac; encrypted sync will retry when Neptune is reachable." }
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await neptune.upload(envelope, token: token)
+                    syncNotice = nil
+                } catch {
+                    syncNotice = "Saved privately on this Mac · cross-device sync is temporarily unavailable"
+                }
+            }
         }
     }
 
@@ -146,7 +222,7 @@ final class AppModel {
         do {
             let records = try context.fetch(descriptor)
             Task {
-                let vault = ChatVault(accountID: accountID)
+                let vault = vault(for: accountID)
                 var output: [DisplayChatMessage] = []
                 for record in records {
                     if let payload = try? await vault.open(record.encryptedContent, messageID: record.id),
@@ -165,7 +241,7 @@ final class AppModel {
             let incoming = try await neptune.encryptedChanges(token: token)
             let existing = try context.fetch(FetchDescriptor<ChatMessage>())
             let ids = Set(existing.map(\.id))
-            let vault = ChatVault(accountID: session.account.id)
+            let vault = vault(for: session.account.id)
             for envelope in incoming where !ids.contains(envelope.recordID) && envelope.accountID == session.account.id {
                 guard let payload = try? await vault.open(envelope.ciphertext, messageID: envelope.recordID),
                       let role = ChatMessage.Role(rawValue: payload.role) else { continue }
@@ -173,6 +249,38 @@ final class AppModel {
             }
             try context.save()
         } catch { }
+    }
+
+    private func presentPrivacyWelcomeIfNeeded() {
+        guard let accountID = session?.account.id else { return }
+        let key = privacyWelcomeKey(accountID: accountID)
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        privacyWelcomePresented = true
+    }
+
+    private func privacyWelcomeKey(accountID: String) -> String {
+        "vibe.encryptionWelcomeSeen.\(accountID)"
+    }
+
+    func play(_ result: CatalogSearchResult, kind: String) async {
+        guard let spotifyID = result.spotifyID else {
+            banner = "This catalog result does not have a playable Spotify reference yet."
+            return
+        }
+        await detection.playSpotify(
+            id: spotifyID,
+            kind: kind,
+            optimisticTrack: kind == "tracks" ? result.recognizedTrack : nil
+        )
+    }
+
+    private func vault(for accountID: String) -> ChatVault {
+        if chatVaultAccountID != accountID || chatVault == nil {
+            chatVault = ChatVault(accountID: accountID)
+            chatVaultAccountID = accountID
+        }
+        return chatVault!
     }
 
 }

@@ -20,6 +20,7 @@ final class AppLockController {
     }
 
     func sceneBecameInactive() {
+        guard becameInactiveAt == nil else { return }
         becameInactiveAt = .now
         scheduledLock?.cancel()
         let delay = lockAfterMinutes

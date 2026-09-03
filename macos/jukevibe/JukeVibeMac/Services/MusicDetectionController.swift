@@ -19,27 +19,75 @@ final class MusicDetectionController {
     var track: RecognizedTrack?
     var providerName: String?
     var isAudioPresent = false
+    var isPlaying = false
+    var playbackPosition: TimeInterval = 0
+    var playbackDuration: TimeInterval = 0
+    var playbackDeviceName: String?
+    var isPlaybackBusy = false
     var mode: Mode = .playerMetadata
     var errorMessage: String?
 
     private let monitor = PlayerMetadataMonitor()
+    private let playbackClient = PlaybackClient()
+    private let localPlaybackController = LocalPlayerPlaybackController()
     private var capture: (any AudioCaptureService)?
     private var recognizer: (any TrackRecognizing)?
+    @ObservationIgnored private var playbackPollTask: Task<Void, Never>?
+    @ObservationIgnored private var accessToken: String?
+    @ObservationIgnored private var playbackDeviceID: String?
+    @ObservationIgnored private var playbackUpdatedAt = Date()
+    @ObservationIgnored private var applicationIsActive = true
+    @ObservationIgnored private var playbackNotificationTokens: [NSObjectProtocol] = []
 
     init() {
         monitor.onSnapshot = { [weak self] snapshot in
-            self?.track = snapshot?.track
-            self?.providerName = snapshot?.provider.rawValue
-            self?.isAudioPresent = snapshot != nil
+            guard let self, let snapshot else { return }
+            self.track = snapshot.track
+            self.providerName = snapshot.provider.rawValue
+            self.isPlaying = snapshot.isPlaying
+            self.isAudioPresent = snapshot.isPlaying
+            self.playbackPosition = snapshot.playbackPosition
+            self.playbackDuration = snapshot.track.trackDuration ?? 0
+            self.playbackUpdatedAt = .now
         }
+        let notificationCenter = DistributedNotificationCenter.default()
+        playbackNotificationTokens.append(notificationCenter.addObserver(
+            forName: Notification.Name("com.spotify.client.PlaybackStateChanged"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.refreshSpotifyState() }
+        })
     }
 
-    func start() async {
+    func configureUITestPlayback(token: String) {
+        guard ProcessInfo.processInfo.arguments.contains("--uitesting") else { return }
+        accessToken = token
+        providerName = PlayerMetadataSnapshot.Provider.spotify.rawValue
+        isPlaying = true
+        isAudioPresent = true
+        playbackPosition = 96
+        playbackDuration = 327
+        playbackDeviceID = "ui-test-device"
+        playbackDeviceName = "Test Mac"
+        playbackUpdatedAt = .now
+    }
+
+    func setApplicationActive(_ isActive: Bool) {
+        applicationIsActive = isActive
+        monitor.setApplicationActive(isActive)
+        if isActive { Task { await refreshSpotifyState() } }
+    }
+
+    func start(token: String? = nil) async {
         errorMessage = nil
-        await stop()
+        let desiredToken = token ?? accessToken
+        await stopServices()
+        accessToken = desiredToken
         switch mode {
         case .playerMetadata:
             monitor.start()
+            startSpotifyPolling()
         case .microphone:
             await startAudio(source: .microphone)
         case .systemAudio:
@@ -48,6 +96,13 @@ final class MusicDetectionController {
     }
 
     func stop() async {
+        await stopServices()
+        accessToken = nil
+    }
+
+    private func stopServices() async {
+        playbackPollTask?.cancel()
+        playbackPollTask = nil
         monitor.stop()
         let activeCapture = capture
         capture = nil
@@ -57,6 +112,192 @@ final class MusicDetectionController {
         recognizer?.invalidate()
         recognizer = nil
         isAudioPresent = false
+        isPlaying = false
+        playbackPosition = 0
+        playbackDuration = 0
+        playbackDeviceName = nil
+        playbackDeviceID = nil
+    }
+
+    var canControlPlayback: Bool {
+        switch providerName {
+        case PlayerMetadataSnapshot.Provider.spotify.rawValue:
+            accessToken != nil
+        case PlayerMetadataSnapshot.Provider.appleMusic.rawValue:
+            true
+        default:
+            false
+        }
+    }
+
+    func estimatedPlaybackPosition(at date: Date = .now) -> TimeInterval {
+        let elapsed = isPlaying ? max(0, date.timeIntervalSince(playbackUpdatedAt)) : 0
+        return min(playbackDuration, max(0, playbackPosition + elapsed))
+    }
+
+    func togglePlayback() async {
+        if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
+            await performLocalPlaybackAction {
+                try await self.localPlaybackController.toggleAppleMusicPlayback()
+            }
+            return
+        }
+        guard let token = accessToken else { return }
+        await performPlaybackAction {
+            if self.isPlaying {
+                return try await self.playbackClient.pause(token: token, deviceID: self.playbackDeviceID)
+            }
+            return try await self.playbackClient.resume(token: token, deviceID: self.playbackDeviceID)
+        }
+    }
+
+    func previousTrack() async {
+        if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
+            await performLocalPlaybackAction {
+                try await self.localPlaybackController.previousAppleMusicTrack()
+            }
+            return
+        }
+        guard let token = accessToken else { return }
+        await performPlaybackAction { try await self.playbackClient.previous(token: token, deviceID: self.playbackDeviceID) }
+    }
+
+    func nextTrack() async {
+        if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
+            await performLocalPlaybackAction {
+                try await self.localPlaybackController.nextAppleMusicTrack()
+            }
+            return
+        }
+        guard let token = accessToken else { return }
+        await performPlaybackAction { try await self.playbackClient.next(token: token, deviceID: self.playbackDeviceID) }
+    }
+
+    func seek(to position: TimeInterval) async {
+        playbackPosition = min(playbackDuration, max(0, position))
+        playbackUpdatedAt = .now
+        if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
+            await performLocalPlaybackAction {
+                try await self.localPlaybackController.seekAppleMusic(to: position)
+            }
+            return
+        }
+        guard let token = accessToken else { return }
+        await performPlaybackAction {
+            try await self.playbackClient.seek(token: token, deviceID: self.playbackDeviceID, position: position)
+        }
+    }
+
+    func playSpotify(
+        id: String,
+        kind: String,
+        optimisticTrack: RecognizedTrack?
+    ) async {
+        guard let token = accessToken else {
+            errorMessage = "Connect Spotify to your Juke account to start playback."
+            return
+        }
+        if let optimisticTrack {
+            track = optimisticTrack
+            providerName = PlayerMetadataSnapshot.Provider.spotify.rawValue
+            playbackPosition = 0
+            playbackDuration = optimisticTrack.trackDuration ?? 0
+            playbackUpdatedAt = .now
+            isPlaying = true
+            isAudioPresent = true
+        }
+        await performPlaybackAction {
+            try await self.playbackClient.play(
+                token: token,
+                spotifyID: id,
+                kind: kind,
+                deviceID: self.playbackDeviceID
+            )
+        }
+    }
+
+    private func startSpotifyPolling() {
+        guard accessToken != nil, playbackPollTask == nil else { return }
+        playbackPollTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                await refreshSpotifyState()
+                let seconds = applicationIsActive ? (isPlaying ? 2 : 3) : (isPlaying ? 4 : 6)
+                do { try await Task.sleep(for: .seconds(seconds)) }
+                catch { return }
+            }
+        }
+    }
+
+    private func refreshSpotifyState() async {
+        guard mode == .playerMetadata, let accessToken else { return }
+        do {
+            if let state = try await playbackClient.fetchSpotifyState(token: accessToken) {
+                apply(state)
+                errorMessage = nil
+            }
+        } catch {
+            // Local player metadata remains available if Neptune or Spotify is transiently unavailable.
+        }
+    }
+
+    private func performPlaybackAction(
+        _ operation: @escaping @MainActor () async throws -> JukePlaybackState?
+    ) async {
+        guard !isPlaybackBusy else { return }
+        isPlaybackBusy = true
+        defer { isPlaybackBusy = false }
+        do {
+            if let state = try await operation() { apply(state) }
+            try? await Task.sleep(for: .milliseconds(350))
+            await refreshSpotifyState()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func performLocalPlaybackAction(
+        _ operation: @escaping @MainActor () async throws -> Void
+    ) async {
+        guard !isPlaybackBusy else { return }
+        isPlaybackBusy = true
+        defer { isPlaybackBusy = false }
+        do {
+            try await operation()
+            try? await Task.sleep(for: .milliseconds(200))
+            monitor.refreshNow()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func apply(_ state: JukePlaybackState) {
+        guard state.provider == "spotify", let value = state.track, let title = value.name else { return }
+        let artist = value.artists?.compactMap(\.name).filter { !$0.isEmpty }.joined(separator: ", ") ?? "Unknown artist"
+        let providerID = value.id ?? value.uri?.split(separator: ":").last.map(String.init)
+        track = RecognizedTrack(
+            title: title,
+            artist: artist,
+            album: value.album?.name,
+            isrc: nil,
+            artworkURL: value.artworkURL,
+            appleMusicURL: nil,
+            shazamID: nil,
+            matchOffset: TimeInterval(state.progressMs) / 1_000,
+            matchConfidence: 1,
+            trackDuration: TimeInterval(value.durationMs ?? 0) / 1_000,
+            providerNamespace: "spotify",
+            providerTrackID: providerID,
+            providerPlaybackURL: value.uri.flatMap(URL.init(string:))
+        )
+        providerName = PlayerMetadataSnapshot.Provider.spotify.rawValue
+        isPlaying = state.isPlaying
+        isAudioPresent = state.isPlaying
+        playbackPosition = TimeInterval(state.progressMs) / 1_000
+        playbackDuration = TimeInterval(value.durationMs ?? 0) / 1_000
+        playbackDeviceName = state.device?.name
+        playbackDeviceID = state.device?.id
+        playbackUpdatedAt = .now
     }
 
     private func startAudio(source: CaptureSource) async {

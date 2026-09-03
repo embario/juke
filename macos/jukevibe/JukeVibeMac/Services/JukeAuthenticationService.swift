@@ -44,13 +44,9 @@ actor JukeAuthenticationService {
     }
 
     func restoreSession() throws -> JukeSession? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        var query = keychainQuery()
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
@@ -115,7 +111,7 @@ actor JukeAuthenticationService {
     }
 
     private func keychainQuery() -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        VibeKeychain.genericPasswordQuery(service: service, account: account)
     }
 
     private func randomURLSafeString(byteCount: Int) -> String {
