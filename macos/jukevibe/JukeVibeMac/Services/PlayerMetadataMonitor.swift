@@ -175,14 +175,18 @@ private final class ScriptingBridgePlayerMetadataReader: @unchecked Sendable {
         let position = (application.value(forKey: "playerPosition") as? NSNumber)?.doubleValue ?? 0
         let rawProviderID = stringValue(
             currentTrack,
-            keys: provider == .spotify ? ["id", "applescriptID"] : ["persistentID"]
+            keys: provider == .spotify ? ["id"] : ["persistentID"]
         )
         let providerID = provider == .spotify
             ? rawProviderID?.split(separator: ":").last.map(String.init)
             : rawProviderID
-        let playbackURLString = stringValue(currentTrack, keys: ["spotifyUrl", "spotifyURL"])
+        let playbackURLString = provider == .spotify
+            ? stringValue(currentTrack, keys: ["spotifyUrl"])
+            : nil
         let externalURL = playbackURLString.flatMap(URL.init(string:))
-        let artworkURLString = stringValue(currentTrack, keys: ["artworkUrl", "coverURL"])
+        let artworkURLString = provider == .spotify
+            ? stringValue(currentTrack, keys: ["artworkUrl"])
+            : nil
         let namespace = provider == .spotify ? "spotify" : "apple_music"
         let track = RecognizedTrack(
             title: title,
