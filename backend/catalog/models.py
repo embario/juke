@@ -40,7 +40,10 @@ def _generate_juke_id():
 class MusicResource(models.Model):
     """ Generic class for all music-related resource models. """
     juke_id = models.UUIDField(unique=True, null=False, default=_generate_juke_id, editable=False)
-    spotify_id = models.CharField(max_length=30, blank=False, null=False, unique=True, default=None)
+    # Legacy compatibility field. New provider integrations identify resources
+    # through the provider-neutral *ExternalIdentifier tables below instead of
+    # fabricating Spotify identifiers.
+    spotify_id = models.CharField(max_length=30, blank=True, null=True, unique=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
     spotify_data = models.JSONField(null=True, default=dict)
@@ -158,6 +161,11 @@ class ExternalIdentifier(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     source = models.CharField(max_length=32, choices=EXTERNAL_ID_SOURCES)
     external_id = models.CharField(max_length=255)
+    provider_data = models.JSONField(default=dict, blank=True)
+    provider_url = models.URLField(max_length=1024, blank=True, default='')
+    market = models.CharField(max_length=32, blank=True, default='')
+    last_refreshed_at = models.DateTimeField(null=True, blank=True)
+    cache_expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

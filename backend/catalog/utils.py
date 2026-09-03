@@ -8,6 +8,16 @@ class StreamingAPIError(APIException):
     default_code = "streaming_api_error"
 
 
+class CatalogProviderValidationError(APIException):
+    status_code = 400
+    default_code = "catalog_provider_invalid"
+
+
+class CatalogProviderUnavailable(APIException):
+    status_code = 503
+    default_code = "catalog_provider_unavailable"
+
+
 class APIResponse:
     def __init__(self, data) -> None:
         self.href = data.get('href')

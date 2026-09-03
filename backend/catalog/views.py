@@ -40,7 +40,7 @@ class MusicResourceViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class GenreViewSet(MusicResourceViewSet):
-    queryset = Genre.objects.all()
+    queryset = Genre.objects.prefetch_related('external_ids').all()
     serializer_class = serializers.GenreSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -64,7 +64,7 @@ class GenreViewSet(MusicResourceViewSet):
 
 
 class ArtistViewSet(MusicResourceViewSet):
-    queryset = Artist.objects.all()
+    queryset = Artist.objects.prefetch_related('external_ids').all()
     serializer_class = serializers.ArtistSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -80,7 +80,7 @@ class ArtistViewSet(MusicResourceViewSet):
 
 
 class AlbumViewSet(MusicResourceViewSet):
-    queryset = Album.objects.all()
+    queryset = Album.objects.prefetch_related('external_ids').all()
     serializer_class = serializers.AlbumSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -95,7 +95,7 @@ class AlbumViewSet(MusicResourceViewSet):
 
 
 class TrackViewSet(MusicResourceViewSet):
-    queryset = Track.objects.all()
+    queryset = Track.objects.prefetch_related('external_ids').all()
     serializer_class = serializers.TrackSerializer
     permission_classes = [permissions.IsAuthenticated]
 

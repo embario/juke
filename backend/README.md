@@ -147,6 +147,46 @@ MLCore currently returns canonical recommendation IDs. Backend clients remain re
 
 Responses include a correlation `request_id` and version provenance for the API contract, recommender model, latest cooccurrence training run, identity source snapshot, and identity materialization algorithm.
 
+## Provider-neutral catalog read-through
+
+Catalog search is provider-backed read-through, not a database-only search. The
+existing request remains compatible and defaults to Spotify:
+
+```text
+GET /api/v1/tracks/?external=true&q=blue+train
+GET /api/v1/tracks/?external=true&q=blue+train&provider=spotify
+```
+
+`provider` (or its compatibility alias `source`) selects a validated adapter in
+`catalog.providers`. Adapters return the existing `APIResponse` contract and
+persist normalized resources plus provider identity/freshness metadata. The
+database remains a cache and enrichment layer; it is not treated as the full
+upstream catalog.
+
+Provider identities live in the resource-specific `*ExternalIdentifier`
+tables and are unique by `(source, external_id)`. Each row records the provider
+payload, provider URL, market/storefront, refresh time, and cache expiry. The
+legacy `spotify_id` and `spotify_data` columns remain populated for Spotify
+clients. They are nullable so a resource from another provider never needs a
+fabricated Spotify ID. Cross-provider canonical merging is intentionally left
+to the identity resolver rather than inferred from matching names.
+
+Spotify is the only enabled search adapter today. `apple_music` is a recognized
+provider and fails with HTTP 503 until an adapter is configured. A production
+Apple Music adapter still requires:
+
+- an Apple Music developer token signing setup (team ID, key ID, and private
+  key or a securely rotated generated token);
+- an explicit storefront on catalog search requests;
+- deterministic conversion of Apple artists, albums, and songs into Juke's
+  normalized fields and provider links;
+- provider-policy review for cache TTL, artwork handling, attribution, and
+  deletion/freshness behavior.
+
+Adapters can be enabled through `CATALOG_PROVIDER_ADAPTERS` in Django settings,
+mapping the canonical provider name to an importable adapter class. Tests must
+use stub adapters and must not make live provider requests.
+
 ## Alias Materialization
 
 Canonical alias materialization stores durable run state in `mlcore_canonical_alias_materialization_run`. Each batch commits its aliases and checkpoint together, allowing an interrupted run to continue with:

@@ -61,6 +61,13 @@ if SPOTIFY_USE_STUB_DATA is None:
 else:
     SPOTIFY_USE_STUB_DATA = SPOTIFY_USE_STUB_DATA.lower() in {'1', 'true', 'yes', 'on'}
 
+# Provider catalog search is a read-through cache. Provider adapters may use a
+# shorter TTL when their developer terms or payload semantics require it.
+CATALOG_PROVIDER_CACHE_TTL_SECONDS = int(
+    os.environ.get('CATALOG_PROVIDER_CACHE_TTL_SECONDS', '86400')
+)
+CATALOG_PROVIDER_ADAPTERS = {}
+
 allowed_hosts = os.environ.get("BACKEND_ALLOWED_HOSTS")
 if allowed_hosts:
     ALLOWED_HOSTS = _split_csv_env(allowed_hosts)
