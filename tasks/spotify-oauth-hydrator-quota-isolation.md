@@ -20,6 +20,7 @@ Make Juke's Spotify account-linking flow reliable while the canonical identity h
 - Replace durable API tokens in browser query strings with short-lived, single-use connection tickets.
 - Surface Spotify quota exhaustion distinctly during OAuth completion.
 - Add a persistent, configurable request budget/cooldown for bulk Spotify hydration so interactive authentication and playback retain capacity.
+- Make the systemd unit own a named Compose hydration service so stopping it cannot orphan a one-off worker.
 - Deploy to Juke Dev and restart the existing systemd hydration unit.
 
 ## Out Of Scope
