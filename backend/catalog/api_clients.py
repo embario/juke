@@ -18,6 +18,8 @@ ResourceStrategy = typing.TypeVar('ResourceStrategy')
 
 
 class StreamingPlatformAPIClient(abc.ABC):
+    provider_name: str
+
     def __init__(self, strategy: ResourceStrategy) -> None:
         self.strategy = strategy
         self.client: typing.Any = None
@@ -54,6 +56,8 @@ class StreamingPlatformAPIClient(abc.ABC):
 class SpotifyAPIClient(StreamingPlatformAPIClient):
     """ API Client for Spotify (using Spotipy)."""
 
+    provider_name = 'spotify'
+
     def __init__(self, strategy: ResourceStrategy) -> None:
         super().__init__(strategy)
         self.use_stub = getattr(settings, 'SPOTIFY_USE_STUB_DATA', False)
@@ -62,7 +66,7 @@ class SpotifyAPIClient(StreamingPlatformAPIClient):
         )
 
     def prepare_path(self, path: str, data: dict) -> str:
-        if 'q' not in data and path in ['/api/v1/artists/', '/api/v1/albums', '/api/v1/tracks/']:
+        if 'q' not in data and path in ['/api/v1/artists/', '/api/v1/albums/', '/api/v1/tracks/']:
             raise StreamingAPIError("Missing search parameter 'q'.")
         return path
 
@@ -91,7 +95,15 @@ class SpotifyAPIClient(StreamingPlatformAPIClient):
             res = self._perform_stub_request(data)
         else:
             if 'q' in data:
-                res = self.client.search(data['q'], type=data['type'], offset=data['offset'])
+                search_options = {
+                    'type': data['type'],
+                    'offset': int(data['offset']),
+                }
+                if data.get('limit'):
+                    search_options['limit'] = int(data['limit'])
+                if data.get('market'):
+                    search_options['market'] = data['market']
+                res = self.client.search(data['q'], **search_options)
                 res = res[f"{data['type']}s"]
             elif data['type'] == 'artist':
                 res = self.client.artist(data['uri'])
@@ -112,7 +124,14 @@ class SpotifyAPIClient(StreamingPlatformAPIClient):
         # Deserialize into actual MusicResource instances for saving to DB,
         # but keep serialized versions for response.
         for idx, item in enumerate(response):
-            ser_instance = ser(data=item, context={'request': self.request})
+            ser_instance = ser(
+                data=item,
+                context={
+                    'request': self.request,
+                    'provider': self.provider_name,
+                    'market': data.get('market', ''),
+                },
+            )
             ser_instance.is_valid(raise_exception=True)
             ser_instance.save()
             response._data[idx] = ser_instance.data

@@ -1,0 +1,18 @@
+[Unit]
+Description=Juke Spotify ISRC hydration worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/juke-dev
+ExecStartPre=-/usr/bin/docker compose rm -f spotify-hydrator
+ExecStart=/usr/bin/docker compose up --no-deps --no-color spotify-hydrator
+ExecStop=/usr/bin/docker compose stop -t 30 spotify-hydrator
+ExecStopPost=-/usr/bin/docker compose rm -f spotify-hydrator
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

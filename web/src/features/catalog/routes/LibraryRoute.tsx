@@ -25,7 +25,7 @@ import {
 } from '../api/catalogApi';
 import { usePlayback } from '../../playback/hooks/usePlayback';
 import { deriveTrackUri } from '../../playback/utils';
-import { buildSpotifyConnectPath } from '../../auth/constants';
+import { requestSpotifyConnectUrl } from '../../auth/api/spotifyConnect';
 import { formatDuration } from '@shared/utils/formatters';
 
 type DetailType = 'genre' | 'artist' | 'album';
@@ -671,10 +671,14 @@ const LibraryRoute = () => {
   const canStartPlayback = canControl && !requiresSpotifyLink;
   const isDetailView = Boolean(selectedNode && selectedNode.resourceType !== 'search');
   const hasSearchQuery = Boolean(queryParam.trim());
-  const spotifyConnectPath = buildSpotifyConnectPath(
-    token,
-    typeof window !== 'undefined' ? window.location.href : undefined,
-  );
+  const handleSpotifyConnect = async () => {
+    try {
+      const url = await requestSpotifyConnectUrl(token, window.location.href);
+      window.location.assign(url);
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : 'Unable to connect Spotify.');
+    }
+  };
 
   return (
     <section className="library library--story">
@@ -749,7 +753,11 @@ const LibraryRoute = () => {
               variant="warning"
               message={
                 <>
-                  Playback unavailable: Spotify is not linked for this account yet. <a href={spotifyConnectPath}>Connect Spotify</a> (also available as a small link near the bottom of the sidebar), then retry play.
+                  Playback unavailable: Spotify is not linked for this account yet.{' '}
+                  <button type="button" className="btn btn-link" onClick={() => void handleSpotifyConnect()}>
+                    Connect Spotify
+                  </button>{' '}
+                  (also available near the bottom of the sidebar), then retry play.
                 </>
               }
             />

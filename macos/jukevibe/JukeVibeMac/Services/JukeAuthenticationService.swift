@@ -29,12 +29,42 @@ enum JukeAuthError: LocalizedError {
 
 actor JukeAuthenticationService {
     private struct PendingAttempt { let state: String; let verifier: String }
+    private struct SpotifyConnectTicketResponse: Decodable {
+        let connectURL: URL
+
+        enum CodingKeys: String, CodingKey {
+            case connectURL = "connect_url"
+        }
+    }
 
     private let service = "com.juke.vibe.mac.authentication"
     private let account = "current-juke-session-v1"
     private let baseURL = URL(string: "https://neptune.tail647b75.ts.net/")!
     private var pendingAttempt: PendingAttempt?
     private let session: URLSession
+
+    nonisolated static func spotifyConnectTicketRequest(token: String) throws -> URLRequest {
+        let url = URL(string: "https://neptune.tail647b75.ts.net/api/v1/auth/spotify/connect-ticket/")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "return_to": "https://neptune.tail647b75.ts.net/",
+        ])
+        return request
+    }
+
+    func spotifyConnectionURL(token: String) async throws -> URL {
+        let request = try Self.spotifyConnectTicketRequest(token: token)
+        let (data, response) = try await session.data(for: request)
+        guard data.count <= 1_048_576,
+              let http = response as? HTTPURLResponse,
+              http.statusCode == 201,
+              let result = try? JSONDecoder().decode(SpotifyConnectTicketResponse.self, from: data)
+        else { throw JukeAuthError.exchangeUnavailable }
+        return result.connectURL
+    }
 
     init() {
         let configuration = URLSessionConfiguration.ephemeral
@@ -44,13 +74,9 @@ actor JukeAuthenticationService {
     }
 
     func restoreSession() throws -> JukeSession? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        var query = keychainQuery()
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
@@ -115,7 +141,7 @@ actor JukeAuthenticationService {
     }
 
     private func keychainQuery() -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+        VibeKeychain.genericPasswordQuery(service: service, account: account)
     }
 
     private func randomURLSafeString(byteCount: Int) -> String {

@@ -51,14 +51,18 @@ def _capability(user):
     return capability
 
 
-def _account_payload(user):
+def _display_name(user):
     profile = getattr(user, 'music_profile', None)
     display_name = ''
     if profile:
         display_name = profile.display_name or profile.name or ''
+    return display_name or user.get_full_name() or user.username
+
+
+def _account_payload(user):
     return {
         'id': str(user.pk),
-        'displayName': display_name or user.get_full_name() or user.username,
+        'displayName': _display_name(user),
         'email': user.email or None,
         'cloudAIEnabled': _capability(user).cloud_ai_enabled,
     }
@@ -261,6 +265,7 @@ class VibeChatView(APIView):
             reply = generate_chat_response(
                 message=serializer.validated_data['message'],
                 current_track=serializer.validated_data.get('currentTrack'),
+                listener_name=_display_name(request.user),
             )
         except VibeChatUnavailable as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)

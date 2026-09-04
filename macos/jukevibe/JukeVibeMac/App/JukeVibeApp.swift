@@ -13,6 +13,7 @@ struct JukeVibeApp: App {
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             let schema = Schema([ChatMessage.self])
             let testing = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+                || ProcessInfo.processInfo.arguments.contains("--uitesting")
             let configuration = testing
                 ? ModelConfiguration("JukeVibeTests", schema: schema, isStoredInMemoryOnly: true)
                 : ModelConfiguration("JukeVibe", schema: schema, url: support.appending(path: "Vibe.store"), cloudKitDatabase: .none)

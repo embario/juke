@@ -4,6 +4,8 @@ Use this file as the first stop for work selection.
 
 | ID | Title | Status | Priority | Owner | Label | Area | Complexity | File | Updated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| spotify-oauth-hydrator-quota-isolation | Protect Spotify account linking from bulk hydration quota exhaustion | in_progress | p0 | codex | BACKEND | backend | 3 | `tasks/spotify-oauth-hydrator-quota-isolation.md` | 2026-09-04 |
+| provider-neutral-catalog-read-through | Add provider-neutral catalog search and read-through cache foundations | done | p1 | codex-provider-neutral-catalog | BACKEND | backend | 4 | `tasks/provider-neutral-catalog-read-through.md` | 2026-09-03 |
 | juke-journal-backend-foundation | Juke Journal backend authentication, encrypted sync, and private AI boundaries | review | p1 | codex | BACKEND | backend | 4 | `tasks/juke-journal-backend-foundation.md` | 2026-08-31 |
 | music-resource-text-descriptor-indexing | Define best route for text descriptor indexing across music resources with async refresh | ready | p1 | unassigned | BACKEND/ML | platform | 4 | `tasks/music-resource-text-descriptor-indexing-and-async-refresh.md` | 2026-02-11 |
 | mlcore-phase0-catalog-identity-adapters | ML Core Phase 0 - Catalog identity augmentation and adapter IDs | review | p1 | codex | BACKEND/ML | platform | 4 | `tasks/mlcore-phase0-catalog-identity-and-adapters.md` | 2026-03-05 |
@@ -58,6 +60,7 @@ Use this file as the first stop for work selection.
 | dep-upgrade-phase-1 | Dependency upgrades phase 1 | ready | p1 | unassigned | ALL/GENERAL | platform | 5 | `tasks/dependency-upgrade-audit.md` | 2026-02-11 |
 | clients-feature-parity | Reach feature parity with all Juke app clients | ready | p1 | unassigned | CLIENTS | clients | 5 | `tasks/clients-feature-parity.md` | 2026-02-16 |
 | juke-vibe-apple-clients | Build Juke Vibe for macOS and iOS | done | p1 | codex | CLIENTS | clients | 5 | `tasks/juke-vibe-apple-clients.md` | 2026-09-01 |
+| juke-vibe-macos-reliability-and-e2e | Harden Juke Vibe macOS interactions and add UI tests | done | p1 | codex | CLIENTS | clients | 3 | `tasks/juke-vibe-macos-reliability-and-e2e.md` | 2026-09-03 |
 | web-playback-next-track | Fix playback to play the next track in the album | review | p1 | unassigned | WEB | web | 2 | `tasks/web-playback-next-track.md` | 2026-02-11 |
 | cross-platform-notifications-reengagement | Build cross-platform notifications and re-engagement journeys | ready | p2 | unassigned | ALL/GENERAL | platform | 4 | `tasks/cross-platform-notifications-and-re-engagement.md` | 2026-02-16 |
 | social-graph-activity-foundation | Build social graph and follow/activity foundations | ready | p2 | unassigned | ALL/GENERAL | platform | 5 | `tasks/social-graph-and-follow-activity-foundation.md` | 2026-02-16 |

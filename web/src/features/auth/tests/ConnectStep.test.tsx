@@ -48,7 +48,7 @@ vi.mock('../components/onboarding/context/OnboardingProvider', () => ({
 
 vi.mock('../components/onboarding/api/onboardingApi', () => ({
   saveOnboardingProfile: vi.fn().mockResolvedValue(undefined),
-  getSpotifyConnectUrl: vi.fn(),
+  getSpotifyConnectUrl: vi.fn().mockResolvedValue('https://auth.local/connect?ticket=one-time'),
 }));
 
 vi.mock('../hooks/useAuth', () => ({

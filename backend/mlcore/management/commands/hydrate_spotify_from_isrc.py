@@ -12,6 +12,7 @@ from mlcore.services.provider_hydration import (
     ProviderHydrationError,
     RequestPacer,
     SpotifyClient,
+    SpotifyHydrationQuotaGuard,
     claim_hydration_item,
     hydrate_spotify_item,
     reconcile_stale_hydration_state,
@@ -126,25 +127,32 @@ class Command(BaseCommand):
 
                 previous_run = ProviderHydrationRun.objects.filter(provider='spotify').first()
                 previous_metadata = previous_run.metadata if previous_run is not None else {}
+                quota_guard = SpotifyHydrationQuotaGuard(
+                    settings.SPOTIFY_HYDRATION_REQUEST_BUDGET,
+                    settings.SPOTIFY_HYDRATION_BUDGET_WINDOW_SECONDS,
+                )
+                effective_rps = quota_guard.effective_rps(options['rps'])
                 run = ProviderHydrationRun.objects.create(
                     provider='spotify',
                     requested_limit=options['max_items'],
-                    configured_rps=options['rps'],
+                    configured_rps=effective_rps,
                     metadata={
                         'seeded_at_start': seeded,
+                        'requested_rps': options['rps'],
                         'incremental_seed_cursor': previous_metadata.get('incremental_seed_cursor', ''),
                         'incremental_seed_scanned_total': 0,
                         'incremental_seed_created_total': 0,
                         'incremental_seed_passes_completed': 0,
                         'stale_runs_reconciled': reconciliation.stale_runs,
                         'leases_reclaimed': reconciliation.reclaimed_items,
+                        quota_guard.metadata_key: quota_guard.initial_state(previous_metadata),
                     },
                 )
                 client = SpotifyClient(
                     settings.SPOTIFY_HYDRATION_CLIENT_ID,
                     settings.SPOTIFY_HYDRATION_CLIENT_SECRET,
                 )
-                pacer = RequestPacer(options['rps'])
+                pacer = RequestPacer(effective_rps)
                 last_incremental_seed_at = time.monotonic()
                 if not options['skip_incremental_seed']:
                     seeded += self._incremental_seed(run, options)
@@ -156,6 +164,10 @@ class Command(BaseCommand):
                     ):
                         seeded += self._incremental_seed(run, options)
                         last_incremental_seed_at = time.monotonic()
+                    quota_delay = quota_guard.delay_seconds(run)
+                    if quota_delay > 0:
+                        time.sleep(min(options['idle_sleep_seconds'], quota_delay))
+                        continue
                     item = claim_hydration_item(run=run, worker_id=worker_id)
                     if item is None:
                         if (
@@ -172,12 +184,18 @@ class Command(BaseCommand):
                         time.sleep(min(options['idle_sleep_seconds'], max(remaining, 0.1)))
                         continue
                     pacer.wait()
+                    quota_guard.record_request(run)
                     try:
                         hydrate_spotify_item(item, run=run, client=client)
                         pacer.success()
                     except ProviderHydrationError as exc:
                         if exc.http_status == 429:
                             pacer.rate_limited(exc.retry_after)
+                            quota_guard.rate_limited(
+                                run,
+                                retry_after=exc.retry_after,
+                                reason=exc.reason,
+                            )
                         elif not exc.retryable:
                             self.stderr.write(str(exc))
                     self._metrics(run, options['metrics_path'])

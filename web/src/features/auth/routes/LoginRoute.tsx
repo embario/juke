@@ -35,6 +35,10 @@ const LoginRoute = () => {
     switch (code) {
       case 'spotify_unavailable':
         return 'Spotify authentication is temporarily unavailable. Please try again.';
+      case 'spotify_quota_exceeded':
+        return 'Spotify has temporarily paused new connections because Juke reached its provider quota. Please try again later.';
+      case 'spotify_connect_ticket_invalid':
+        return 'This Spotify connection link expired or was already used. Start again from Juke.';
       case 'spotify_auth_failed':
         return 'Spotify authentication failed. Please try again.';
       default:

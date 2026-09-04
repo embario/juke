@@ -45,6 +45,19 @@ targets:
         SWIFT_STRICT_CONCURRENCY: complete
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Juke Vibe.app/Contents/MacOS/Juke Vibe"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  JukeVibeMacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: JukeVibeMacUITests
+    dependencies:
+      - target: JukeVibeMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.juke.vibe.mac.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+        TEST_TARGET_NAME: JukeVibeMac
 schemes:
   JukeVibeMac:
     build:
@@ -54,3 +67,11 @@ schemes:
     test:
       targets:
         - JukeVibeMacTests
+  JukeVibeMacUIAutomation:
+    build:
+      targets:
+        JukeVibeMac: all
+        JukeVibeMacUITests: [test]
+    test:
+      targets:
+        - JukeVibeMacUITests

@@ -22,11 +22,12 @@ TERMINAL_STATUSES = {'matched', 'no_match', 'ambiguous', 'dead'}
 
 
 class ProviderHydrationError(Exception):
-    def __init__(self, message, *, http_status=None, retry_after=None, retryable=True):
+    def __init__(self, message, *, http_status=None, retry_after=None, retryable=True, reason=''):
         super().__init__(message)
         self.http_status = http_status
         self.retry_after = retry_after
         self.retryable = retryable
+        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -94,10 +95,17 @@ class SpotifyClient:
         except requests.RequestException as exc:
             raise ProviderHydrationError(f'Spotify token request failed: {exc}') from exc
         if response.status_code >= 400:
+            retry_after = (
+                _retry_after_seconds(response.headers.get('Retry-After'))
+                if response.status_code == 429
+                else None
+            )
             raise ProviderHydrationError(
                 f'Spotify token request returned HTTP {response.status_code}',
                 http_status=response.status_code,
+                retry_after=retry_after,
                 retryable=response.status_code >= 500 or response.status_code == 429,
+                reason=_spotify_error_reason(response),
             )
         payload = response.json()
         self._token = payload['access_token']
@@ -111,10 +119,12 @@ class SpotifyClient:
             response = self._search(normalized, force_token=True)
         if response.status_code == 429:
             retry_after = _retry_after_seconds(response.headers.get('Retry-After'))
+            reason = _spotify_error_reason(response)
             raise ProviderHydrationError(
-                'Spotify rate limit reached.',
+                f'Spotify rate limit reached{f": {reason}" if reason else "."}',
                 http_status=429,
                 retry_after=retry_after,
+                reason=reason,
             )
         if response.status_code >= 500:
             raise ProviderHydrationError(
@@ -169,10 +179,84 @@ class RequestPacer:
             self._successes_since_limit = 0
 
     def rate_limited(self, retry_after):
-        self.current_rps = max(0.1, self.current_rps / 2.0)
+        self.current_rps = max(0.001, self.current_rps / 2.0)
         self._successes_since_limit = 0
         delay = max(1.0, float(retry_after or 30)) + self.jitter(0.25, 1.25)
         self._next_request_at = self.monotonic() + delay
+
+
+class SpotifyHydrationQuotaGuard:
+    """Persistent bulk-request budget and provider-directed cooldown state."""
+
+    metadata_key = 'spotify_hydration_quota'
+
+    def __init__(self, request_budget, window_seconds, *, now=time.time):
+        self.request_budget = max(0, int(request_budget))
+        self.window_seconds = max(1.0, float(window_seconds))
+        self.now = now
+
+    def effective_rps(self, requested_rps):
+        if self.request_budget <= 0:
+            return float(requested_rps)
+        return min(float(requested_rps), self.request_budget / self.window_seconds)
+
+    def initial_state(self, previous_metadata=None):
+        now = self.now()
+        previous = (previous_metadata or {}).get(self.metadata_key) or {}
+        window_started_at = _safe_float(previous.get('window_started_at'), now)
+        used = max(0, _safe_int(previous.get('requests_used'), 0))
+        if now >= window_started_at + self.window_seconds:
+            window_started_at = now
+            used = 0
+        return {
+            'window_started_at': window_started_at,
+            'requests_used': used,
+            'request_budget': self.request_budget,
+            'window_seconds': self.window_seconds,
+            'cooldown_until': max(0.0, _safe_float(previous.get('cooldown_until'), 0.0)),
+            'last_limit_reason': str(previous.get('last_limit_reason') or ''),
+        }
+
+    def delay_seconds(self, run):
+        state = self._state(run)
+        now = self.now()
+        changed = False
+        if now >= state['window_started_at'] + self.window_seconds:
+            state['window_started_at'] = now
+            state['requests_used'] = 0
+            changed = True
+        cooldown_delay = max(0.0, state['cooldown_until'] - now)
+        budget_delay = 0.0
+        if self.request_budget > 0 and state['requests_used'] >= self.request_budget:
+            budget_delay = max(0.0, state['window_started_at'] + self.window_seconds - now)
+        if changed:
+            self._persist(run, state)
+        return max(cooldown_delay, budget_delay)
+
+    def record_request(self, run):
+        state = self._state(run)
+        state['requests_used'] += 1
+        self._persist(run, state)
+
+    def rate_limited(self, run, *, retry_after, reason=''):
+        state = self._state(run)
+        state['cooldown_until'] = max(
+            state['cooldown_until'],
+            self.now() + max(1.0, float(retry_after or 30)),
+        )
+        state['last_limit_reason'] = str(reason or '')
+        self._persist(run, state)
+
+    def _state(self, run):
+        state = run.metadata.get(self.metadata_key)
+        if state is None:
+            state = self.initial_state()
+            run.metadata = {**run.metadata, self.metadata_key: state}
+        return state
+
+    def _persist(self, run, state):
+        run.metadata = {**run.metadata, self.metadata_key: state}
+        run.save(update_fields=['metadata', 'updated_at'])
 
 
 def seed_spotify_hydration_queue(*, batch_size=10_000, limit=None):
@@ -459,6 +543,31 @@ def _retry_after_seconds(value):
         return max(1.0, float(value))
     except (TypeError, ValueError):
         return 30.0
+
+
+def _spotify_error_reason(response):
+    try:
+        payload = response.json()
+    except (TypeError, ValueError):
+        return ''
+    error = payload.get('error') if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        return str(error.get('reason') or '')
+    return str(payload.get('reason') or '') if isinstance(payload, dict) else ''
+
+
+def _safe_float(value, fallback):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(fallback)
+
+
+def _safe_int(value, fallback):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(fallback)
 
 
 def _finish_item(item, *, status, evidence):

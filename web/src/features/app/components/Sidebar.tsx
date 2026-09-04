@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { buildSpotifyConnectPath } from '../../auth/constants';
+import { requestSpotifyConnectUrl } from '../../auth/api/spotifyConnect';
 
 type Props = {
   isOpen: boolean;
@@ -10,10 +10,6 @@ type Props = {
 const Sidebar = ({ isOpen, onClose }: Props) => {
   const { isAuthenticated, logout, token } = useAuth();
   const navigate = useNavigate();
-  const spotifyConnectPath = buildSpotifyConnectPath(
-    token,
-    typeof window !== 'undefined' ? window.location.href : undefined,
-  );
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'sidebar__link sidebar__link--active' : 'sidebar__link';
@@ -28,6 +24,12 @@ const Sidebar = ({ isOpen, onClose }: Props) => {
     logout();
     handleNavClick();
     navigate('/login');
+  };
+
+  const handleSpotifyConnect = async () => {
+    const url = await requestSpotifyConnectUrl(token, window.location.href);
+    handleNavClick();
+    window.location.assign(url);
   };
 
   return (
@@ -71,9 +73,9 @@ const Sidebar = ({ isOpen, onClose }: Props) => {
       </nav>
       <div className="sidebar__footer">
         {isAuthenticated ? (
-          <a className="sidebar__micro-link" href={spotifyConnectPath} onClick={handleNavClick}>
+          <button type="button" className="sidebar__micro-link" onClick={() => void handleSpotifyConnect()}>
             Connect Spotify
-          </a>
+          </button>
         ) : null}
         <p className="sidebar__footnote">Frontend build {new Date().getFullYear()}</p>
       </div>

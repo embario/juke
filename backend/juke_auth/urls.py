@@ -13,6 +13,11 @@ urlpatterns = [
     path('accounts/resend-registration/', views.ResendRegistrationVerificationView.as_view(), name='resend_registration'),
     path('accounts/verify-registration/', views.JukeVerifyRegistrationView.as_view(), name='verify_registration'),
     path('connect/spotify/', views.spotify_connect, name='spotify_connect'),
+    path(
+        'spotify/connect-ticket/',
+        views.SpotifyConnectTicketIssueView.as_view(),
+        name='spotify_connect_ticket',
+    ),
     path('spotify/status/', views.SpotifyConnectionStatusView.as_view(), name='spotify_status'),
     path('spotify/token/', views.SpotifyAccessTokenView.as_view(), name='spotify_token'),
     path('spotify/disconnect/', views.SpotifyDisconnectView.as_view(), name='spotify_disconnect'),

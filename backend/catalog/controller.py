@@ -3,14 +3,16 @@ import typing
 
 from django.http import HttpRequest
 
-from catalog.api_clients import SpotifyAPIClient
+from catalog.providers import get_provider_adapter, provider_from_request_data
 
 
 class ResourceStrategy(abc.ABC):
     def __init__(self, request: HttpRequest) -> None:
         self.request = request
         self.path = request.path
-        self.data = request.data | request.GET
+        request_data = request.data.dict() if hasattr(request.data, 'dict') else dict(request.data)
+        query_data = request.GET.dict() if hasattr(request.GET, 'dict') else dict(request.GET)
+        self.data = request_data | query_data
 
     @abc.abstractmethod
     def route(self) -> typing.Any:
@@ -19,7 +21,8 @@ class ResourceStrategy(abc.ABC):
 
 class ExternalResourceStrategy(ResourceStrategy):
     def route(self) -> typing.Any:
-        client = SpotifyAPIClient(self)
+        provider = provider_from_request_data(self.data)
+        client = get_provider_adapter(provider, self)
         response = client.perform_request()
         return response
 

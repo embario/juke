@@ -20,6 +20,7 @@ from mlcore.services.provider_hydration import (
     RequestPacer,
     SpotifyCandidate,
     SpotifyClient,
+    SpotifyHydrationQuotaGuard,
     claim_hydration_item,
     hydrate_spotify_item,
     normalize_isrc,
@@ -67,13 +68,18 @@ class SpotifyClientTests(SimpleTestCase):
     def test_search_surfaces_retry_after_on_429(self):
         session = mock.Mock()
         session.post.return_value = FakeResponse(payload={'access_token': 'token', 'expires_in': 3600})
-        session.get.return_value = FakeResponse(status_code=429, headers={'Retry-After': '17'})
+        session.get.return_value = FakeResponse(
+            status_code=429,
+            headers={'Retry-After': '17'},
+            payload={'error': {'reason': 'QUOTA_EXCEEDED'}},
+        )
 
         with self.assertRaises(ProviderHydrationError) as raised:
             SpotifyClient('id', 'secret', session=session).search_isrc('USRC17607839')
 
         self.assertEqual(raised.exception.http_status, 429)
         self.assertEqual(raised.exception.retry_after, 17)
+        self.assertEqual(raised.exception.reason, 'QUOTA_EXCEEDED')
 
     def test_network_errors_are_retryable(self):
         session = mock.Mock()
@@ -110,6 +116,47 @@ class RequestPacerTests(SimpleTestCase):
 
     def test_normalize_isrc_removes_punctuation(self):
         self.assertEqual(normalize_isrc('us-rc1-76-07839'), 'USRC17607839')
+
+
+class SpotifyHydrationQuotaGuardTests(TestCase):
+    def setUp(self):
+        self.clock = [1_000.0]
+        self.guard = SpotifyHydrationQuotaGuard(2, 100, now=lambda: self.clock[0])
+        self.run = ProviderHydrationRun.objects.create(
+            provider='spotify',
+            metadata={self.guard.metadata_key: self.guard.initial_state()},
+        )
+
+    def test_budget_smooths_requested_rate_and_pauses_at_limit(self):
+        self.assertEqual(self.guard.effective_rps(1), 0.02)
+
+        self.guard.record_request(self.run)
+        self.guard.record_request(self.run)
+
+        self.assertEqual(self.guard.delay_seconds(self.run), 100)
+        self.clock[0] = 1_101.0
+        self.assertEqual(self.guard.delay_seconds(self.run), 0)
+        self.run.refresh_from_db()
+        self.assertEqual(
+            self.run.metadata[self.guard.metadata_key]['requests_used'],
+            0,
+        )
+
+    def test_provider_retry_after_survives_run_restart(self):
+        self.guard.rate_limited(
+            self.run,
+            retry_after=45,
+            reason='QUOTA_EXCEEDED',
+        )
+        self.run.refresh_from_db()
+        inherited = self.guard.initial_state(self.run.metadata)
+        replacement = ProviderHydrationRun.objects.create(
+            provider='spotify',
+            metadata={self.guard.metadata_key: inherited},
+        )
+
+        self.assertEqual(self.guard.delay_seconds(replacement), 45)
+        self.assertEqual(inherited['last_limit_reason'], 'QUOTA_EXCEEDED')
 
 
 class DatabaseHealthWaitTests(SimpleTestCase):
