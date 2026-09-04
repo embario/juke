@@ -67,4 +67,4 @@ class SpotifyConnectTicket(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        indexes = [models.Index(fields=('user', 'created_at'), name='spotify_ticket_user_created_idx')]
+        indexes = [models.Index(fields=('user', 'created_at'), name='spotify_tkt_user_created_idx')]

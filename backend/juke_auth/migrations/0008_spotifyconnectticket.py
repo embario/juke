@@ -30,6 +30,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='spotifyconnectticket',
-            index=models.Index(fields=['user', 'created_at'], name='spotify_ticket_user_created_idx'),
+            index=models.Index(fields=['user', 'created_at'], name='spotify_tkt_user_created_idx'),
         ),
     ]
