@@ -1,6 +1,7 @@
 import logging
 from urllib.parse import urljoin
 from urllib.parse import urlparse
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib.auth import REDIRECT_FIELD_NAME, authenticate, login, logout
@@ -39,6 +40,11 @@ from juke_auth.serializers import (
     GlobePointSerializer,
 )
 from juke_auth.models import JukeUser, MusicProfile
+from juke_auth.spotify_connect import (
+    SpotifyConnectTicketError,
+    consume_spotify_connect_ticket,
+    issue_spotify_connect_ticket,
+)
 from juke_auth.spotify_credentials import (
     SpotifyCredentialBroker,
     SpotifyCredentialError,
@@ -54,6 +60,20 @@ from juke_auth.frontend_origins import (
 logger = logging.getLogger(__name__)
 
 SOCIAL_AUTH_PROVIDER = 'spotify'
+
+
+def _spotify_connection_error(exc):
+    normalized = str(exc).upper()
+    if 'QUOTA_EXCEEDED' in normalized or ('429' in normalized and 'SPOTIFY' in normalized):
+        return (
+            'spotify_quota_exceeded',
+            'Spotify has temporarily paused new connections because Juke reached its provider quota. '
+            'Please try again later.',
+        )
+    return (
+        'spotify_unavailable',
+        'Spotify authentication is temporarily unavailable. Please try again.',
+    )
 
 
 def _social_auth_error_response(request, error_code: str, detail: str, status_code: int):
@@ -131,10 +151,11 @@ def spotify_login(request, *args, **kwargs):
         return _start_spotify_auth(request, *args, **kwargs)
     except AuthConnectionError as exc:
         logger.warning('Spotify auth connection error', exc_info=exc)
+        error_code, detail = _spotify_connection_error(exc)
         return _social_auth_error_response(
             request,
-            error_code='spotify_unavailable',
-            detail='Spotify authentication is temporarily unavailable. Please try again.',
+            error_code=error_code,
+            detail=detail,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
     except Exception as exc:
@@ -151,8 +172,38 @@ class SpotifyTokenIssueThrottle(UserRateThrottle):
     scope = 'spotify_token_issue'
 
 
+class SpotifyConnectTicketIssueThrottle(UserRateThrottle):
+    scope = 'spotify_connect_ticket_issue'
+
+
+class SpotifyConnectTicketIssueView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [SpotifyConnectTicketIssueThrottle]
+
+    def post(self, request, *args, **kwargs):
+        return_to = _validated_return_to(
+            request.data.get('return_to'),
+            request=request,
+            fallback=get_frontend_origin(request=request),
+        )
+        issued = issue_spotify_connect_ticket(user=request.user, return_to=return_to)
+        connect_path = urljoin(
+            f"{settings.PUBLIC_BACKEND_URL.rstrip('/')}/",
+            'api/v1/auth/connect/spotify/',
+        )
+        connect_url = f'{connect_path}?{urlencode({"ticket": issued.secret})}'
+        return Response(
+            {
+                'connect_url': connect_url,
+                'expires_at': issued.expires_at.isoformat(),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
 def spotify_connect(request, *args, **kwargs):
     token_key = (request.GET.get('token') or '').strip()
+    ticket_secret = (request.GET.get('ticket') or '').strip()
     session_frontend_origin = _store_spotify_frontend_origin(request)
     return_to = _validated_return_to(
         request.GET.get('return_to'),
@@ -160,7 +211,19 @@ def spotify_connect(request, *args, **kwargs):
         fallback=session_frontend_origin,
     )
 
-    if not request.user.is_authenticated and token_key:
+    if ticket_secret:
+        try:
+            ticket = consume_spotify_connect_ticket(ticket_secret)
+        except SpotifyConnectTicketError:
+            return _social_auth_error_response(
+                request,
+                error_code='spotify_connect_ticket_invalid',
+                detail='This Spotify connection link is invalid or has expired. Please start again from Juke.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        _login_user(request, ticket.user)
+        return_to = ticket.return_to
+    elif token_key:
         token = Token.objects.filter(key=token_key).select_related('user').first()
         if token:
             _login_user(request, token.user)
@@ -180,10 +243,11 @@ def spotify_connect(request, *args, **kwargs):
         return _start_spotify_auth(request, *args, **kwargs)
     except AuthConnectionError as exc:
         logger.warning('Spotify auth connection error', exc_info=exc)
+        error_code, detail = _spotify_connection_error(exc)
         return _social_auth_error_response(
             request,
-            error_code='spotify_unavailable',
-            detail='Spotify authentication is temporarily unavailable. Please try again.',
+            error_code=error_code,
+            detail=detail,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
     except Exception as exc:
@@ -215,10 +279,11 @@ def spotify_complete(request, *args, **kwargs):
         )
     except AuthConnectionError as exc:
         logger.warning('Spotify auth connection error', exc_info=exc)
+        error_code, detail = _spotify_connection_error(exc)
         return _social_auth_error_response(
             request,
-            error_code='spotify_unavailable',
-            detail='Spotify authentication is temporarily unavailable. Please try again.',
+            error_code=error_code,
+            detail=detail,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
     except Exception as exc:

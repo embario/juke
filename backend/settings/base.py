@@ -228,6 +228,13 @@ SPOTIFY_HYDRATION_REQUEST_TIMEOUT_SECONDS = float(
     os.environ.get('SPOTIFY_HYDRATION_REQUEST_TIMEOUT_SECONDS', '15')
 )
 SPOTIFY_HYDRATION_MAX_ATTEMPTS = int(os.environ.get('SPOTIFY_HYDRATION_MAX_ATTEMPTS', '8'))
+SPOTIFY_HYDRATION_REQUEST_BUDGET = int(os.environ.get('SPOTIFY_HYDRATION_REQUEST_BUDGET', '5000'))
+SPOTIFY_HYDRATION_BUDGET_WINDOW_SECONDS = int(
+    os.environ.get('SPOTIFY_HYDRATION_BUDGET_WINDOW_SECONDS', str(60 * 60 * 24))
+)
+SPOTIFY_CONNECT_TICKET_TTL_SECONDS = int(
+    os.environ.get('SPOTIFY_CONNECT_TICKET_TTL_SECONDS', '120')
+)
 
 SOCIAL_AUTH_JSONFIELD_ENABLED = True
 SOCIAL_AUTH_USER_MODEL = AUTH_USER_MODEL
@@ -300,6 +307,7 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     'DEFAULT_THROTTLE_RATES': {
         'spotify_token_issue': os.environ.get('SPOTIFY_TOKEN_ISSUE_RATE', '30/min'),
+        'spotify_connect_ticket_issue': os.environ.get('SPOTIFY_CONNECT_TICKET_ISSUE_RATE', '10/min'),
         'vibe_auth_exchange': os.environ.get('VIBE_AUTH_EXCHANGE_RATE', '20/min'),
         'vibe_user': os.environ.get('VIBE_USER_RATE', '120/min'),
     },

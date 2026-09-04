@@ -34,6 +34,22 @@ class SocialAuthCompleteTests(APITestCase):
 
     @override_settings(FRONTEND_URL='http://frontend.local')
     @patch('juke_auth.views.do_complete')
+    def test_spotify_complete_quota_error_is_explicit(self, mock_do_complete):
+        mock_do_complete.side_effect = AuthConnectionError(
+            None,
+            'Spotify /v1/me returned 429 QUOTA_EXCEEDED',
+        )
+
+        resp = self.client.get(self.complete_url)
+
+        self.assertEqual(resp.status_code, status.HTTP_302_FOUND)
+        self.assertEqual(
+            resp['Location'],
+            'http://frontend.local/login?error=spotify_quota_exceeded',
+        )
+
+    @override_settings(FRONTEND_URL='http://frontend.local')
+    @patch('juke_auth.views.do_complete')
     def test_spotify_complete_generic_error_redirect(self, mock_do_complete):
         mock_do_complete.side_effect = RuntimeError('boom')
 

@@ -29,6 +29,13 @@ enum JukeAuthError: LocalizedError {
 
 actor JukeAuthenticationService {
     private struct PendingAttempt { let state: String; let verifier: String }
+    private struct SpotifyConnectTicketResponse: Decodable {
+        let connectURL: URL
+
+        enum CodingKeys: String, CodingKey {
+            case connectURL = "connect_url"
+        }
+    }
 
     private let service = "com.juke.vibe.mac.authentication"
     private let account = "current-juke-session-v1"
@@ -36,16 +43,27 @@ actor JukeAuthenticationService {
     private var pendingAttempt: PendingAttempt?
     private let session: URLSession
 
-    nonisolated static func spotifyConnectionURL(token: String) -> URL? {
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "neptune.tail647b75.ts.net"
-        components.path = "/api/v1/auth/connect/spotify/"
-        components.queryItems = [
-            URLQueryItem(name: "token", value: token),
-            URLQueryItem(name: "return_to", value: "https://neptune.tail647b75.ts.net/"),
-        ]
-        return components.url
+    nonisolated static func spotifyConnectTicketRequest(token: String) throws -> URLRequest {
+        let url = URL(string: "https://neptune.tail647b75.ts.net/api/v1/auth/spotify/connect-ticket/")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "return_to": "https://neptune.tail647b75.ts.net/",
+        ])
+        return request
+    }
+
+    func spotifyConnectionURL(token: String) async throws -> URL {
+        let request = try Self.spotifyConnectTicketRequest(token: token)
+        let (data, response) = try await session.data(for: request)
+        guard data.count <= 1_048_576,
+              let http = response as? HTTPURLResponse,
+              http.statusCode == 201,
+              let result = try? JSONDecoder().decode(SpotifyConnectTicketResponse.self, from: data)
+        else { throw JukeAuthError.exchangeUnavailable }
+        return result.connectURL
     }
 
     init() {

@@ -1,3 +1,6 @@
+import uuid
+
+from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
@@ -46,3 +49,22 @@ class MusicProfile(models.Model):
             self.city_lng = round(self.city_lng, 2)
         self.clout = max(0.0, min(1.0, self.clout))
         super().save(*args, **kwargs)
+
+
+class SpotifyConnectTicket(models.Model):
+    """Short-lived, single-use browser handoff for linking Spotify."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='spotify_connect_tickets',
+    )
+    secret_digest = models.CharField(max_length=64, unique=True)
+    return_to = models.CharField(max_length=2048)
+    expires_at = models.DateTimeField(db_index=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=('user', 'created_at'), name='spotify_ticket_user_created_idx')]

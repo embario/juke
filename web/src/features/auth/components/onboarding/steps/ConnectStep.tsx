@@ -37,7 +37,7 @@ export default function ConnectStep({ token }: Props) {
       clearDraft();
 
       if (connectSpotify) {
-        window.location.href = getSpotifyConnectUrl(
+        window.location.href = await getSpotifyConnectUrl(
           token,
           typeof window !== 'undefined' ? window.location.href : undefined,
         );

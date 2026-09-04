@@ -333,15 +333,21 @@ final class AppModel {
     }
 
     func openSpotifyConnection() {
-        guard let token = session?.accessToken,
-              let url = JukeAuthenticationService.spotifyConnectionURL(token: token) else {
+        guard let token = session?.accessToken else {
             banner = "Sign in to Juke before connecting Spotify."
             return
         }
         if isUITesting {
             banner = "Spotify connection would open in Juke."
         } else {
-            NSWorkspace.shared.open(url)
+            Task {
+                do {
+                    let url = try await auth.spotifyConnectionURL(token: token)
+                    NSWorkspace.shared.open(url)
+                } catch {
+                    banner = "Juke could not start Spotify linking. Please try again."
+                }
+            }
         }
     }
 

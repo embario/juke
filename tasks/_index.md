@@ -4,6 +4,7 @@ Use this file as the first stop for work selection.
 
 | ID | Title | Status | Priority | Owner | Label | Area | Complexity | File | Updated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| spotify-oauth-hydrator-quota-isolation | Protect Spotify account linking from bulk hydration quota exhaustion | in_progress | p0 | codex | BACKEND | backend | 3 | `tasks/spotify-oauth-hydrator-quota-isolation.md` | 2026-09-04 |
 | provider-neutral-catalog-read-through | Add provider-neutral catalog search and read-through cache foundations | done | p1 | codex-provider-neutral-catalog | BACKEND | backend | 4 | `tasks/provider-neutral-catalog-read-through.md` | 2026-09-03 |
 | music-resource-text-descriptor-indexing | Define best route for text descriptor indexing across music resources with async refresh | ready | p1 | unassigned | BACKEND/ML | platform | 4 | `tasks/music-resource-text-descriptor-indexing-and-async-refresh.md` | 2026-02-11 |
 | mlcore-phase0-catalog-identity-adapters | ML Core Phase 0 - Catalog identity augmentation and adapter IDs | review | p1 | codex | BACKEND/ML | platform | 4 | `tasks/mlcore-phase0-catalog-identity-and-adapters.md` | 2026-03-05 |

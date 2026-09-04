@@ -76,13 +76,18 @@ final class VibeNetworkContractTests: XCTestCase {
     }
 
     func testSpotifyConnectionUsesJukeAuthenticatedConnectFlow() throws {
-        let url = try XCTUnwrap(JukeAuthenticationService.spotifyConnectionURL(token: "secret token"))
+        let request = try JukeAuthenticationService.spotifyConnectTicketRequest(token: "secret token")
+        let url = try XCTUnwrap(request.url)
         let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
 
-        XCTAssertEqual(components.path, "/api/v1/auth/connect/spotify/")
-        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "token" })?.value, "secret token")
+        XCTAssertEqual(components.path, "/api/v1/auth/spotify/connect-ticket/")
+        XCTAssertNil(components.query)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Token secret token")
+        let body = try XCTUnwrap(request.httpBody)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
         XCTAssertEqual(
-            components.queryItems?.first(where: { $0.name == "return_to" })?.value,
+            payload["return_to"],
             "https://neptune.tail647b75.ts.net/"
         )
     }

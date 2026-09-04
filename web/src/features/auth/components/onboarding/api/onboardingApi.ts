@@ -6,7 +6,7 @@
 
 import { apiClient } from '@shared/api/apiClient';
 import type { Genre, Artist, CityLocation, OnboardingData } from '../types';
-import { buildSpotifyConnectPath } from '../../../constants';
+import { requestSpotifyConnectUrl } from '../../../api/spotifyConnect';
 
 // Fetch featured genres with top artists
 export async function fetchFeaturedGenres(): Promise<Genre[]> {
@@ -229,6 +229,6 @@ export async function saveOnboardingProfile(data: OnboardingData, token: string)
   await apiClient.patch('/api/v1/music-profiles/me/', payload, { token });
 }
 
-export function getSpotifyConnectUrl(token: string, returnTo?: string): string {
-  return buildSpotifyConnectPath(token, returnTo);
+export function getSpotifyConnectUrl(token: string, returnTo?: string): Promise<string> {
+  return requestSpotifyConnectUrl(token, returnTo);
 }
