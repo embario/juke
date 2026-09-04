@@ -1,7 +1,7 @@
 [Unit]
 Description=Juke Spotify ISRC hydration worker
-After=network-online.target
-Wants=network-online.target
+After=default.target
+ConditionPathExists=/usr/bin/docker
 
 [Service]
 Type=simple
