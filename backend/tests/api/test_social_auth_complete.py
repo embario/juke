@@ -63,6 +63,7 @@ class SocialAuthCompleteTests(APITestCase):
 
     @override_settings(
         PUBLIC_BACKEND_URL='http://auth.local:8000',
+        SOCIAL_AUTH_REDIRECT_IS_HTTPS=False,
         FRONTEND_URL='http://localhost:5173',
         FRONTEND_ALLOWED_ORIGINS=[
             'http://localhost:5173',
@@ -87,6 +88,7 @@ class SocialAuthCompleteTests(APITestCase):
 
     @override_settings(
         PUBLIC_BACKEND_URL='http://auth.local:8000',
+        SOCIAL_AUTH_REDIRECT_IS_HTTPS=False,
         FRONTEND_URL='http://localhost:5173',
         FRONTEND_ALLOWED_ORIGINS=[
             'http://localhost:5173',

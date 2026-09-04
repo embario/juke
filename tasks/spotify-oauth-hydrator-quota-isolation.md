@@ -1,7 +1,7 @@
 ---
 id: spotify-oauth-hydrator-quota-isolation
 title: Protect Spotify account linking from bulk hydration quota exhaustion
-status: in_progress
+status: done
 priority: p0
 owner: codex
 area: backend
@@ -45,6 +45,6 @@ Make Juke's Spotify account-linking flow reliable while the canonical identity h
 
 ## Handoff
 
-- Completed: Verified the live incident was caused by the bulk hydrator exhausting Spotify quota before OAuth `/v1/me` completed.
-- Next: Preserve Neptune's unpublished service delta, implement/tests, deploy, restart, and verify.
+- Completed: Added single-use connection tickets, explicit quota errors, persistent/smoothed bulk hydration budgeting, and a named Compose worker managed by the user systemd unit. Deployed as Neptune revision `475e55a9c74ec6dcc3cd5e57b27dd5e132478f42`; live ticket/replay, HTTPS health, migration, seeding, pacing, and restart lifecycle checks passed.
+- Next: Have the user retry Spotify linking from a freshly built Juke Vibe client.
 - Blockers: None.
