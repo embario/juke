@@ -204,3 +204,8 @@ class MusicMemoryTests(APITestCase):
         self.assertEqual(first['tags'], [tag])
         self.assertEqual(second['tags'], [tag])
         self.assertEqual(self.client.get('/api/v1/vibe/memory-tags/').data['tags'], [tag])
+
+    def test_tag_vocabulary_uses_canonical_memory_tags(self):
+        memory = self.create_memory({**self.draft, 'tags': [' Road trip ', 'road trip']})
+        self.assertEqual(memory['tags'], ['Road trip'])
+        self.assertEqual(self.client.get('/api/v1/vibe/memory-tags/').data['tags'], ['Road trip'])

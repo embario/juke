@@ -59,8 +59,9 @@ memories, keep an optional snippet, choose feeling/reusable tag chips, or put a
 custom #tag in the story. People already attached to earlier memories can be
 selected; the app does not invent new identities from photos.
 
-Choose photos/videos in the embedded Apple Photos picker, drop files, or browse
-files (50 MiB each; 12 per memory). Selected media uploads privately to Juke and
+Choose photos/videos from the in-app PhotoKit thumbnail grid or drag files onto
+the composer (50 MiB each; 12 per memory; see Guided creation below). Selected
+media uploads privately to Juke and
 renders as small photo prints. Image EXIF and video capture metadata supply the
 first known capture date; file creation/modification dates are never substituted.
 Missing metadata defaults transparently to today. “Time travel” offers Today,
@@ -68,7 +69,7 @@ Yesterday and an inline day calendar without requiring a time. Explicit choices
 survive subsequent imports. Removing media recalculates inferred date/place.
 
 “Use Photos dates & places” optionally requests PhotoKit read access to enrich
-only the selected assets. Denial leaves file/picker import and manual dates
+only the selected assets. Denial leaves file drag-and-drop and manual dates
 available. Photo GPS is reverse-geocoded by Apple MapKit to a city/region, shown
 as a removable chip, and included when the user reviews/saves. Missing location
 stays blank. Apple's public PhotoKit asset API exposes creationDate and location,

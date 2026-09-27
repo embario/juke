@@ -84,7 +84,7 @@ def save_memory(request, memory=None):
         memory.excluded_tags = exclusions
         memory.classification = classification
         memory.tags = unique_tags(draft.get('tags', []) + [tag for tag in generated if tag.casefold() not in blocked])
-        for tag in values.get('tags', []):
+        for tag in unique_tags(values.get('tags', [])):
             MemoryTag.objects.get_or_create(user=request.user, normalized=tag.casefold(), defaults={'label': tag})
         memory.recommendation_signals = recommendation_signals(memory)
         memory.save()

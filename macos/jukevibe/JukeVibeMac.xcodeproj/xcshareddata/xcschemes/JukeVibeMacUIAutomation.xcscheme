@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "513AC4C24CDD16D83D799259"
-               BuildableName = "JukeVibeMac.app"
+               BuildableName = "Juke Vibe.app"
                BlueprintName = "JukeVibeMac"
                ReferencedContainer = "container:JukeVibeMac.xcodeproj">
             </BuildableReference>
@@ -47,7 +47,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "513AC4C24CDD16D83D799259"
-            BuildableName = "JukeVibeMac.app"
+            BuildableName = "Juke Vibe.app"
             BlueprintName = "JukeVibeMac"
             ReferencedContainer = "container:JukeVibeMac.xcodeproj">
          </BuildableReference>
@@ -83,7 +83,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "513AC4C24CDD16D83D799259"
-            BuildableName = "JukeVibeMac.app"
+            BuildableName = "Juke Vibe.app"
             BlueprintName = "JukeVibeMac"
             ReferencedContainer = "container:JukeVibeMac.xcodeproj">
          </BuildableReference>
@@ -100,7 +100,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "513AC4C24CDD16D83D799259"
-            BuildableName = "JukeVibeMac.app"
+            BuildableName = "Juke Vibe.app"
             BlueprintName = "JukeVibeMac"
             ReferencedContainer = "container:JukeVibeMac.xcodeproj">
          </BuildableReference>
