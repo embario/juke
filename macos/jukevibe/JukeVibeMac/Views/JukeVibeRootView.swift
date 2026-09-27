@@ -13,9 +13,11 @@ struct JukeVibeRootView: View {
     var body: some View {
         ZStack {
             VibeAtmosphereBackground(atmosphere: model.atmosphere)
-            if model.session == nil { SignInView() } else { signedInContent }
+            if model.session == nil { SignInView() } else { signedInContent.disabled(model.lock.isLocked).accessibilityHidden(model.lock.isLocked) }
             if model.lock.isLocked, model.session != nil { LockedView() }
         }
+        .environment(model.memories)
+        .task(id: model.session?.accessToken) { await model.memories.configure(session: model.session) }
         .onChange(of: scenePhase) { _, phase in
             let isActive = phase == .active
             model.detection.setApplicationActive(isActive)
@@ -74,12 +76,13 @@ struct JukeVibeRootView: View {
             VStack(spacing: 0) {
                 Group {
                     switch model.route {
+                    case .memories: MemoriesView()
                     case .vibe: VibeChatView()
                     case .discover: DiscoverView()
                     case .library: PrivateListeningLibraryView()
                     }
                 }
-                NowPlayingBar()
+                if !model.memoryJourneyActive { NowPlayingBar() }
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -93,7 +96,7 @@ private struct SignInView: View {
             Image(systemName: "waveform.path.ecg.rectangle.fill").font(.system(size: 56)).foregroundStyle(model.atmosphere.primary)
             VStack(spacing: 8) {
                 Text("Juke Vibe").font(.system(size: 42, weight: .semibold, design: .rounded))
-                Text("A private, perceptive companion for wherever music takes you.").font(.title3).foregroundStyle(.secondary)
+                Text("Keep the songs. Remember the feeling.").font(.title3).foregroundStyle(.secondary)
             }
             HStack {
                 Button("Create a Juke account") { Task { await model.beginAuthentication(.createAccount) } }
@@ -103,13 +106,13 @@ private struct SignInView: View {
                     .tint(model.atmosphere.primary)
                     .accessibilityIdentifier("authentication.signIn")
             }
-            Text("Conversation history is encrypted on this Mac. Juke never receives that history unless you explicitly submit text for an AI reply.")
+            Text("Sign in to save songs, photos, videos, and stories to your private music profile. Memories you submit are stored by Juke; conversation history stays encrypted.")
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 430)
         }.padding(54)
     }
 }
 
-private struct LockedView: View {
+struct LockedView: View {
     @Environment(AppModel.self) private var model
     var body: some View {
         ZStack {

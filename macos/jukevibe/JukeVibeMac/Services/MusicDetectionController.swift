@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -41,6 +42,9 @@ final class MusicDetectionController {
     private let localPlaybackController = LocalPlayerPlaybackController()
     private var capture: (any AudioCaptureService)?
     private var recognizer: (any TrackRecognizing)?
+    @ObservationIgnored private var memorySegmentTask: Task<Void, Never>?
+    @ObservationIgnored private var memoryPlaybackID: UUID?
+    @ObservationIgnored private var memorySegmentTrackKey: String?
     @ObservationIgnored private var playbackPollTask: Task<Void, Never>?
     @ObservationIgnored private var accessToken: String?
     @ObservationIgnored private var playbackDeviceID: String?
@@ -72,6 +76,10 @@ final class MusicDetectionController {
             self.playbackComesFromLocalMetadata = true
             self.playbackDeviceName = nil
             self.playbackDeviceID = nil
+            if let expected = self.memorySegmentTrackKey,
+               expected != self.segmentTrackKey(namespace: snapshot.track.providerNamespace, id: snapshot.track.providerTrackID) {
+                self.cancelMemorySegment()
+            }
             self.track = snapshot.track
             self.providerName = snapshot.provider.rawValue
             self.isPlaying = snapshot.isPlaying
@@ -144,6 +152,7 @@ final class MusicDetectionController {
     }
 
     private func stopServices() async {
+        cancelMemorySegment()
         playbackPollTask?.cancel()
         playbackPollTask = nil
         monitor.stop()
@@ -186,6 +195,7 @@ final class MusicDetectionController {
     }
 
     func useSpotifySpectatorMode() {
+        cancelMemorySegment()
         prefersSpotifySpectatorMode = true
         UserDefaults.standard.set(true, forKey: "vibe.prefersSpotifySpectatorMode")
         errorMessage = nil
@@ -206,6 +216,7 @@ final class MusicDetectionController {
     }
 
     func togglePlayback() async {
+        cancelMemorySegment()
         guard canControlPlayback else { return }
         if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
             await performLocalPlaybackAction {
@@ -223,6 +234,7 @@ final class MusicDetectionController {
     }
 
     func previousTrack() async {
+        cancelMemorySegment()
         guard canControlPlayback else { return }
         if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
             await performLocalPlaybackAction {
@@ -235,6 +247,7 @@ final class MusicDetectionController {
     }
 
     func nextTrack() async {
+        cancelMemorySegment()
         guard canControlPlayback else { return }
         if providerName == PlayerMetadataSnapshot.Provider.appleMusic.rawValue {
             await performLocalPlaybackAction {
@@ -247,6 +260,7 @@ final class MusicDetectionController {
     }
 
     func seek(to position: TimeInterval) async {
+        cancelMemorySegment()
         guard canControlPlayback else { return }
         playbackPosition = min(playbackDuration, max(0, position))
         playbackUpdatedAt = .now
@@ -267,6 +281,7 @@ final class MusicDetectionController {
         kind: String,
         optimisticTrack: RecognizedTrack?
     ) async {
+        cancelMemorySegment()
         guard canStartSpotifyPlayback, let token = accessToken else {
             errorMessage = "Spotify is not connected for playback. Juke Vibe is listening in spectator mode."
             return
@@ -289,6 +304,168 @@ final class MusicDetectionController {
                 deviceID: self.playbackDeviceID
             )
         }
+    }
+
+    /// Plays a deliberately saved song; no catalog search or inferred match is performed.
+    func playMemorySong(
+        provider: String,
+        providerID: String?,
+        playbackURL: URL?,
+        title: String,
+        artist: String,
+        startSeconds: Double?,
+        endSeconds: Double?
+    ) async {
+        cancelMemorySegment()
+        guard !isPlaybackBusy else { return }
+        errorMessage = nil
+        let operationID = UUID()
+        memoryPlaybackID = operationID
+        isPlaybackBusy = true
+        defer { isPlaybackBusy = false }
+        do {
+            let request = try MemoryPlaybackRequest(
+                provider: provider, providerID: providerID, playbackURL: playbackURL,
+                startSeconds: startSeconds, endSeconds: endSeconds
+            )
+            switch request.provider {
+            case .spotify:
+                guard let token = accessToken, !isSpotifySpectatorMode else {
+                    openMemoryProvider(request, explanation: "Connect Spotify playback to Juke to control this song and its saved segment. Continue in Spotify.")
+                    return
+                }
+                do {
+                    let state = try await playbackClient.play(
+                        token: token, spotifyID: request.providerID!, kind: "tracks",
+                        deviceID: playbackDeviceID, startSeconds: request.startSeconds
+                    )
+                    guard memoryPlaybackID == operationID else { return }
+                    if let state { apply(state) }
+                    let verified = try await playbackClient.fetchSpotifyState(token: token)
+                    guard memoryPlaybackID == operationID else { return }
+                    if let verified { apply(verified) }
+                    if let end = request.endSeconds {
+                        guard let verified, verified.track?.id == request.providerID,
+                              verified.isPlaying, let deviceID = verified.device?.id else {
+                            errorMessage = "Spotify opened the song, but could not confirm its active device. The segment will not stop automatically."
+                            return
+                        }
+                        watchSpotifySegment(
+                            MemorySegmentGuard(trackID: request.providerID!, deviceID: deviceID, endSeconds: end),
+                            token: token, operationID: operationID
+                        )
+                    }
+                } catch {
+                    guard memoryPlaybackID == operationID else { return }
+                    openMemoryProvider(request, explanation: "\(error.localizedDescription) Continue in Spotify; saved segment timing is unavailable.")
+                }
+            case .appleMusic:
+                guard let id = request.providerID, MemoryPlaybackRequest.isAppleLibraryID(id) else {
+                    openMemoryProvider(request, explanation: "Continue in Apple Music. Automatic segment playback requires this song in your Mac’s Music library.")
+                    return
+                }
+                do {
+                    try await localPlaybackController.playAppleMusicLibraryTrack(id: id, startSeconds: request.startSeconds)
+                    guard memoryPlaybackID == operationID else { return }
+                    monitor.refreshNow()
+                    if let end = request.endSeconds { watchAppleMusicSegment(id: id, endSeconds: end, operationID: operationID) }
+                } catch {
+                    guard memoryPlaybackID == operationID else { return }
+                    openMemoryProvider(request, explanation: "\(error.localizedDescription) Open Apple Music and check that this song is in your library and Automation access is allowed.")
+                }
+            }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func cancelMemorySegment() {
+        memoryPlaybackID = nil
+        memorySegmentTrackKey = nil
+        memorySegmentTask?.cancel()
+        memorySegmentTask = nil
+    }
+
+    private func openMemoryProvider(_ request: MemoryPlaybackRequest, explanation: String) {
+        cancelMemorySegment()
+        errorMessage = explanation
+        if case .appleMusic = request.provider,
+           let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music") {
+            let completion: @Sendable (NSRunningApplication?, (any Error)?) -> Void = { [weak self] _, error in
+                guard error != nil else { return }
+                Task { @MainActor [weak self] in self?.errorMessage = "\(explanation) Apple Music could not be opened." }
+            }
+            if let url = request.playbackURL {
+                NSWorkspace.shared.open([url], withApplicationAt: app, configuration: .init(), completionHandler: completion)
+            } else {
+                NSWorkspace.shared.openApplication(at: app, configuration: .init(), completionHandler: completion)
+            }
+        } else if let url = request.playbackURL {
+            if !NSWorkspace.shared.open(url) { errorMessage = "\(explanation) The provider app could not be opened." }
+        }
+    }
+
+    private func watchSpotifySegment(_ segment: MemorySegmentGuard, token: String, operationID: UUID) {
+        memorySegmentTrackKey = segmentTrackKey(namespace: "spotify", id: segment.trackID)
+        memorySegmentTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                guard let self, self.memoryPlaybackID == operationID else { return }
+                do {
+                    let response = try await self.playbackClient.fetchSpotifyState(token: token)
+                    guard self.memoryPlaybackID == operationID, !Task.isCancelled else { return }
+                    guard let state = response else {
+                        self.cancelMemorySegment()
+                        self.errorMessage = "Spotify could not confirm playback. The segment will not stop automatically."
+                        return
+                    }
+                    switch segment.decision(trackID: state.track?.id, deviceID: state.device?.id,
+                                            isPlaying: state.isPlaying, position: Double(state.progressMs) / 1_000) {
+                    case .cancel:
+                        self.cancelMemorySegment()
+                        return
+                    case .keepWaiting: continue
+                    case .pause:
+                        let paused = try await self.playbackClient.pause(token: token, deviceID: segment.deviceID)
+                        guard self.memoryPlaybackID == operationID else { return }
+                        if let paused { self.apply(paused) }
+                        self.cancelMemorySegment()
+                        return
+                    }
+                } catch {
+                    guard self.memoryPlaybackID == operationID else { return }
+                    self.errorMessage = "Segment timing stopped: \(error.localizedDescription) Playback may continue in Spotify."
+                    self.cancelMemorySegment()
+                    return
+                }
+            }
+        }
+    }
+
+    private func watchAppleMusicSegment(id: String, endSeconds: Double, operationID: UUID) {
+        memorySegmentTrackKey = segmentTrackKey(namespace: "apple_music", id: id)
+        memorySegmentTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                guard let self, self.memoryPlaybackID == operationID else { return }
+                do {
+                    let waiting = try await self.localPlaybackController.checkAppleMusicSegment(id: id, endSeconds: endSeconds)
+                    guard self.memoryPlaybackID == operationID else { return }
+                    if !waiting {
+                        self.cancelMemorySegment()
+                        self.monitor.refreshNow()
+                        return
+                    }
+                } catch {
+                    guard self.memoryPlaybackID == operationID else { return }
+                    self.errorMessage = "Segment timing stopped: \(error.localizedDescription) Playback may continue in Apple Music."
+                    self.cancelMemorySegment()
+                    return
+                }
+            }
+        }
+    }
+
+    private func segmentTrackKey(namespace: String?, id: String?) -> String {
+        "\(namespace ?? ""):\(namespace == "apple_music" ? id?.uppercased() ?? "" : id ?? "")"
     }
 
     private func startSpotifyPolling() {
@@ -317,7 +494,6 @@ final class MusicDetectionController {
             spotifyPlaybackAccess = .available
             if let state {
                 apply(state)
-                errorMessage = nil
             }
         } catch PlaybackClientError.providerNotConnected {
             spotifyServerAvailable = false
@@ -366,6 +542,10 @@ final class MusicDetectionController {
         playbackComesFromLocalMetadata = false
         let artist = value.artists?.compactMap(\.name).filter { !$0.isEmpty }.joined(separator: ", ") ?? "Unknown artist"
         let providerID = value.id ?? value.uri?.split(separator: ":").last.map(String.init)
+        if let expected = memorySegmentTrackKey, expected.hasPrefix("spotify:"),
+           expected != segmentTrackKey(namespace: "spotify", id: providerID) {
+            cancelMemorySegment()
+        }
         track = RecognizedTrack(
             title: title,
             artist: artist,

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		08A9579A4D3EE518F2B0C617 /* MemoryClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 897259B34DEF0C5A9E5B5A60 /* MemoryClient.swift */; };
 		1BAF175D8AF11E6A0805D195 /* MicrophoneAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35B986A55C277D84C1629E88 /* MicrophoneAudioCapture.swift */; };
 		2286044B2C1072120012E05C /* CaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = AED2F7E4FD6D5500CE97ED0B /* CaptureSource.swift */; };
 		236C3E19F41F532AF0E9A785 /* CatalogClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E7C850E9FAD80BE7CE27300 /* CatalogClient.swift */; };
@@ -16,28 +17,38 @@
 		2F17417C86C9C776DFAFEF8B /* NeptuneVibeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF44CEE3918338D2182779B2 /* NeptuneVibeClient.swift */; };
 		33F2BF0E3F6C0A5673E7175D /* PlaybackClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63D7EF621B5CF63B79A94536 /* PlaybackClient.swift */; };
 		3D9A41A43922211D4EFD5288 /* PlayerMetadataMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC79BC491E84428C96C9C9D /* PlayerMetadataMonitor.swift */; };
+		44CA109C82558230C94133F5 /* MusicMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647EAABC2DA614C4F89FAD30 /* MusicMemory.swift */; };
 		477B5E5D21EA68B1AB81E76E /* ChatVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 003165980A50B92EE235AF7D /* ChatVault.swift */; };
 		4A72A88B44D5A4DDFB64454B /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4695A30322E3B9B5DA14F7 /* DiscoverView.swift */; };
 		4CA00C0C14DE2FF691E4B3E2 /* JukeAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA997B5CC7E7D29016232F02 /* JukeAccount.swift */; };
+		54C31E0A2318CE29734C9C3C /* MemoryMediaImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0053247B84FBD783F3165F97 /* MemoryMediaImportTests.swift */; };
 		61CEE7D586A9B012FDFB4140 /* LocalVibeIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1EA1496A076A442033A1E2 /* LocalVibeIntelligence.swift */; };
 		638F23B8A6CDED8259B6EFDA /* VibeSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70BA78632A3F45C395020985 /* VibeSettingsView.swift */; };
 		671B49B548E9F4D44A668034 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F783CBF040836BB5C92788D6 /* ChatMessage.swift */; };
+		70C7024FA38B8262A8FF8DDD /* MemoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36B8647C0FFCA45B413A4F00 /* MemoryTests.swift */; };
+		7D8C6E4365220D46364CAC2D /* MemoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44931153D3CE16D810BF6AA2 /* MemoriesView.swift */; };
 		80CF55255E35F0CE816FA83E /* JukeVibeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 189DA0C3387D5740706AB008 /* JukeVibeRootView.swift */; };
+		84F38CA43061E37606B24650 /* MemoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9BDC8C003C2B9B97845C966 /* MemoryStore.swift */; };
 		857E1024194A66604A36AF72 /* RecognizedTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14EA05380F67815C4E0707DC /* RecognizedTrack.swift */; };
 		8771F48AA34275123FB65483 /* VisualAtmosphere.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60664BC62F54BD6039F4A466 /* VisualAtmosphere.swift */; };
 		9093F8343FB1981972CF90E9 /* AudioActivityThrottle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 057B9548B021A50C0E06D044 /* AudioActivityThrottle.swift */; };
 		9184F3DCAF9C936A8692D65A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 22970321846A0B5AFE990745 /* PrivacyInfo.xcprivacy */; };
+		9547E86E26AAECA16A513DD3 /* MemoryJourneyIllustration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2908D9794E374185894560C4 /* MemoryJourneyIllustration.swift */; };
 		9B1F2442026446B233EA80C5 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7FBA8A0F84432FB06BEAFB1 /* AudioCaptureService.swift */; };
 		A6EC43F1F11951542B320AD1 /* MusicDetectionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B019D276C577FFA1C907F8AC /* MusicDetectionController.swift */; };
 		B97F4206CEE267ECC84CED7E /* JukeAuthenticationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F0693DA7FA476E2F5DF0B0F /* JukeAuthenticationService.swift */; };
+		BBC156B0E3320EECE1689F71 /* MemoryPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2EE4AE2ED3D97F8245F2FEE /* MemoryPlaybackTests.swift */; };
 		CB9E1D55ADDEC5259157C2B9 /* VibeKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13C1A7427FAE7646ED60EA90 /* VibeKeychain.swift */; };
 		D3A101B88BEAF1AC8070946C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 23EF400C440837F8C6563E19 /* Assets.xcassets */; };
 		D9EB90BE178C802D14D887BB /* ShazamRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6D72D6C667B1F6285258A7 /* ShazamRecognizer.swift */; };
 		DBD6C2E15AE4F40AAF4694D5 /* VibeChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88E2D3028FFCF4D996E60EC /* VibeChatView.swift */; };
+		E5ADDBEEF9124AC04401E333 /* MemoryPhotoLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 466F83259BEF8BC1739A8CE3 /* MemoryPhotoLibrary.swift */; };
 		E8323E957F50B1269E264B66 /* NowPlayingBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9280F4C895EE79480C4E2523 /* NowPlayingBar.swift */; };
+		EB3EBAD5FC80B6483480CA80 /* MemoryComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F82E5950C13BAA67C6C47105 /* MemoryComposerView.swift */; };
 		F01D811E2F3F6B1ACB62ACDC /* RecognizedTrackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3815D779C01591270384D964 /* RecognizedTrackTests.swift */; };
 		F030712FE1792E17651CC4D4 /* JukeVibeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EB913F8051C21DBF8528466 /* JukeVibeApp.swift */; };
 		FDEF38BF05A2EC82CA87C75D /* JukeVibeMacUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DEC27BD27800F977DF2B82F /* JukeVibeMacUITests.swift */; };
+		FE68073D18CB356049B96AFC /* MemoryMediaImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51E2D9227E934925BE973B31 /* MemoryMediaImport.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +70,7 @@
 
 /* Begin PBXFileReference section */
 		003165980A50B92EE235AF7D /* ChatVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatVault.swift; sourceTree = "<group>"; };
+		0053247B84FBD783F3165F97 /* MemoryMediaImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMediaImportTests.swift; sourceTree = "<group>"; };
 		057B9548B021A50C0E06D044 /* AudioActivityThrottle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioActivityThrottle.swift; sourceTree = "<group>"; };
 		08963FF159648A7288C2371C /* JukeVibeMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JukeVibeMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0D96F92D446316B4CABDE255 /* JukeVibeMacUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JukeVibeMacUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -68,16 +80,23 @@
 		22970321846A0B5AFE990745 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		23EF400C440837F8C6563E19 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		27F58800199913A10CE113F8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		2908D9794E374185894560C4 /* MemoryJourneyIllustration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryJourneyIllustration.swift; sourceTree = "<group>"; };
 		2DEC27BD27800F977DF2B82F /* JukeVibeMacUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeVibeMacUITests.swift; sourceTree = "<group>"; };
 		35B986A55C277D84C1629E88 /* MicrophoneAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophoneAudioCapture.swift; sourceTree = "<group>"; };
+		36B8647C0FFCA45B413A4F00 /* MemoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryTests.swift; sourceTree = "<group>"; };
 		3815D779C01591270384D964 /* RecognizedTrackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognizedTrackTests.swift; sourceTree = "<group>"; };
+		44931153D3CE16D810BF6AA2 /* MemoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoriesView.swift; sourceTree = "<group>"; };
+		466F83259BEF8BC1739A8CE3 /* MemoryPhotoLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPhotoLibrary.swift; sourceTree = "<group>"; };
+		51E2D9227E934925BE973B31 /* MemoryMediaImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMediaImport.swift; sourceTree = "<group>"; };
 		60664BC62F54BD6039F4A466 /* VisualAtmosphere.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualAtmosphere.swift; sourceTree = "<group>"; };
 		63D7EF621B5CF63B79A94536 /* PlaybackClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackClient.swift; sourceTree = "<group>"; };
+		647EAABC2DA614C4F89FAD30 /* MusicMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicMemory.swift; sourceTree = "<group>"; };
 		6E7C850E9FAD80BE7CE27300 /* CatalogClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogClient.swift; sourceTree = "<group>"; };
 		70BA78632A3F45C395020985 /* VibeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeSettingsView.swift; sourceTree = "<group>"; };
 		7C1EA1496A076A442033A1E2 /* LocalVibeIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalVibeIntelligence.swift; sourceTree = "<group>"; };
 		7EB913F8051C21DBF8528466 /* JukeVibeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeVibeApp.swift; sourceTree = "<group>"; };
 		7F0693DA7FA476E2F5DF0B0F /* JukeAuthenticationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeAuthenticationService.swift; sourceTree = "<group>"; };
+		897259B34DEF0C5A9E5B5A60 /* MemoryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryClient.swift; sourceTree = "<group>"; };
 		8FC79BC491E84428C96C9C9D /* PlayerMetadataMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerMetadataMonitor.swift; sourceTree = "<group>"; };
 		90EDFFEE5434D0524AE2D322 /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
 		9280F4C895EE79480C4E2523 /* NowPlayingBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingBar.swift; sourceTree = "<group>"; };
@@ -87,13 +106,16 @@
 		AED2F7E4FD6D5500CE97ED0B /* CaptureSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSource.swift; sourceTree = "<group>"; };
 		B019D276C577FFA1C907F8AC /* MusicDetectionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicDetectionController.swift; sourceTree = "<group>"; };
 		B7FBA8A0F84432FB06BEAFB1 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
+		B9BDC8C003C2B9B97845C966 /* MemoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryStore.swift; sourceTree = "<group>"; };
 		BD3D04D22C9166459EF3439D /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		DD4695A30322E3B9B5DA14F7 /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
 		EA997B5CC7E7D29016232F02 /* JukeAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeAccount.swift; sourceTree = "<group>"; };
 		EE6D72D6C667B1F6285258A7 /* ShazamRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamRecognizer.swift; sourceTree = "<group>"; };
 		EF44CEE3918338D2182779B2 /* NeptuneVibeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeptuneVibeClient.swift; sourceTree = "<group>"; };
+		F2EE4AE2ED3D97F8245F2FEE /* MemoryPlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPlaybackTests.swift; sourceTree = "<group>"; };
 		F4A92C04D532EA1DFD542663 /* AppLockController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockController.swift; sourceTree = "<group>"; };
 		F783CBF040836BB5C92788D6 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
+		F82E5950C13BAA67C6C47105 /* MemoryComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryComposerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -102,6 +124,9 @@
 			children = (
 				DD4695A30322E3B9B5DA14F7 /* DiscoverView.swift */,
 				189DA0C3387D5740706AB008 /* JukeVibeRootView.swift */,
+				44931153D3CE16D810BF6AA2 /* MemoriesView.swift */,
+				F82E5950C13BAA67C6C47105 /* MemoryComposerView.swift */,
+				2908D9794E374185894560C4 /* MemoryJourneyIllustration.swift */,
 				9280F4C895EE79480C4E2523 /* NowPlayingBar.swift */,
 				A88E2D3028FFCF4D996E60EC /* VibeChatView.swift */,
 				70BA78632A3F45C395020985 /* VibeSettingsView.swift */,
@@ -115,6 +140,7 @@
 				AED2F7E4FD6D5500CE97ED0B /* CaptureSource.swift */,
 				F783CBF040836BB5C92788D6 /* ChatMessage.swift */,
 				EA997B5CC7E7D29016232F02 /* JukeAccount.swift */,
+				647EAABC2DA614C4F89FAD30 /* MusicMemory.swift */,
 				14EA05380F67815C4E0707DC /* RecognizedTrack.swift */,
 			);
 			path = Models;
@@ -123,6 +149,9 @@
 		2E7001C53A41C772FEFF1554 /* JukeVibeMacTests */ = {
 			isa = PBXGroup;
 			children = (
+				0053247B84FBD783F3165F97 /* MemoryMediaImportTests.swift */,
+				F2EE4AE2ED3D97F8245F2FEE /* MemoryPlaybackTests.swift */,
+				36B8647C0FFCA45B413A4F00 /* MemoryTests.swift */,
 				3815D779C01591270384D964 /* RecognizedTrackTests.swift */,
 			);
 			path = JukeVibeMacTests;
@@ -152,6 +181,10 @@
 				003165980A50B92EE235AF7D /* ChatVault.swift */,
 				7F0693DA7FA476E2F5DF0B0F /* JukeAuthenticationService.swift */,
 				7C1EA1496A076A442033A1E2 /* LocalVibeIntelligence.swift */,
+				897259B34DEF0C5A9E5B5A60 /* MemoryClient.swift */,
+				51E2D9227E934925BE973B31 /* MemoryMediaImport.swift */,
+				466F83259BEF8BC1739A8CE3 /* MemoryPhotoLibrary.swift */,
+				B9BDC8C003C2B9B97845C966 /* MemoryStore.swift */,
 				35B986A55C277D84C1629E88 /* MicrophoneAudioCapture.swift */,
 				B019D276C577FFA1C907F8AC /* MusicDetectionController.swift */,
 				EF44CEE3918338D2182779B2 /* NeptuneVibeClient.swift */,
@@ -330,6 +363,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				54C31E0A2318CE29734C9C3C /* MemoryMediaImportTests.swift in Sources */,
+				BBC156B0E3320EECE1689F71 /* MemoryPlaybackTests.swift in Sources */,
+				70C7024FA38B8262A8FF8DDD /* MemoryTests.swift in Sources */,
 				F01D811E2F3F6B1ACB62ACDC /* RecognizedTrackTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -352,8 +388,16 @@
 				F030712FE1792E17651CC4D4 /* JukeVibeApp.swift in Sources */,
 				80CF55255E35F0CE816FA83E /* JukeVibeRootView.swift in Sources */,
 				61CEE7D586A9B012FDFB4140 /* LocalVibeIntelligence.swift in Sources */,
+				7D8C6E4365220D46364CAC2D /* MemoriesView.swift in Sources */,
+				08A9579A4D3EE518F2B0C617 /* MemoryClient.swift in Sources */,
+				EB3EBAD5FC80B6483480CA80 /* MemoryComposerView.swift in Sources */,
+				9547E86E26AAECA16A513DD3 /* MemoryJourneyIllustration.swift in Sources */,
+				FE68073D18CB356049B96AFC /* MemoryMediaImport.swift in Sources */,
+				E5ADDBEEF9124AC04401E333 /* MemoryPhotoLibrary.swift in Sources */,
+				84F38CA43061E37606B24650 /* MemoryStore.swift in Sources */,
 				1BAF175D8AF11E6A0805D195 /* MicrophoneAudioCapture.swift in Sources */,
 				A6EC43F1F11951542B320AD1 /* MusicDetectionController.swift in Sources */,
+				44CA109C82558230C94133F5 /* MusicMemory.swift in Sources */,
 				2F17417C86C9C776DFAFEF8B /* NeptuneVibeClient.swift in Sources */,
 				E8323E957F50B1269E264B66 /* NowPlayingBar.swift in Sources */,
 				33F2BF0E3F6C0A5673E7175D /* PlaybackClient.swift in Sources */,

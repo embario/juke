@@ -52,7 +52,7 @@ final class VisualAtmosphere {
         secondary = Color(red: 0.08, green: 0.24, blue: 0.29)
     }
 
-    nonisolated private static func averageColor(_ image: NSImage) -> NSColor? {
+    nonisolated static func averageColor(_ image: NSImage) -> NSColor? {
         guard let data = image.tiffRepresentation, let input = CIImage(data: data) else { return nil }
         let extent = input.extent
         guard let filter = CIFilter(name: "CIAreaAverage", parameters: [kCIInputImageKey: input, kCIInputExtentKey: CIVector(cgRect: extent)]),

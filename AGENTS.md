@@ -13,6 +13,16 @@ This document orients AI agents to the entire repository. Each major subproject 
 - Follow `tasks/README.md` for task lifecycle, status labels, and handoff conventions.
 - Add or update a task file in `tasks/` when handing off substantial in-progress work to another agent.
 
+## Prompt Ideas and Task Creation
+
+- Files under `prompts/` are starting ideas, not active tasks. Before implementing one of those ideas, create or update a concrete task file under `tasks/` using `tasks/_template.md`, then reflect it in `tasks/_index.md`.
+- The task file must define the goal, scope, out-of-scope items, acceptance criteria, execution notes, risks, and handoff notes before substantial implementation begins.
+- Mark evaluation-derived tasks as either `ITERATIVE` or `ASYNC` in the task file's execution notes:
+  - `ITERATIVE`: the user expects to refine scope while work proceeds. Keep the first implementation slice narrow, surface tradeoffs early, and update handoff notes after each meaningful step.
+  - `ASYNC`: the starting prompt is expected to fully define the work. Proceed autonomously after writing the task spec, and avoid waiting for user clarification unless blocked.
+- Most A/B evaluation ideas should become `ITERATIVE` tasks unless the prompt is intentionally small, self-contained, and low-risk.
+- Keep A/B evaluation work resource-conscious: avoid MLCore-heavy jobs until MLCore is isolated from the backend stack; mock external services; and prefer focused backend/web/unit-test slices over full-stack or multi-simulator runs unless the idea is explicitly mobile-focused.
+
 ## GitHub Hygiene
 
 - When opening or updating a pull request, explicitly determine which GitHub issues the PR completes and add the appropriate closing keywords in the PR body, for example `Closes #123`.

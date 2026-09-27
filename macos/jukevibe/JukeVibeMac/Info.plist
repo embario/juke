@@ -18,5 +18,6 @@
     <key>NSAppleEventsUsageDescription</key><string>Juke Vibe can read the current track from Apple Music or Spotify when you enable player detection.</string>
     <key>NSMicrophoneUsageDescription</key><string>Juke Vibe uses the microphone only when you choose Around Me to identify music nearby.</string>
     <key>NSScreenCaptureUsageDescription</key><string>Juke Vibe uses system audio only when you explicitly choose This Mac to identify music without player metadata.</string>
+    <key>NSPhotoLibraryUsageDescription</key><string>Show your photos inside Vibe so you can choose pictures for a memory. Only selected photos and videos are uploaded.</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>
