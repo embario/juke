@@ -267,29 +267,66 @@ enum LocalPlaybackControlError: LocalizedError {
 }
 
 actor LocalPlayerPlaybackController {
-    private let runner = AppleScriptProcessRunner()
-
-    func toggleAppleMusicPlayback() throws {
-        try execute("tell application id \"com.apple.Music\" to playpause")
+    func toggleAppleMusicPlayback() async throws {
+        _ = try await execute("tell application id \"com.apple.Music\" to playpause")
     }
 
-    func previousAppleMusicTrack() throws {
-        try execute("tell application id \"com.apple.Music\" to previous track")
+    func previousAppleMusicTrack() async throws {
+        _ = try await execute("tell application id \"com.apple.Music\" to previous track")
     }
 
-    func nextAppleMusicTrack() throws {
-        try execute("tell application id \"com.apple.Music\" to next track")
+    func nextAppleMusicTrack() async throws {
+        _ = try await execute("tell application id \"com.apple.Music\" to next track")
     }
 
-    func seekAppleMusic(to position: TimeInterval) throws {
-        let safePosition = max(0, position)
-        try execute("tell application id \"com.apple.Music\" to set player position to \(safePosition)")
+    func seekAppleMusic(to position: TimeInterval) async throws {
+        guard position.isFinite, (0...604_800).contains(position) else { throw PlaybackClientError.invalidSegment }
+        _ = try await execute("tell application id \"com.apple.Music\" to set player position to \(position)")
     }
 
-    private func execute(_ command: String) throws {
-        let source = "with timeout of 2 seconds\n\(command)\nreturn \"ok\"\nend timeout"
-        guard runner.executeList(source: source) == ["ok"] else {
-            throw LocalPlaybackControlError.unavailable
+    func playAppleMusicLibraryTrack(id: String, startSeconds: Double) async throws {
+        guard MemoryPlaybackRequest.isAppleLibraryID(id), startSeconds.isFinite,
+              (0...604_800).contains(startSeconds) else { throw PlaybackClientError.invalidMemorySong }
+        // Only validated hexadecimal persistent IDs and finite numbers enter the script.
+        // Metadata such as the user-editable title is never interpolated into AppleScript.
+        _ = try await execute("""
+        tell application id "com.apple.Music"
+            play (first track of library playlist 1 whose persistent ID is "\(id)")
+            if persistent ID of current track is not "\(id)" then error "The saved song is not active."
+            set player position to \(startSeconds)
+        end tell
+        """)
+    }
+
+    /// Checks the exact library track immediately before issuing a segment pause.
+    func checkAppleMusicSegment(id: String, endSeconds: Double) async throws -> Bool {
+        guard MemoryPlaybackRequest.isAppleLibraryID(id), endSeconds.isFinite,
+              (0...604_800).contains(endSeconds) else { throw PlaybackClientError.invalidMemorySong }
+        return try await execute("""
+        tell application id "com.apple.Music"
+            if not running then return "finished"
+            if player state is not playing then return "finished"
+            if persistent ID of current track is not "\(id)" then return "finished"
+            if player position ≥ \(endSeconds) then
+                pause
+                return "finished"
+            end if
+        end tell
+        return "waiting"
+        """) == "waiting"
+    }
+
+    private func execute(_ command: String) async throws -> String {
+        // Run in the signed app so macOS applies Juke Vibe's Automation permissions.
+        // The former osascript subprocess does not inherit the sandbox scripting entitlement.
+        try await MainActor.run {
+            try Task.checkCancellation()
+            var failure: NSDictionary?
+            let source = "with timeout of 2 seconds\n\(command)\nreturn \"ok\"\nend timeout"
+            guard let script = NSAppleScript(source: source) else { throw LocalPlaybackControlError.unavailable }
+            let result = script.executeAndReturnError(&failure)
+            guard failure == nil, let value = result.stringValue else { throw LocalPlaybackControlError.unavailable }
+            return value
         }
     }
 }

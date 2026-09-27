@@ -20,6 +20,7 @@ screenshots/
 # Xcode user data
 mobile/ios/**/xcuserdata/
 mobile/ios/**/project.xcworkspace/xcuserdata/
+macos/**/xcuserdata/
 mobile/ios/Packages/**/.build/
 mobile/ios/Packages/**/.swiftpm/
 /.clang-module-cache/

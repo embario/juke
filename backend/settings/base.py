@@ -541,3 +541,10 @@ else:
     FRONTEND_ALLOWED_ORIGINS = list(
         dict.fromkeys([FRONTEND_URL.rstrip('/'), *CORS_ALLOWED_ORIGINS])
     )
+
+# Jev is optional. Unconfigured or failed calls produce an explicit unavailable
+# classification, with no invented generated tags. Only submitted memory metadata
+# is sent; attachments and chat history are never included.
+JEV_CLASSIFICATION_URL = os.environ.get('JEV_CLASSIFICATION_URL', '').strip()
+JEV_API_KEY = os.environ.get('JEV_API_KEY', '')
+JEV_TIMEOUT_SECONDS = float(os.environ.get('JEV_TIMEOUT_SECONDS', '8'))

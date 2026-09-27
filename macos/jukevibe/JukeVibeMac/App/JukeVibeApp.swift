@@ -7,6 +7,7 @@ struct JukeVibeApp: App {
     @State private var model: AppModel
 
     init() {
+        MemoryStore.removeStaleMedia()
         do {
             let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appending(path: "Juke Vibe", directoryHint: .isDirectory)

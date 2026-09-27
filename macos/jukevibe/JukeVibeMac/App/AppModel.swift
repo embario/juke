@@ -17,16 +17,17 @@ final class AppModel {
     static let defaultChatTextSize = 17.0
 
     enum Route: String, CaseIterable, Identifiable {
-        case vibe, discover, library
+        case memories, vibe, discover, library
         var id: String { rawValue }
         var title: String { rawValue.capitalized }
         var symbol: String {
-            switch self { case .vibe: "sparkles"; case .discover: "safari"; case .library: "music.note.house" }
+            switch self { case .memories: "photo.stack"; case .vibe: "sparkles"; case .discover: "safari"; case .library: "music.note.house" }
         }
     }
 
+    var memoryJourneyActive = false
     var session: JukeSession?
-    var route: Route = .vibe
+    var route: Route = .memories
     var messages: [DisplayChatMessage] = []
     var openingQuestion = "What are you hearing differently right now?"
     var draft = ""
@@ -41,6 +42,7 @@ final class AppModel {
             UserDefaults.standard.set(bounded, forKey: Self.chatTextSizeKey)
         }
     }
+    let memories = MemoryStore()
     let lock = AppLockController()
     let detection = MusicDetectionController()
     let atmosphere = VisualAtmosphere()
@@ -57,19 +59,30 @@ final class AppModel {
 
     init(container: ModelContainer) {
         let arguments = ProcessInfo.processInfo.arguments
+        #if DEBUG
         isUITesting = arguments.contains("--uitesting")
+        #else
+        isUITesting = false
+        #endif
         context = ModelContext(container)
         let savedTextSize = UserDefaults.standard.object(forKey: Self.chatTextSizeKey) as? Double
         chatTextSize = min(
             Self.chatTextSizeRange.upperBound,
             max(Self.chatTextSizeRange.lowerBound, savedTextSize ?? Self.defaultChatTextSize)
         )
-        if arguments.contains("--uitesting-authenticated") {
+        if isUITesting && arguments.contains("--uitesting-authenticated") {
             session = JukeSession(
                 account: .localPreview,
                 accessToken: "ui-test-token",
                 authenticatedAt: .now
             )
+            #if DEBUG
+            let environment = ProcessInfo.processInfo.environment
+            if let value = environment["VIBE_MEMORY_E2E_BASE_URL"], URL(string: value)?.host == "127.0.0.1",
+               let token = environment["VIBE_MEMORY_E2E_TOKEN"], let accountID = environment["VIBE_MEMORY_E2E_ACCOUNT_ID"] {
+                session = JukeSession(account: JukeAccount(id: accountID, displayName: "Memory test listener", email: nil, cloudAIEnabled: false), accessToken: token, authenticatedAt: .now)
+            }
+            #endif
             detection.track = RecognizedTrack(
                 title: "Blue in Green",
                 artist: "Miles Davis",
@@ -128,6 +141,7 @@ final class AppModel {
         await detection.stop()
         do { try await auth.logout() } catch { banner = error.localizedDescription }
         session = nil
+        memories.reset()
         messages = []
         chatVault = nil
         chatVaultAccountID = nil

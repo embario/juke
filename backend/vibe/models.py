@@ -62,3 +62,6 @@ class VibeEncryptedChange(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=('record', 'id'), name='vibe_chg_record_id_idx')]
+
+# Register the separate memory models with Django's app model discovery.
+from vibe.memory_models import MemoryMedia, MemoryTag, MusicMemory  # noqa: E402,F401

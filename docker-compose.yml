@@ -25,6 +25,8 @@ services:
     image: redis:7
     ports:
       - "${REDIS_PORT:?Set REDIS_PORT}:${REDIS_PORT:?Set REDIS_PORT}"
+    depends_on:
+      - db
 
   backend:
     build:
@@ -117,6 +119,8 @@ services:
       - "${RECOMMENDER_PORT:?Set RECOMMENDER_PORT}:${RECOMMENDER_PORT:?Set RECOMMENDER_PORT}"
     volumes:
       - ./backend/recommender_engine:/app
+    depends_on:
+      - db
     env_file: .env
     environment:
       - RECOMMENDER_MODEL_VERSION=${RECOMMENDER_MODEL_VERSION:-v1.0.0}
