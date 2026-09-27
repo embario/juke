@@ -12,7 +12,7 @@ from django.db import connection, transaction
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
-from mlcore.models import CanonicalItemAlias, ProviderHydrationItem
+from mlcore.models import CanonicalItemAlias, ProviderHydrationItem, ProviderHydrationRun
 
 
 SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token'
@@ -22,11 +22,12 @@ TERMINAL_STATUSES = {'matched', 'no_match', 'ambiguous', 'dead'}
 
 
 class ProviderHydrationError(Exception):
-    def __init__(self, message, *, http_status=None, retry_after=None, retryable=True):
+    def __init__(self, message, *, http_status=None, retry_after=None, retryable=True, reason=''):
         super().__init__(message)
         self.http_status = http_status
         self.retry_after = retry_after
         self.retryable = retryable
+        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,20 @@ class SpotifyCandidate:
             'duration_ms': self.duration_ms,
             'popularity': self.popularity,
         }
+
+
+@dataclass(frozen=True)
+class IncrementalSeedResult:
+    scanned: int
+    created: int
+    next_cursor: str
+    pass_complete: bool
+
+
+@dataclass(frozen=True)
+class ReconciliationResult:
+    stale_runs: int
+    reclaimed_items: int
 
 
 def normalize_isrc(value):
@@ -80,10 +95,17 @@ class SpotifyClient:
         except requests.RequestException as exc:
             raise ProviderHydrationError(f'Spotify token request failed: {exc}') from exc
         if response.status_code >= 400:
+            retry_after = (
+                _retry_after_seconds(response.headers.get('Retry-After'))
+                if response.status_code == 429
+                else None
+            )
             raise ProviderHydrationError(
                 f'Spotify token request returned HTTP {response.status_code}',
                 http_status=response.status_code,
+                retry_after=retry_after,
                 retryable=response.status_code >= 500 or response.status_code == 429,
+                reason=_spotify_error_reason(response),
             )
         payload = response.json()
         self._token = payload['access_token']
@@ -97,10 +119,12 @@ class SpotifyClient:
             response = self._search(normalized, force_token=True)
         if response.status_code == 429:
             retry_after = _retry_after_seconds(response.headers.get('Retry-After'))
+            reason = _spotify_error_reason(response)
             raise ProviderHydrationError(
-                'Spotify rate limit reached.',
+                f'Spotify rate limit reached{f": {reason}" if reason else "."}',
                 http_status=429,
                 retry_after=retry_after,
+                reason=reason,
             )
         if response.status_code >= 500:
             raise ProviderHydrationError(
@@ -155,10 +179,84 @@ class RequestPacer:
             self._successes_since_limit = 0
 
     def rate_limited(self, retry_after):
-        self.current_rps = max(0.1, self.current_rps / 2.0)
+        self.current_rps = max(0.001, self.current_rps / 2.0)
         self._successes_since_limit = 0
         delay = max(1.0, float(retry_after or 30)) + self.jitter(0.25, 1.25)
         self._next_request_at = self.monotonic() + delay
+
+
+class SpotifyHydrationQuotaGuard:
+    """Persistent bulk-request budget and provider-directed cooldown state."""
+
+    metadata_key = 'spotify_hydration_quota'
+
+    def __init__(self, request_budget, window_seconds, *, now=time.time):
+        self.request_budget = max(0, int(request_budget))
+        self.window_seconds = max(1.0, float(window_seconds))
+        self.now = now
+
+    def effective_rps(self, requested_rps):
+        if self.request_budget <= 0:
+            return float(requested_rps)
+        return min(float(requested_rps), self.request_budget / self.window_seconds)
+
+    def initial_state(self, previous_metadata=None):
+        now = self.now()
+        previous = (previous_metadata or {}).get(self.metadata_key) or {}
+        window_started_at = _safe_float(previous.get('window_started_at'), now)
+        used = max(0, _safe_int(previous.get('requests_used'), 0))
+        if now >= window_started_at + self.window_seconds:
+            window_started_at = now
+            used = 0
+        return {
+            'window_started_at': window_started_at,
+            'requests_used': used,
+            'request_budget': self.request_budget,
+            'window_seconds': self.window_seconds,
+            'cooldown_until': max(0.0, _safe_float(previous.get('cooldown_until'), 0.0)),
+            'last_limit_reason': str(previous.get('last_limit_reason') or ''),
+        }
+
+    def delay_seconds(self, run):
+        state = self._state(run)
+        now = self.now()
+        changed = False
+        if now >= state['window_started_at'] + self.window_seconds:
+            state['window_started_at'] = now
+            state['requests_used'] = 0
+            changed = True
+        cooldown_delay = max(0.0, state['cooldown_until'] - now)
+        budget_delay = 0.0
+        if self.request_budget > 0 and state['requests_used'] >= self.request_budget:
+            budget_delay = max(0.0, state['window_started_at'] + self.window_seconds - now)
+        if changed:
+            self._persist(run, state)
+        return max(cooldown_delay, budget_delay)
+
+    def record_request(self, run):
+        state = self._state(run)
+        state['requests_used'] += 1
+        self._persist(run, state)
+
+    def rate_limited(self, run, *, retry_after, reason=''):
+        state = self._state(run)
+        state['cooldown_until'] = max(
+            state['cooldown_until'],
+            self.now() + max(1.0, float(retry_after or 30)),
+        )
+        state['last_limit_reason'] = str(reason or '')
+        self._persist(run, state)
+
+    def _state(self, run):
+        state = run.metadata.get(self.metadata_key)
+        if state is None:
+            state = self.initial_state()
+            run.metadata = {**run.metadata, self.metadata_key: state}
+        return state
+
+    def _persist(self, run, state):
+        run.metadata = {**run.metadata, self.metadata_key: state}
+        run.save(update_fields=['metadata', 'updated_at'])
 
 
 def seed_spotify_hydration_queue(*, batch_size=10_000, limit=None):
@@ -180,19 +278,114 @@ def seed_spotify_hydration_queue(*, batch_size=10_000, limit=None):
     created = 0
     rows = []
     for canonical_item_id, isrc, source_version in queryset.iterator(chunk_size=batch_size):
-        rows.append(ProviderHydrationItem(
+        rows.append((canonical_item_id, isrc, source_version))
+        if len(rows) >= batch_size:
+            created += _create_spotify_hydration_items(rows)
+            rows = []
+    if rows:
+        created += _create_spotify_hydration_items(rows)
+    return created
+
+
+def seed_spotify_hydration_queue_incrementally(*, after_source_id='', scan_limit=10_000):
+    """Scan one bounded, resumable slice of active ISRC aliases.
+
+    The cursor is the source ID from the last scanned alias, not the last inserted
+    queue row. This lets each pass move across aliases that were already queued
+    without repeatedly performing a full-corpus anti-join. At the end of a pass the
+    cursor resets, so aliases inserted behind the cursor are picked up next time.
+    """
+    if scan_limit < 1:
+        raise ValueError('scan_limit must be greater than zero')
+    spotify_on_item = CanonicalItemAlias.objects.filter(
+        canonical_item_id=OuterRef('canonical_item_id'),
+        source='spotify',
+        resource_type='track',
+        status='active',
+    )
+    aliases = list(
+        CanonicalItemAlias.objects.filter(
+            source='isrc',
+            resource_type='recording',
+            status='active',
+            source_id__gt=after_source_id,
+        )
+        .annotate(has_spotify=Exists(spotify_on_item))
+        .filter(has_spotify=False)
+        .order_by('source_id')
+        .values_list('canonical_item_id', 'source_id', 'source_version')[:scan_limit]
+    )
+    created = _create_spotify_hydration_items(aliases)
+    pass_complete = len(aliases) < scan_limit
+    return IncrementalSeedResult(
+        scanned=len(aliases),
+        created=created,
+        next_cursor='' if pass_complete else aliases[-1][1],
+        pass_complete=pass_complete,
+    )
+
+
+def reconcile_stale_hydration_state(*, provider, reconciled_by):
+    """Fail orphaned runs and reclaim queue leases while holding the provider lock.
+
+    The caller must own the provider's singleton advisory lock. That proves there is
+    no live worker for this provider, so every remaining ``running`` row is stale,
+    including leases whose expiry is still a few seconds in the future.
+    """
+    now = timezone.now()
+    stale_runs = list(ProviderHydrationRun.objects.filter(provider=provider, status='running'))
+    reclaimed_items = ProviderHydrationItem.objects.filter(
+        provider=provider,
+        status='running',
+    ).update(
+        status='pending',
+        leased_by='',
+        lease_expires_at=None,
+        next_attempt_at=None,
+        last_error='Reclaimed after the previous hydration worker stopped.',
+        updated_at=now,
+    )
+    for stale_run in stale_runs:
+        stale_run.status = 'failed'
+        stale_run.completed_at = now
+        stale_run.last_error = 'Reconciled as stale: no hydration worker held the provider lease.'
+        stale_run.metadata = {
+            **stale_run.metadata,
+            'reconciled_at': now.isoformat(),
+            'reconciled_by': reconciled_by,
+        }
+        stale_run.save(update_fields=['status', 'completed_at', 'last_error', 'metadata', 'updated_at'])
+    return ReconciliationResult(stale_runs=len(stale_runs), reclaimed_items=reclaimed_items)
+
+
+def _create_spotify_hydration_items(alias_rows):
+    candidates = {}
+    for canonical_item_id, isrc, source_version in alias_rows:
+        identifier = normalize_isrc(isrc)
+        if identifier:
+            candidates.setdefault(identifier, (canonical_item_id, source_version))
+    if not candidates:
+        return 0
+    existing = set(
+        ProviderHydrationItem.objects.filter(
+            provider='spotify',
+            identifier_type='isrc',
+            identifier__in=candidates,
+        ).values_list('identifier', flat=True)
+    )
+    rows = [
+        ProviderHydrationItem(
             canonical_item_id=canonical_item_id,
             provider='spotify',
             identifier_type='isrc',
-            identifier=normalize_isrc(isrc),
+            identifier=identifier,
             source_version=source_version,
-        ))
-        if len(rows) >= batch_size:
-            created += len(ProviderHydrationItem.objects.bulk_create(rows, ignore_conflicts=True))
-            rows = []
-    if rows:
-        created += len(ProviderHydrationItem.objects.bulk_create(rows, ignore_conflicts=True))
-    return created
+        )
+        for identifier, (canonical_item_id, source_version) in candidates.items()
+        if identifier not in existing
+    ]
+    ProviderHydrationItem.objects.bulk_create(rows, ignore_conflicts=True)
+    return len(rows)
 
 
 def claim_hydration_item(*, run, worker_id, lease_seconds=120):
@@ -350,6 +543,31 @@ def _retry_after_seconds(value):
         return max(1.0, float(value))
     except (TypeError, ValueError):
         return 30.0
+
+
+def _spotify_error_reason(response):
+    try:
+        payload = response.json()
+    except (TypeError, ValueError):
+        return ''
+    error = payload.get('error') if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        return str(error.get('reason') or '')
+    return str(payload.get('reason') or '') if isinstance(payload, dict) else ''
+
+
+def _safe_float(value, fallback):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(fallback)
+
+
+def _safe_int(value, fallback):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(fallback)
 
 
 def _finish_item(item, *, status, evidence):

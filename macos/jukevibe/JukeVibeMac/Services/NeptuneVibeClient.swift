@@ -48,7 +48,7 @@ actor NeptuneVibeClient {
     func upload(_ envelope: EncryptedEnvelope, token: String) async throws {
         var request = URLRequest(url: baseURL.appending(path: "vibe/encrypted-chat-records/\(envelope.recordID.uuidString)"))
         request.httpMethod = "PUT"; request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization"); request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(envelope)
+        request.httpBody = try Self.envelopeEncoder().encode(envelope)
         let (_, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw NeptuneVibeError.invalidResponse }
     }
@@ -57,7 +57,7 @@ actor NeptuneVibeClient {
         var request = URLRequest(url: baseURL.appending(path: "vibe/encrypted-chat-records")); request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw NeptuneVibeError.invalidResponse }
-        return try JSONDecoder().decode(ChangeSet.self, from: data).envelopes
+        return try Self.envelopeDecoder().decode(ChangeSet.self, from: data).envelopes
     }
 
     private func request<Body: Encodable, T: Decodable>(_ path: String, token: String, body: Body, as: T.Type) async throws -> T {
@@ -71,5 +71,15 @@ actor NeptuneVibeClient {
         if http.statusCode == 403 { throw NeptuneVibeError.cloudAIUnavailable }
         guard http.statusCode == 200 else { throw NeptuneVibeError.invalidResponse }
         return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    nonisolated static func envelopeEncoder() -> JSONEncoder {
+        // The Vibe API deliberately uses Swift's reference-date seconds so the
+        // encrypted envelope round-trips without server-side timestamp rewriting.
+        JSONEncoder()
+    }
+
+    nonisolated static func envelopeDecoder() -> JSONDecoder {
+        JSONDecoder()
     }
 }

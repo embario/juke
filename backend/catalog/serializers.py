@@ -1,32 +1,51 @@
 import logging
 
+from django.conf import settings
 from django.db import transaction
 from rest_framework import serializers
 
 from catalog.models import MusicResource, Genre, Artist, Album, Track, SearchHistory, SearchHistoryResource
+from catalog.services.provider_cache import record_provider_identity
 
 logger = logging.getLogger(__name__)
 
 
-class GenreSerializer(serializers.HyperlinkedModelSerializer):
+class ProviderIdentifierSerializer(serializers.Serializer):
+    source = serializers.CharField()
+    external_id = serializers.CharField()
+    provider_url = serializers.URLField(allow_blank=True)
+    market = serializers.CharField(allow_blank=True)
+    last_refreshed_at = serializers.DateTimeField(allow_null=True)
+    cache_expires_at = serializers.DateTimeField(allow_null=True)
+
+
+class ProviderIdentitySerializer(serializers.HyperlinkedModelSerializer):
+    pk = serializers.IntegerField(read_only=True)
+    provider_identifiers = serializers.SerializerMethodField()
+
+    def get_provider_identifiers(self, obj):
+        return ProviderIdentifierSerializer(obj.external_ids.all(), many=True).data
+
+
+class GenreSerializer(ProviderIdentitySerializer):
     class Meta:
         model = Genre
         fields = "__all__"
 
 
-class ArtistSerializer(serializers.HyperlinkedModelSerializer):
+class ArtistSerializer(ProviderIdentitySerializer):
     class Meta:
         model = Artist
         fields = "__all__"
 
 
-class AlbumSerializer(serializers.HyperlinkedModelSerializer):
+class AlbumSerializer(ProviderIdentitySerializer):
     class Meta:
         model = Album
         fields = "__all__"
 
 
-class TrackSerializer(serializers.HyperlinkedModelSerializer):
+class TrackSerializer(ProviderIdentitySerializer):
     class Meta:
         model = Track
         fields = "__all__"
@@ -37,10 +56,44 @@ class SpotifyResourceSerializer(serializers.HyperlinkedModelSerializer):
     pk = serializers.IntegerField(read_only=True)
     type = serializers.CharField(write_only=True)
     uri = serializers.CharField(write_only=True, required=True)
+    provider = serializers.SerializerMethodField(read_only=True)
+    external_id = serializers.SerializerMethodField(read_only=True)
+    provider_url = serializers.SerializerMethodField(read_only=True)
+    cache_expires_at = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = MusicResource
         fields = "__all__"
+
+    def _provider_identity(self, instance):
+        return instance.external_ids.filter(source='spotify').first()
+
+    def get_provider(self, instance):
+        return 'spotify'
+
+    def get_external_id(self, instance):
+        return instance.spotify_id
+
+    def get_provider_url(self, instance):
+        identity = self._provider_identity(instance)
+        return identity.provider_url if identity else ''
+
+    def get_cache_expires_at(self, instance):
+        identity = self._provider_identity(instance)
+        return identity.cache_expires_at if identity else None
+
+    def _record_provider_identity(self, instance, resource_type, provider_data):
+        ttl_seconds = getattr(settings, 'CATALOG_PROVIDER_CACHE_TTL_SECONDS', 86400)
+        return record_provider_identity(
+            instance,
+            resource_type=resource_type,
+            provider='spotify',
+            external_id=instance.spotify_id,
+            provider_data=provider_data,
+            provider_url=f'https://open.spotify.com/{resource_type}/{instance.spotify_id}',
+            market=self.context.get('market', ''),
+            ttl_seconds=ttl_seconds,
+        )
 
 
 class SpotifyArtistSerializer(SpotifyResourceSerializer):
@@ -85,6 +138,7 @@ class SpotifyArtistSerializer(SpotifyResourceSerializer):
             }
 
             instance.save()
+            self._record_provider_identity(instance, 'artist', instance.spotify_data)
         return instance
 
     def to_representation(self, instance):
@@ -118,6 +172,15 @@ class SpotifyAlbumSerializer(SpotifyResourceSerializer):
                     name=artist_data['name'],
                     spotify_id=artist_data['id'],
                 )
+                record_provider_identity(
+                    artist,
+                    resource_type='artist',
+                    provider='spotify',
+                    external_id=artist_data['id'],
+                    provider_url=f"https://open.spotify.com/artist/{artist_data['id']}",
+                    market=self.context.get('market', ''),
+                    ttl_seconds=getattr(settings, 'CATALOG_PROVIDER_CACHE_TTL_SECONDS', 86400),
+                )
                 instance.artists.add(artist)
 
             # Add other Spotify Data
@@ -128,6 +191,7 @@ class SpotifyAlbumSerializer(SpotifyResourceSerializer):
             }
 
             instance.save()
+            self._record_provider_identity(instance, 'album', instance.spotify_data)
         return instance
 
 
@@ -142,13 +206,52 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
 
     def create(self, validated_data):
         with transaction.atomic():
+            album_data = validated_data['album']
             album, album_created = Album.get_or_create_with_validated_data(
-                data=validated_data['album']
+                data=album_data
             )
             if album_created:
                 logger.info(f"Album '{album.name}' created.")
             else:
                 logger.debug(f"Album '{album.name}' updated.")
+
+            # Track search responses embed the album rather than passing through
+            # SpotifyAlbumSerializer. Preserve its artists and artwork so clients
+            # can render complete results immediately.
+            artists = []
+            for artist_data in album_data.get('artists', []):
+                artist, _ = Artist.objects.get_or_create(
+                    name=artist_data['name'],
+                    spotify_id=artist_data['id'],
+                )
+                record_provider_identity(
+                    artist,
+                    resource_type='artist',
+                    provider='spotify',
+                    external_id=artist_data['id'],
+                    provider_url=f"https://open.spotify.com/artist/{artist_data['id']}",
+                    market=self.context.get('market', ''),
+                    ttl_seconds=getattr(settings, 'CATALOG_PROVIDER_CACHE_TTL_SECONDS', 86400),
+                )
+                artists.append(artist)
+            if artists:
+                album.artists.set(artists)
+            album.spotify_data = {
+                'type': album_data.get('type', 'album'),
+                'uri': album_data.get('uri', f"spotify:album:{album_data['id']}"),
+                'images': [image['url'] for image in album_data.get('images', []) if image.get('url')],
+            }
+            album.save(update_fields=['spotify_data'])
+            record_provider_identity(
+                album,
+                resource_type='album',
+                provider='spotify',
+                external_id=album.spotify_id,
+                provider_data=album.spotify_data,
+                provider_url=f'https://open.spotify.com/album/{album.spotify_id}',
+                market=self.context.get('market', ''),
+                ttl_seconds=getattr(settings, 'CATALOG_PROVIDER_CACHE_TTL_SECONDS', 86400),
+            )
 
             instance, track_created = Track.get_or_create_with_validated_data(album=album, data=validated_data)
             if track_created:
@@ -165,6 +268,7 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
             }
 
             instance.save()
+            self._record_provider_identity(instance, 'track', instance.spotify_data)
         return instance
 
     def to_representation(self, instance):
@@ -172,8 +276,11 @@ class SpotifyTrackSerializer(SpotifyResourceSerializer):
         data['album_name'] = instance.album.name if instance.album else ''
         if instance.album:
             data['artist_names'] = ', '.join(a.name for a in instance.album.artists.all())
+            images = (instance.album.spotify_data or {}).get('images') or []
+            data['artwork_url'] = images[0] if images else None
         else:
             data['artist_names'] = ''
+            data['artwork_url'] = None
         return data
 
 

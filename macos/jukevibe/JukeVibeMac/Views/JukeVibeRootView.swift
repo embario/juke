@@ -3,6 +3,12 @@ import SwiftUI
 struct JukeVibeRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @State private var columnVisibility: NavigationSplitViewVisibility
+
+    init() {
+        let keepSidebarOpen = ProcessInfo.processInfo.arguments.contains("--uitesting-expanded-sidebar")
+        _columnVisibility = State(initialValue: keepSidebarOpen ? .all : .detailOnly)
+    }
 
     var body: some View {
         ZStack {
@@ -11,7 +17,9 @@ struct JukeVibeRootView: View {
             if model.lock.isLocked, model.session != nil { LockedView() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.lock.sceneBecameActive(isAuthenticated: model.session != nil) }
+            let isActive = phase == .active
+            model.detection.setApplicationActive(isActive)
+            if isActive { model.lock.sceneBecameActive(isAuthenticated: model.session != nil) }
             else { model.lock.sceneBecameInactive() }
         }
         .onChange(of: model.detection.track?.identityKey) { _, _ in
@@ -19,13 +27,20 @@ struct JukeVibeRootView: View {
             Task { await model.refreshOpeningQuestion() }
         }
         .onChange(of: model.detection.isAudioPresent) { _, _ in model.syncAtmosphere() }
+        .onChange(of: model.atmosphere.isEnabled) { _, _ in model.syncAtmosphere() }
+        .task { await model.prepareUITestPresentationIfNeeded() }
         .alert("Juke Vibe", isPresented: Binding(get: { model.banner != nil }, set: { if !$0 { model.banner = nil } })) {
             Button("OK") { model.banner = nil }
         } message: { Text(model.banner ?? "") }
+        .alert("Your conversations stay private", isPresented: Bindable(model).privacyWelcomePresented) {
+            Button("Got it") { model.privacyWelcomePresented = false }
+        } message: {
+            Text("Juke Vibe encrypts conversation history before storing or syncing it. Cloud chat receives only the message you deliberately send and current-track context.")
+        }
     }
 
     private var signedInContent: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             VStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("JUKE").font(.caption.weight(.bold)).tracking(2.5).foregroundStyle(.secondary)
@@ -40,11 +55,14 @@ struct JukeVibeRootView: View {
                     .buttonStyle(.plain)
                     .padding(.horizontal, 10)
                     .background(model.route == route ? model.atmosphere.primary.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 11))
+                    .accessibilityIdentifier("sidebar.\(route.rawValue)")
                 }
                 Spacer()
-                Button { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) } label: {
+                SettingsLink {
                     Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
-                }.buttonStyle(.plain)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("sidebar.settings")
                 Button(role: .destructive) { Task { await model.logout() } } label: {
                     Label("Log out", systemImage: "rectangle.portrait.and.arrow.right").frame(maxWidth: .infinity, alignment: .leading)
                 }.buttonStyle(.plain)
@@ -64,6 +82,7 @@ struct JukeVibeRootView: View {
                 NowPlayingBar()
             }
         }
+        .navigationSplitViewStyle(.balanced)
     }
 }
 
@@ -78,7 +97,11 @@ private struct SignInView: View {
             }
             HStack {
                 Button("Create a Juke account") { Task { await model.beginAuthentication(.createAccount) } }
-                Button("Sign in") { Task { await model.beginAuthentication(.login) } }.buttonStyle(.borderedProminent).tint(model.atmosphere.primary)
+                    .accessibilityIdentifier("authentication.createAccount")
+                Button("Sign in") { Task { await model.beginAuthentication(.login) } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(model.atmosphere.primary)
+                    .accessibilityIdentifier("authentication.signIn")
             }
             Text("Conversation history is encrypted on this Mac. Juke never receives that history unless you explicitly submit text for an AI reply.")
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 430)

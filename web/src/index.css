@@ -269,6 +269,10 @@ body.no-scroll .app-shell__content {
 
 .sidebar__micro-link {
   align-self: flex-start;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
   font-size: 0.72rem;
   letter-spacing: 0.02em;
   color: rgba(148, 163, 184, 0.9);
@@ -350,6 +354,9 @@ body.no-scroll .app-shell__content {
 }
 
 .pill {
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
   padding: 0.35rem 0.75rem;
   border-radius: var(--radius-pill);
   border: 1px solid var(--clr-border);
