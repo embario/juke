@@ -23,15 +23,20 @@ final class PlayerMetadataMonitor {
     private enum PublishedState: Equatable {
         case unset
         case stopped
-        case playing(String)
+        case playing(String, TimeInterval)
     }
 
-    private let reader = ScriptingBridgePlayerMetadataReader()
+    private let readCurrentPlayback: @Sendable () async -> PlayerMetadataSnapshot?
     private var safetyRefreshTask: Task<Void, Never>?
-    private var refreshTask: Task<Void, Never>?
+    private(set) var refreshTask: Task<Void, Never>?
     private var notificationTokens: [NSObjectProtocol] = []
     private var publishedState = PublishedState.unset
     private var applicationIsActive = true
+
+    init(readCurrentPlayback: (@Sendable () async -> PlayerMetadataSnapshot?)? = nil) {
+        let reader = ScriptingBridgePlayerMetadataReader()
+        self.readCurrentPlayback = readCurrentPlayback ?? { await reader.readCurrentPlayback() }
+    }
 
     func start() {
         guard safetyRefreshTask == nil else { return }
@@ -97,9 +102,9 @@ final class PlayerMetadataMonitor {
 
     private func requestRefresh() {
         guard refreshTask == nil else { return }
-        let reader = reader
-        refreshTask = Task { @MainActor [weak self, reader] in
-            let snapshot = await reader.readCurrentPlayback()
+        let readCurrentPlayback = readCurrentPlayback
+        refreshTask = Task { @MainActor [weak self, readCurrentPlayback] in
+            let snapshot = await readCurrentPlayback()
             guard !Task.isCancelled, let self else { return }
             publishIfChanged(snapshot)
             refreshTask = nil
@@ -107,7 +112,7 @@ final class PlayerMetadataMonitor {
     }
 
     private func publishIfChanged(_ snapshot: PlayerMetadataSnapshot?) {
-        let nextState = snapshot.map { PublishedState.playing("\($0.contentIdentity)|\($0.isPlaying)") } ?? .stopped
+        let nextState = snapshot.map { PublishedState.playing("\($0.contentIdentity)|\($0.isPlaying)", $0.playbackPosition) } ?? .stopped
         guard nextState != publishedState else { return }
         publishedState = nextState
         onSnapshot?(snapshot)

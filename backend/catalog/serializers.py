@@ -20,6 +20,7 @@ class ProviderIdentifierSerializer(serializers.Serializer):
 
 
 class ProviderIdentitySerializer(serializers.HyperlinkedModelSerializer):
+    pk = serializers.IntegerField(read_only=True)
     provider_identifiers = serializers.SerializerMethodField()
 
     def get_provider_identifiers(self, obj):

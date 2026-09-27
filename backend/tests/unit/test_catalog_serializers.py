@@ -2,6 +2,8 @@ from django.test import TestCase
 
 from catalog.models import Album, Artist, Genre, Track
 from catalog.serializers import (
+    AlbumDetailSerializer,
+    ArtistDetailSerializer,
     SpotifyAlbumSerializer,
     SpotifyArtistSerializer,
     SpotifyTrackSerializer,
@@ -123,3 +125,30 @@ class SpotifyTrackSerializerTests(TestCase):
         self.assertEqual(list(track.album.artists.values_list('name', flat=True)), ['Artist Track'])
         self.assertEqual(serializer.data['artwork_url'], 'https://img.example/track-album.jpg')
         self.assertEqual(serializer.data['artist_names'], 'Artist Track')
+
+
+class CatalogDetailIdentityTests(TestCase):
+    def test_detail_and_nested_resources_expose_numeric_primary_keys(self):
+        artist = Artist.objects.create(name='Detail Artist')
+        related_artist = Artist.objects.create(name='Related Artist')
+        album = Album.objects.create(name='Detail Album', total_tracks=1, release_date='2026-01-01')
+        album.artists.add(artist)
+        track = Track.objects.create(name='Detail Track', album=album, track_number=1, disc_number=1, duration_ms=180000, explicit=False)
+        genre = Genre.objects.create(name='Detail Genre')
+        artist.genres.add(genre)
+        artist._enriched_albums = [album]
+        artist._enriched_top_tracks = [track]
+        artist._enriched_related_artists = [related_artist]
+        album._enriched_tracks = [track]
+        album._enriched_related_albums = [album]
+
+        artist_data = ArtistDetailSerializer(artist, context={'request': None}).data
+        self.assertEqual(artist_data['pk'], artist.pk)
+        self.assertEqual(artist_data['albums'][0]['pk'], album.pk)
+        self.assertEqual(artist_data['top_tracks'][0]['pk'], track.pk)
+        self.assertEqual(artist_data['related_artists'][0]['pk'], related_artist.pk)
+        self.assertEqual(artist_data['genres'][0]['pk'], genre.pk)
+        album_data = AlbumDetailSerializer(album, context={'request': None}).data
+        self.assertEqual(album_data['pk'], album.pk)
+        self.assertEqual(album_data['tracks'][0]['pk'], track.pk)
+        self.assertEqual(album_data['related_albums'][0]['pk'], album.pk)

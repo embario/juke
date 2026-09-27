@@ -35,7 +35,8 @@ final class MusicDetectionController {
     var mode: Mode = .playerMetadata
     var errorMessage: String?
 
-    private let monitor = PlayerMetadataMonitor()
+    private let monitor: PlayerMetadataMonitor
+    @ObservationIgnored private var playbackComesFromLocalMetadata = false
     private let playbackClient = PlaybackClient()
     private let localPlaybackController = LocalPlayerPlaybackController()
     private var capture: (any AudioCaptureService)?
@@ -49,9 +50,28 @@ final class MusicDetectionController {
     @ObservationIgnored private var forceSpectatorModeForUITests = false
     @ObservationIgnored private var playbackNotificationTokens: [NSObjectProtocol] = []
 
-    init() {
+    init(monitor: PlayerMetadataMonitor = PlayerMetadataMonitor()) {
+        self.monitor = monitor
         monitor.onSnapshot = { [weak self] snapshot in
-            guard let self, let snapshot else { return }
+            guard let self else { return }
+            guard let snapshot else {
+                // A missing local player must not erase playback on a remote
+                // Spotify device. Only clear state last supplied by this monitor.
+                guard self.playbackComesFromLocalMetadata else { return }
+                self.track = nil
+                self.providerName = nil
+                self.isPlaying = false
+                self.isAudioPresent = false
+                self.playbackPosition = 0
+                self.playbackDuration = 0
+                self.playbackDeviceName = nil
+                self.playbackDeviceID = nil
+                self.playbackComesFromLocalMetadata = false
+                return
+            }
+            self.playbackComesFromLocalMetadata = true
+            self.playbackDeviceName = nil
+            self.playbackDeviceID = nil
             self.track = snapshot.track
             self.providerName = snapshot.provider.rawValue
             self.isPlaying = snapshot.isPlaying
@@ -143,7 +163,6 @@ final class MusicDetectionController {
     }
 
     var canControlPlayback: Bool {
-        guard !isSpotifySpectatorMode else { return false }
         return switch providerName {
         case PlayerMetadataSnapshot.Provider.spotify.rawValue:
             canStartSpotifyPlayback
@@ -253,6 +272,7 @@ final class MusicDetectionController {
             return
         }
         if let optimisticTrack {
+            playbackComesFromLocalMetadata = false
             track = optimisticTrack
             providerName = PlayerMetadataSnapshot.Provider.spotify.rawValue
             playbackPosition = 0
@@ -341,8 +361,9 @@ final class MusicDetectionController {
         }
     }
 
-    private func apply(_ state: JukePlaybackState) {
+    func apply(_ state: JukePlaybackState) {
         guard state.provider == "spotify", let value = state.track, let title = value.name else { return }
+        playbackComesFromLocalMetadata = false
         let artist = value.artists?.compactMap(\.name).filter { !$0.isEmpty }.joined(separator: ", ") ?? "Unknown artist"
         let providerID = value.id ?? value.uri?.split(separator: ":").last.map(String.init)
         track = RecognizedTrack(

@@ -1,13 +1,13 @@
 ---
 id: juke-vibe-macos-reliability-and-e2e
 title: Harden Juke Vibe macOS interactions and add UI tests
-status: done
+status: review
 priority: p1
 owner: codex
 area: clients
 label: CLIENTS
 complexity: 3
-updated_at: 2026-09-03
+updated_at: 2026-09-27
 ---
 
 ## Goal
@@ -156,3 +156,36 @@ user flows.
   UI automation is isolated in the explicit `JukeVibeMacUIAutomation` scheme;
   its seven-test bundle compiles successfully, but was not executed because
   macOS requires Accessibility/Automation authorization to drive application UI.
+
+## PR 159 review follow-up (2026-09-27)
+
+- Owner: codex; execution mode: ITERATIVE. Investigate both existing Copilot
+  threads, correct confirmed playback-state defects, and add focused regressions.
+- Acceptance: disappearance of local playback clears stale state without erasing
+  remote Spotify playback; stop/restart cannot let cancelled refreshes publish or
+  clear a newer refresh; default macOS tests pass.
+- Risk: local metadata and remote Spotify polling both update Now Playing. Keep
+  their ownership explicit when processing an empty local snapshot.
+- No merge in this follow-up. Preserve the main checkout and use the managed
+  PR worktree. Fresh full-diff review proceeds independently; incorporate verified
+  findings in scope after coordination.
+- Corrected nil local snapshots to clear locally sourced Now Playing state while
+  preserving remote Spotify device playback. Added direct regressions for both.
+- Fresh full-PR review found and fixed three additional defects: native catalog
+  detail/nested serializers now expose the numeric `pk` expected by Mac DTOs;
+  unavailable Spotify no longer disables local Apple Music controls; same-track
+  position updates now publish so external seeks rebase progress.
+- The second Copilot cancellation claim is inapplicable: stop() already cancels
+  and clears the task handle synchronously; nil self means the monitor was freed.
+  A suspended-reader regression completes an old cancelled refresh during a new
+  refresh and verifies no stale publication, overlapping read, or stuck handle.
+  Cleanup behavior remains unchanged to avoid clearing the newer task.
+- Validation: the default signed macOS scheme passes all 21 tests; the five-test
+  backend catalog serializer suite passes in isolated Docker with Django/DRF,
+  Pillow, in-memory SQLite, and catalog/auth model tables (no full stack or ML).
+  Async tests await actual refresh completion instead of scheduler-yield counts.
+  Web ESLint and full backend Ruff pass (Ruff in isolated Docker; no running
+  Compose backend, so its equivalent check replaces the service-dependent hook).
+- Handoff: implementation ready for review. Reply to the two Copilot threads,
+  push the verified branch, and wait for required human/code-owner approval.
+  Do not merge during this follow-up.

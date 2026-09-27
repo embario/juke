@@ -274,3 +274,127 @@ final class VibeKeychainConfigurationTests: XCTestCase {
         XCTAssertEqual(result as? Data, Data("test-value".utf8))
     }
 }
+
+@MainActor
+final class PlayerMetadataLifecycleTests: XCTestCase {
+    func testMissingLocalPlaybackClearsNowPlaying() {
+        let monitor = PlayerMetadataMonitor(readCurrentPlayback: { nil })
+        let controller = MusicDetectionController(monitor: monitor)
+        monitor.onSnapshot?(snapshot())
+        XCTAssertTrue(controller.isPlaying)
+        monitor.onSnapshot?(nil)
+        XCTAssertNil(controller.track)
+        XCTAssertNil(controller.providerName)
+        XCTAssertFalse(controller.isPlaying)
+        XCTAssertFalse(controller.isAudioPresent)
+        XCTAssertEqual(controller.playbackPosition, 0)
+        XCTAssertEqual(controller.playbackDuration, 0)
+        XCTAssertNil(controller.playbackDeviceName)
+        XCTAssertFalse(controller.canControlPlayback)
+    }
+
+    func testMissingLocalPlaybackPreservesRemoteSpotifyDevice() throws {
+        let monitor = PlayerMetadataMonitor(readCurrentPlayback: { nil })
+        let controller = MusicDetectionController(monitor: monitor)
+        monitor.onSnapshot?(snapshot())
+        let state = try JSONDecoder().decode(JukePlaybackState.self, from: Data("""
+            {"provider":"spotify","is_playing":true,"progress_ms":42000,
+             "track":{"id":"remote-track","name":"Remote song","duration_ms":180000},
+             "device":{"id":"remote-device","name":"Living Room"}}
+            """.utf8))
+        controller.apply(state)
+        monitor.onSnapshot?(nil)
+        XCTAssertEqual(controller.track?.title, "Remote song")
+        XCTAssertTrue(controller.isPlaying)
+        XCTAssertEqual(controller.playbackPosition, 42)
+        XCTAssertEqual(controller.playbackDeviceName, "Living Room")
+    }
+
+    func testUnlinkedSpotifyDoesNotDisableAppleMusicControls() {
+        let monitor = PlayerMetadataMonitor(readCurrentPlayback: { nil })
+        let controller = MusicDetectionController(monitor: monitor)
+        controller.spotifyPlaybackAccess = .spectator
+        controller.prefersSpotifySpectatorMode = false
+        monitor.onSnapshot?(snapshot())
+        XCTAssertTrue(controller.canControlPlayback)
+        controller.providerName = PlayerMetadataSnapshot.Provider.spotify.rawValue
+        XCTAssertFalse(controller.canControlPlayback)
+    }
+
+    func testSameTrackSeekRebasesPlaybackPosition() async throws {
+        let reader = SuspendedMetadataReader()
+        let monitor = PlayerMetadataMonitor(readCurrentPlayback: { await reader.read() })
+        let controller = MusicDetectionController(monitor: monitor)
+        monitor.refreshNow()
+        try await reader.waitForReads(1)
+        await reader.finish(0, with: snapshot(position: 10))
+        await monitor.refreshTask?.value
+        XCTAssertEqual(controller.playbackPosition, 10)
+        monitor.refreshNow()
+        try await reader.waitForReads(2)
+        await reader.finish(1, with: snapshot(position: 90))
+        await monitor.refreshTask?.value
+        XCTAssertEqual(controller.playbackPosition, 90)
+        monitor.stop()
+    }
+
+    func testCancelledRefreshCannotPublishOrClearRestartedRefresh() async throws {
+        let reader = SuspendedMetadataReader()
+        let monitor = PlayerMetadataMonitor(readCurrentPlayback: { await reader.read() })
+        var publications: [String?] = []
+        monitor.onSnapshot = { publications.append($0?.track.title) }
+        monitor.refreshNow()
+        try await reader.waitForReads(1)
+        let cancelledRefresh = monitor.refreshTask
+        monitor.stop()
+        monitor.refreshNow()
+        try await reader.waitForReads(2)
+        await reader.finish(0, with: snapshot(title: "Cancelled"))
+        await cancelledRefresh?.value
+        monitor.refreshNow()
+        let count = await reader.count
+        XCTAssertEqual(count, 2, "Old completion must not clear the newer in-flight handle")
+        XCTAssertEqual(publications.count, 1, "Only stop's nil publication is expected")
+        await reader.finish(1, with: snapshot(title: "Restarted"))
+        await monitor.refreshTask?.value
+        XCTAssertEqual(publications.last!, "Restarted")
+        monitor.refreshNow()
+        try await reader.waitForReads(3)
+        await reader.finish(2, with: nil)
+        await monitor.refreshTask?.value
+        XCTAssertNil(publications.last!)
+        monitor.stop()
+    }
+
+    private func snapshot(title: String = "Local song", position: TimeInterval = 12) -> PlayerMetadataSnapshot {
+        PlayerMetadataSnapshot(
+            provider: .appleMusic,
+            track: RecognizedTrack(title: title, artist: "Artist", album: nil, isrc: nil,
+                artworkURL: nil, appleMusicURL: nil, shazamID: nil, trackDuration: 180),
+            stableProviderID: "local-track", isPlaying: true, playbackPosition: position
+        )
+    }
+}
+
+private actor SuspendedMetadataReader {
+    private var continuations: [CheckedContinuation<PlayerMetadataSnapshot?, Never>] = []
+    var count: Int { continuations.count }
+
+    func read() async -> PlayerMetadataSnapshot? {
+        await withCheckedContinuation { continuations.append($0) }
+    }
+
+    func waitForReads(_ expected: Int) async throws {
+        let deadline = Date().addingTimeInterval(3)
+        while count < expected {
+            guard Date() < deadline else {
+                throw NSError(domain: "MetadataReadTimeout", code: expected)
+            }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+    }
+
+    func finish(_ index: Int, with snapshot: PlayerMetadataSnapshot?) {
+        continuations[index].resume(returning: snapshot)
+    }
+}
