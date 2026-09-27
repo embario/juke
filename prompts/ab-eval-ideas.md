@@ -1,0 +1,19 @@
+# Juke A/B Evaluation Idea Catalog
+
+These are idea seeds for model A/B evaluation, not active tasks. When an agent starts one, it must first create or update a concrete task file in `tasks/` and mark it as `ITERATIVE` or `ASYNC` in the task execution notes.
+
+| Idea | Prompt File | Mode | Capability Target | Failure Modes To Surface |
+| --- | --- | --- | --- | --- |
+| Onboarding/profile contract unification | `prompts/ab-eval-onboarding-profile-contract.md` | ITERATIVE | Cross-client contract discovery, backward compatibility, task-spec quality, focused backend/web implementation. | Invented schema fields, broad mobile rewrites, undocumented drift, weak legacy-data handling. |
+| Web playback progression hardening | `prompts/ab-eval-web-playback-progression.md` | ASYNC | Reading handoff state, validating an existing partial fix, writing targeted regression tests. | Treating review work as greenfield, live Spotify dependency, UI redesign, untested backend assumptions. |
+| Track fun-facts endpoint | `prompts/ab-eval-track-facts-endpoint.md` | ASYNC | External-service isolation, cache design, structured failure behavior, no-real-API testing. | Real LLM calls, fabricated provider APIs, infinite cache, swallowed failures, poor prompt boundaries. |
+| Direct-message request lifecycle | `prompts/ab-eval-dm-request-lifecycle.md` | ITERATIVE | State-machine modeling, permission boundaries, transaction-aware backend API design. | Building group chat/realtime/push, leaking blocked state, overbroad client work, missing negative tests. |
+| Notification preferences and device tokens | `prompts/ab-eval-notification-preferences.md` | ITERATIVE | Idempotent APIs, consent modeling, provider-agnostic delivery records. | Live APNs/FCM integration, marketing overbuild, token duplication, no opt-out semantics. |
+| Social follow/unfollow foundation | `prompts/ab-eval-social-follow-foundation.md` | ITERATIVE | Relational constraints, privacy-aware serialization, deterministic pagination. | Full feed overbuild, self-follow bugs, N+1 queries, no privacy tests. |
+| Juke World API and hook hardening | `prompts/ab-eval-juke-world-api-hooks.md` | ITERATIVE | Backend/web contract hardening, async hook behavior, resource-conscious testing. | WebGL rabbit holes, visual-only changes, unbounded API results, race-prone hooks. |
+| Android JukeCore boundary guardrail | `prompts/ab-eval-android-jukecore-boundary.md` | ASYNC | Android architecture enforcement, static analysis or test design, repo-sensitive Gradle work. | Hallucinated modules, emulator-heavy validation, brittle grep checks, sweeping app rewrites. |
+| iOS JukeKit migration slice | `prompts/ab-eval-ios-jukekit-migration.md` | ITERATIVE | Targeted Swift refactor, shared-package adoption, Xcode/build hygiene. | All-app migration, project-file damage, duplicate logic left behind, skipped focused verification. |
+| Cross-platform reusable component parity | `prompts/ab-eval-reusable-component-parity.md` | ITERATIVE | Design-system audit, choosing one useful primitive, cross-platform consistency without redesign. | Vague audit-only output, visual redesign, inconsistent APIs, running every app unnecessarily. |
+| CLI daemon IPC/auth foundation | `prompts/ab-eval-cli-daemon-foundation.md` | ITERATIVE | New-client scaffolding in the intended language, protocol discipline, daemon/test boundaries. | Wrong language, invented architecture, TUI overbuild, no task spec, no testable IPC seam. |
+
+Excluded for current local A/B evaluation: MLCore embedding, hybrid-ranking, training/evaluation, OpenL3, content-retrieval, descriptor backfills, full realtime messaging, full push delivery, music generation, and native Juke World rendering. These are either too resource-heavy, not isolated enough yet, or too likely to introduce dev-environment noise in simultaneous model runs.
