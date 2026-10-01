@@ -18,7 +18,7 @@ scheme="$app_scheme"
 extra=()
 if [[ -n "${CI:-}" ]]; then
   # CI runners have no signing identity; skip the tests that need a team-signed Keychain entitlement.
-  extra+=(CODE_SIGNING_ALLOWED=NO "-skip-testing:${app_scheme}Tests/VibeKeychainConfigurationTests")
+  extra+=(CODE_SIGNING_ALLOWED=NO "-skip-testing:${app_scheme}Tests/JukeKeychainConfigurationTests")
 fi
 
 derived="${DERIVED_DATA_PATH:-$repo_root/.build/macos-derived-data}"
