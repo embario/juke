@@ -69,7 +69,17 @@ background recognition, and the backend URL (default
   error mapping), `RadioModels.swift` (`Radio.Track`, `Radio.Station`, ...),
   `JukeAPI+Radio.swift` (every `/api/v1/radio/` endpoint).
 - `JukeMac/Views/Shell`: root window, header, `SectionStage` transitions, mini player.
+- `JukeMac/Services/Radio`: `RadioController` (stations, tuned/pending station,
+  Spotify state polling, queues the next pick 20 s before a song ends, listening
+  events, first-run and resume-on-launch flags in `RadioPreferences`),
+  `RadioMath` (vinyl seek: 14 s per turn; FM dial: 56 pt per MHz, snapping,
+  fling, hold-to-move), the `RadioBackend`/`RadioPlaybackControlling` seams and
+  in-memory fixtures used by `--uitesting` (`--uitesting-radio-first-run` shows
+  the Tune in card).
 - `JukeMac/Views/Radio`, `Library`, `Memories`, `Chat`: one folder per section.
+  Radio: `RadioScreen` (Tune in card, record card, New Station route),
+  `RadioHero` (sleeve flip, vinyl gestures), `FMDialView`, `RadioPanels`
+  (status line, station sheet, lyrics).
 - `JukeMac/Views/Settings`, `Views/Shared`.
 
 ## Music memories (macOS first)
