@@ -7,8 +7,11 @@ filtered by exclusions and recent history, then hydrated into ``Track`` payloads
 from __future__ import annotations
 
 import logging
+import random
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence
+
+from django.conf import settings
 
 from mlcore.models import CanonicalItemAlias
 from radio.models import Station
@@ -18,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 MAX_IDENTITY_ITEMS = 100
 MAX_SEEDS = 25
+# The co-occurrence query cost grows sharply with seed count (measured on neptune: 1–2 seeds
+# ≈0.1–2 s, 7 seeds >60 s), so only the strongest few seeds go to MLCore, with a short timeout.
+MLCORE_SEED_LIMIT = int(getattr(settings, 'RADIO_MLCORE_SEED_LIMIT', 3))
+MLCORE_TIMEOUT_SECONDS = float(getattr(settings, 'RADIO_MLCORE_TIMEOUT_SECONDS', 6))
 
 # Emoji feelings → search keywords. Free-text feelings are used as search terms directly.
 FEELING_KEYWORDS = {
@@ -142,6 +149,14 @@ def _evidence_track(spotify_id: str, evidence: Dict) -> Dict:
     }
 
 
+def mlcore_seed_sample(seed_ids: Sequence[str]) -> List[str]:
+    """The strongest (first) seed plus a rotating sample of the rest, so picks vary between calls."""
+    seed_ids = list(dict.fromkeys(seed_ids))
+    if len(seed_ids) <= MLCORE_SEED_LIMIT:
+        return seed_ids
+    return seed_ids[:1] + random.sample(seed_ids[1:], MLCORE_SEED_LIMIT - 1)
+
+
 def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence[str], limit: int) -> List[tuple[str, Dict]]:
     """Ranked (spotifyId, evidence) pairs from an MLCore identity ranker; [] on any failure."""
     from recommender.services import client
@@ -149,12 +164,12 @@ def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence
     if not seed_ids:
         return []
     payload = {
-        'seed_items': [_identity(track_id) for track_id in seed_ids[:MAX_IDENTITY_ITEMS]],
+        'seed_items': [_identity(track_id) for track_id in mlcore_seed_sample(seed_ids)],
         'exclude_items': [_identity(track_id) for track_id in list(exclude_ids)[:MAX_IDENTITY_ITEMS]],
         'limit': max(1, min(limit, MAX_IDENTITY_ITEMS)),
     }
     try:
-        response = client.fetch_identity_recommendations(ranker, payload)
+        response = client.fetch_identity_recommendations(ranker, payload, timeout=MLCORE_TIMEOUT_SECONDS)
     except Exception as exc:  # engine outages fall through to the next source
         logger.warning('MLCore %s ranker unavailable for radio: %s', ranker, exc)
         return []

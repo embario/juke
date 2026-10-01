@@ -168,7 +168,7 @@ class PipelineTests(RadioTestCase):
         item = canonical_with_alias('meta-1')
         self.fake.add(sp_track('meta-1'))
 
-        def engine(ranker, payload):
+        def engine(ranker, payload, **kwargs):
             return {'items': []} if ranker == 'cooccurrence' else engine_response(item)
 
         with mock.patch(ENGINE, side_effect=engine):
@@ -201,6 +201,7 @@ class PipelineTests(RadioTestCase):
             result = recommend.next_tracks(self.user, self.station(), count=1)
         self.assertEqual((result.source, result.tracks[0]['spotifyId']), ('seed', 'seed-1'))
 
+    @mock.patch('radio.services.recommend.MLCORE_SEED_LIMIT', 25)
     def test_artist_and_album_seeds_expand_to_tracks(self):
         self.fake.top['ar'] = [sp_track('ar-top-1', artist_id='ar')]
         self.fake.albums['al'] = ['al-1', 'al-2']
@@ -211,6 +212,19 @@ class PipelineTests(RadioTestCase):
         seeds = [item['source_id'] for item in engine.call_args_list[0].args[1]['seed_items']]
         self.assertEqual(seeds, ['ar-top-1', 'al-1', 'al-2'])
 
+    def test_mlcore_seed_sample_is_capped_and_keeps_strongest_seed(self):
+        ids = [f's{idx}' for idx in range(10)]
+        sample = recommend.mlcore_seed_sample(ids)
+        self.assertEqual(len(sample), recommend.MLCORE_SEED_LIMIT)
+        self.assertEqual(sample[0], 's0')
+        self.assertEqual(len(set(sample)), len(sample))
+        self.assertEqual(recommend.mlcore_seed_sample(['a', 'a']), ['a'])
+        with mock.patch(ENGINE, return_value={'items': []}) as engine:
+            recommend.mlcore_track_ids('cooccurrence', ids, [], 5)
+        self.assertEqual(len(engine.call_args.args[1]['seed_items']), recommend.MLCORE_SEED_LIMIT)
+        self.assertEqual(engine.call_args.kwargs['timeout'], recommend.MLCORE_TIMEOUT_SECONDS)
+
+    @mock.patch('radio.services.recommend.MLCORE_SEED_LIMIT', 25)
     def test_personal_station_learns_from_positive_signals_and_memories(self):
         personal = self.station(kind='personal', seeds=[], frequency=88.7)
         self.event('done', 'complete')

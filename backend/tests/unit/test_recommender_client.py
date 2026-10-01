@@ -83,6 +83,13 @@ class RecommenderClientTests(SimpleTestCase):
             headers={'X-Request-ID': 'request-123'},
         )
 
+    @mock.patch('recommender.services.client.requests.post')
+    def test_identity_recommendations_accept_timeout_override(self, mock_post):
+        mock_post.return_value.json.return_value = {'items': []}
+        with mock.patch('recommender.services.client.ENGINE_BASE_URL', 'http://engine.test'):
+            client.fetch_identity_recommendations('cooccurrence', {'seed_items': []}, timeout=3)
+        self.assertEqual(mock_post.call_args.kwargs['timeout'], 3)
+
     def test_fetch_identity_recommendations_rejects_unknown_ranker(self):
         with self.assertRaises(ValueError):
             client.fetch_identity_recommendations('legacy', {'seed_items': []})
