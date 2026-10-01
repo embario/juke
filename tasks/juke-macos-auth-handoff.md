@@ -20,10 +20,12 @@ Return browser sign-in to the new Juke Mac test build with a verified Juke sessi
 - Capture authentication callbacks with ASWebAuthenticationSession so parallel
   installed copies do not steal them through Launch Services.
 - Rebuild, verify signature and relaunch the isolated executable.
+- Fix web authorization callback delivery under React StrictMode, prepare a
+  focused deployment patch that preserves Neptune's Journal auth integration.
 
 ## Out Of Scope
 
-- Neptune deployment, Spotify-first web login, Radio slices owned by other agents.
+- Neptune deployment without user approval, Spotify-first web login, Radio slices owned by other agents.
 
 ## Acceptance Criteria
 
@@ -60,3 +62,14 @@ Return browser sign-in to the new Juke Mac test build with a verified Juke sessi
   callback queue (PID 66168, crash report Juke-2026-10-01-170621.ips). Moved
   completion creation to a nonisolated Sendable helper; added a regression invoking
   it on a background queue from MainActor. Rebuilt, verified signature and relaunched.
+- User retest: app PID 67362 still waits; Neptune logs authorization HTTP 200
+  without any code exchange. Running web uses React StrictMode; its replay cleanup
+  discards the response while its started ref suppresses the replacement listener.
+- Web fix reuses one authorization promise across effect replay and attaches a
+  fresh active listener. Submit takes ownership before login updates the context.
+- Seven focused web tests pass, including callback delivery under StrictMode and
+  no redirect after real unmount. The same regression fails against original code.
+  TypeScript build and targeted ESLint pass.
+- Concrete deployment patch: build/neptune-sign-in.patch, generated against the
+  exact running LoginRoute and preserving its Journal authorization path. Only
+  LoginRoute and browserRedirect helper change; user approval required to apply.

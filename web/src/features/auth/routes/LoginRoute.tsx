@@ -6,6 +6,7 @@ import LoginForm from '../components/LoginForm';
 import { useAuth } from '../hooks/useAuth';
 import type { LoginPayload } from '../types';
 import { authorizeVibeRequest, parseVibeAuthorizationRequest } from '../api/vibeAuth';
+import { redirectToClient } from '../api/browserRedirect';
 
 const LoginRoute = () => {
   const { login, isAuthenticated, token } = useAuth();
@@ -14,6 +15,11 @@ const LoginRoute = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const vibeAuthorizationStarted = useRef(false);
+  const pendingAuthorization = useRef<{
+    token: string;
+    search: string;
+    promise: Promise<{ redirect_to: string }>;
+  } | null>(null);
   const redirectTo = (location.state as { redirectTo?: string } | null)?.redirectTo ?? '/';
   const vibeRequest = useMemo(
     () => parseVibeAuthorizationRequest(location.search),
@@ -50,15 +56,24 @@ const LoginRoute = () => {
     if (!isAuthenticated || !token || !vibeRequest || vibeAuthorizationStarted.current) {
       return;
     }
-    vibeAuthorizationStarted.current = true;
     let active = true;
-    authorizeVibeRequest(token, location.search)
+    // StrictMode replays setup/cleanup. Reuse the request, but attach a fresh
+    // listener so replay cleanup cannot discard the only successful callback.
+    if (pendingAuthorization.current?.token !== token || pendingAuthorization.current.search !== location.search) {
+      pendingAuthorization.current = {
+        token,
+        search: location.search,
+        promise: authorizeVibeRequest(token, location.search),
+      };
+    }
+    pendingAuthorization.current.promise
       .then(({ redirect_to }) => {
-        if (active) window.location.assign(redirect_to);
+        if (active) redirectToClient(redirect_to);
       })
       .catch((err) => {
         if (active) {
           vibeAuthorizationStarted.current = false;
+          pendingAuthorization.current = null;
           setError(err instanceof Error ? err.message : 'Unable to return to the Juke app.');
         }
       });
@@ -75,16 +90,20 @@ const LoginRoute = () => {
   const handleSubmit = async (payload: LoginPayload) => {
     setIsSubmitting(true);
     setError(null);
+    // The submit handler owns authorization during login; the authenticated
+    // effect must not race it when the auth context updates.
+    if (vibeRequest) vibeAuthorizationStarted.current = true;
     try {
       const issuedToken = await login(payload);
       if (vibeRequest) {
         vibeAuthorizationStarted.current = true;
         const { redirect_to } = await authorizeVibeRequest(issuedToken, location.search);
-        window.location.assign(redirect_to);
+        redirectToClient(redirect_to);
       } else {
         navigate(redirectTo, { replace: true });
       }
     } catch (err) {
+      vibeAuthorizationStarted.current = false;
       if (err instanceof ApiError) {
         const fieldMessage = formatFieldErrors(err.payload);
         setError(fieldMessage ?? err.message);
