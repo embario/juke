@@ -23,6 +23,10 @@ MODEL_VERSION = os.environ.get('RECOMMENDER_MODEL_VERSION', 'v1.0.0')
 VECTOR_DIM = int(os.environ.get('RECOMMENDER_VECTOR_DIM', '32'))
 DB_POOL_MIN = int(os.environ.get('RECOMMENDER_DB_POOL_MIN', '1'))
 DB_POOL_MAX = int(os.environ.get('RECOMMENDER_DB_POOL_MAX', '10'))
+# Server-side cap on any single engine query. Clients (e.g. radio) give up after a few seconds;
+# without this, an expensive multi-seed query keeps running on the shared database after they leave.
+# 0 disables the cap.
+DB_STATEMENT_TIMEOUT_MS = int(os.environ.get('RECOMMENDER_DB_STATEMENT_TIMEOUT_MS', '30000'))
 DEFAULT_LIMIT = int(os.environ.get('JUKE_RECOMMENDER_DEFAULT_LIMIT', '10'))
 MLCORE_API_VERSION = os.environ.get('MLCORE_API_VERSION', 'v1')
 TRAINING_VERSION_FALLBACK = os.environ.get('MLCORE_TRAINING_VERSION', 'unversioned')
@@ -52,10 +56,17 @@ def _database_conninfo() -> str:
     return f"dbname={name} user={user} password={password} host={host} port={port}"
 
 
+def _connection_kwargs() -> Dict[str, Any]:
+    if DB_STATEMENT_TIMEOUT_MS <= 0:
+        return {}
+    return {'options': f'-c statement_timeout={DB_STATEMENT_TIMEOUT_MS}'}
+
+
 DB_POOL = ConnectionPool(
     conninfo=_database_conninfo(),
     min_size=DB_POOL_MIN,
     max_size=DB_POOL_MAX,
+    kwargs=_connection_kwargs(),
     open=False,
 )
 
