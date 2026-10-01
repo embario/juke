@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from datetime import timedelta
 from typing import Dict, Iterable, List, Optional
 
 from django.db.models import Q
+from django.utils import timezone
 
-from radio.models import Exclusion, ListeningEvent, Station, TrackReaction
+from radio.models import QUEUED_EVENT, Exclusion, ListeningEvent, Station, TrackReaction
 
 RECENT_HISTORY_LIMIT = 50
 SESSION_GAP = timedelta(minutes=30)
@@ -81,30 +83,44 @@ def applicable_exclusions(user, station: Optional[Station]):
 
 @dataclass
 class ExclusionFilter:
-    track_ids: set = field(default_factory=set)
+    recent_ids: List[str] = field(default_factory=list)  # newest first
+    excluded_track_ids: List[str] = field(default_factory=list)
     artist_ids: set = field(default_factory=set)
     artist_names: set = field(default_factory=set)
+    # An artist exclusion we only know by id: tracks without artist ids (MLCore alias
+    # evidence) can't be checked against it, so they are dropped while it exists.
+    id_only_artists: bool = False
     phrases: List[str] = field(default_factory=list)
 
     @classmethod
     def build(cls, exclusions: Iterable[Exclusion], recent_ids: Iterable[str] = ()):
-        flt = cls(track_ids=set(recent_ids))
+        flt = cls(recent_ids=list(dict.fromkeys(recent_ids)))
         for exclusion in exclusions:
             value = (exclusion.value or '').strip()
             if not value:
                 continue
             if exclusion.kind == 'track':
-                flt.track_ids.add(value)
+                flt.excluded_track_ids.append(value)
             elif exclusion.kind == 'artist':
-                flt.artist_ids.add(value)
-                flt.artist_names.add(value.casefold())
-                if exclusion.label:
-                    flt.artist_names.add(exclusion.label.strip().casefold())
+                flt.artist_ids.add(value)  # Spotify ids are case-sensitive
+                label = (exclusion.label or '').strip().casefold()
+                if label:
+                    flt.artist_names.add(label)
+                else:
+                    flt.id_only_artists = True
             else:
                 # genre/text: best-effort phrase match against track metadata (Spotify no longer
                 # exposes reliable per-track genres to new apps).
                 flt.phrases.append(value.casefold())
         return flt
+
+    @cached_property
+    def track_ids(self) -> set:
+        return set(self.recent_ids) | set(self.excluded_track_ids)
+
+    def engine_exclusions(self, limit: int) -> List[str]:
+        """Ids for MLCore's exclude list: the most recent plays first, then explicit exclusions."""
+        return list(dict.fromkeys(self.recent_ids + self.excluded_track_ids))[:limit]
 
     def blocks_id(self, track_id: str) -> bool:
         return track_id in self.track_ids
@@ -112,10 +128,15 @@ class ExclusionFilter:
     def blocks_track(self, track: Dict) -> bool:
         if not track or self.blocks_id(track.get('spotifyId', '')):
             return True
-        if track.get('artistId') and track['artistId'] in self.artist_ids:
+        artist_ids = set(track.get('artistIds') or []) | ({track['artistId']} if track.get('artistId') else set())
+        if artist_ids & self.artist_ids:
             return True
-        artist_names = {name.strip().casefold() for name in (track.get('artist') or '').split(',') if name.strip()}
-        if artist_names & self.artist_names:
+        names = track.get('artistNames')
+        if names is None:
+            names = (track.get('artist') or '').split(', ')
+        if {name.strip().casefold() for name in names if name.strip()} & self.artist_names:
+            return True
+        if self.id_only_artists and not artist_ids:
             return True
         if self.phrases:
             haystack = ' '.join(str(track.get(key) or '') for key in ('title', 'artist', 'album')).casefold()
@@ -123,14 +144,35 @@ class ExclusionFilter:
         return False
 
 
-def current_session_events(user) -> List[ListeningEvent]:
-    """Events since the last ≥30 minute gap, oldest first."""
+def current_session_events(user, now=None) -> List[ListeningEvent]:
+    """Events since the last ≥30 minute gap, oldest first; [] once the session has gone quiet."""
+    now = now or timezone.now()
     session: List[ListeningEvent] = []
     previous = None
     for event in ListeningEvent.objects.filter(user=user).order_by('-created_at')[:2000]:
+        if previous is None and now - event.created_at >= SESSION_GAP:
+            return []
         if previous is not None and previous.created_at - event.created_at >= SESSION_GAP:
             break
         session.append(event)
         previous = event
     session.reverse()
     return session
+
+
+def session_song_ids(events: List[ListeningEvent]) -> List[str]:
+    """Distinct songs heard in a session, in order: a ``play``/``complete`` event, or a radio
+    ``queued`` event followed by any later client event for the same track."""
+    songs: Dict[str, None] = {}
+    pending_queued: Dict[str, None] = {}
+    for event in events:
+        track_id = event.spotify_track_id
+        if not track_id:
+            continue
+        if event.event == QUEUED_EVENT:
+            if track_id not in songs:
+                pending_queued.setdefault(track_id, None)
+            continue
+        if event.event in ('play', 'complete') or track_id in pending_queued:
+            songs.setdefault(track_id, None)
+    return list(songs)

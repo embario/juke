@@ -25,6 +25,11 @@ MAX_SEEDS = 25
 # ≈0.1–2 s, 7 seeds >60 s), so only the strongest few seeds go to MLCore, with a short timeout.
 MLCORE_SEED_LIMIT = int(getattr(settings, 'RADIO_MLCORE_SEED_LIMIT', 3))
 MLCORE_TIMEOUT_SECONDS = float(getattr(settings, 'RADIO_MLCORE_TIMEOUT_SECONDS', 6))
+# One overall budget for picking tracks (seed expansion, both MLCore rankers, hydration,
+# fallbacks). When it runs out we return what we have, using alias evidence for tracks
+# Spotify hasn't hydrated yet.
+NEXT_BUDGET_SECONDS = float(getattr(settings, 'RADIO_NEXT_BUDGET_SECONDS', 4))
+MIN_ENGINE_SECONDS = 0.3
 
 # Emoji feelings → search keywords. Free-text feelings are used as search terms directly.
 FEELING_KEYWORDS = {
@@ -135,13 +140,15 @@ def spotify_ids_for_canonical(canonical_ids: Sequence[str]) -> Dict[str, Dict]:
 
 
 def _evidence_track(spotify_id: str, evidence: Dict) -> Dict:
-    artists = evidence.get('artists') or []
+    artists = [artist for artist in evidence.get('artists') or [] if isinstance(artist, str) and artist]
     return {
         'spotifyId': spotify_id,
         'uri': evidence.get('uri') or f'spotify:track:{spotify_id}',
         'title': evidence.get('name') or '',
-        'artist': ', '.join(artist for artist in artists if isinstance(artist, str)),
+        'artist': ', '.join(artists),
         'artistId': '',
+        'artistIds': [],
+        'artistNames': artists,
         'album': '',
         'albumId': '',
         'artworkUrl': None,
@@ -163,13 +170,19 @@ def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence
 
     if not seed_ids:
         return []
+    timeout = MLCORE_TIMEOUT_SECONDS
+    left = spotify.remaining()
+    if left is not None:
+        if left < MIN_ENGINE_SECONDS:
+            return []
+        timeout = min(timeout, left)
     payload = {
         'seed_items': [_identity(track_id) for track_id in mlcore_seed_sample(seed_ids)],
         'exclude_items': [_identity(track_id) for track_id in list(exclude_ids)[:MAX_IDENTITY_ITEMS]],
         'limit': max(1, min(limit, MAX_IDENTITY_ITEMS)),
     }
     try:
-        response = client.fetch_identity_recommendations(ranker, payload, timeout=MLCORE_TIMEOUT_SECONDS)
+        response = client.fetch_identity_recommendations(ranker, payload, timeout=timeout)
     except Exception as exc:  # engine outages fall through to the next source
         logger.warning('MLCore %s ranker unavailable for radio: %s', ranker, exc)
         return []
@@ -194,8 +207,17 @@ class _Picker:
     def done(self) -> bool:
         return len(self.tracks) >= self.count
 
+    @staticmethod
+    def artist_key(track: Dict) -> str:
+        """One de-dup key per track: primary artist id, else primary artist name."""
+        ids = track.get('artistIds') or ([track['artistId']] if track.get('artistId') else [])
+        if ids:
+            return f'id:{ids[0]}'
+        names = track.get('artistNames') or [track.get('artist') or '']
+        return f'name:{(names[0] if names else "").strip().casefold()}'
+
     def _artists(self) -> set:
-        return {track.get('artistId') or track.get('artist') for track in self.tracks}
+        return {self.artist_key(track) for track in self.tracks}
 
     def offer(self, source: str, candidates: Iterable[Dict]) -> None:
         for track in candidates:
@@ -205,7 +227,7 @@ class _Picker:
             if not track_id or track_id in self.seen or self.ctx.flt.blocks_track(track):
                 continue
             self.seen.add(track_id)
-            if (track.get('artistId') or track.get('artist')) in self._artists():
+            if self.artist_key(track) in self._artists():
                 self.overflow.append((source, track))
                 continue
             self.tracks.append(track)
@@ -220,6 +242,7 @@ class _Picker:
         window = max(self.count * 3, 10)
         for start in range(0, len(ids), window):
             chunk = ids[start:start + window]
+            # Out of budget: get_tracks only serves the cache; the rest fall back to alias evidence.
             hydrated = spotify.get_tracks([track_id for track_id, _ in chunk])
             self.offer(source, [hydrated.get(track_id) or _evidence_track(track_id, evidence) for track_id, evidence in chunk])
             if self.done:
@@ -236,32 +259,37 @@ class _Picker:
 
 
 def next_tracks(user, station: Station, count: int = 3, recent_ids: Iterable[str] = ()) -> Recommendation:
+    with spotify.budget(NEXT_BUDGET_SECONDS):
+        return _next_tracks(user, station, count, recent_ids)
+
+
+def _next_tracks(user, station: Station, count: int, recent_ids: Iterable[str]) -> Recommendation:
     ctx = build_context(user, station, recent_ids)
     picker = _Picker(ctx, count)
-    exclude = list(ctx.flt.track_ids)
+    exclude = ctx.flt.engine_exclusions(MAX_IDENTITY_ITEMS)
     want = min(MAX_IDENTITY_ITEMS, count * 5 + 10)
 
     for ranker, source in (('cooccurrence', 'mlcore'), ('metadata', 'metadata')):
-        if picker.done:
+        if picker.done or spotify.out_of_time(MIN_ENGINE_SECONDS):
             break
         picker.offer_ids(source, mlcore_track_ids(ranker, ctx.seed_track_ids, exclude, want))
 
-    if not picker.done:
+    if not picker.done and not spotify.out_of_time():
         artist_ids = list(ctx.seed_artist_ids)
         seed_tracks = spotify.get_tracks(ctx.seed_track_ids[:10]) if ctx.seed_track_ids else {}
         artist_ids += [track['artistId'] for track in seed_tracks.values() if track.get('artistId')]
         for artist_id in list(dict.fromkeys(artist_ids))[:8]:
-            if picker.done:
+            if picker.done or spotify.out_of_time():
                 break
             picker.offer('artist', spotify.artist_top_tracks(artist_id))
 
     for keyword in ctx.keywords:
-        if picker.done:
+        if picker.done or spotify.out_of_time():
             break
         picker.offer('search', spotify.search_tracks(keyword))
 
     if not picker.done and ctx.seed_track_ids:
-        hydrated = spotify.get_tracks(ctx.seed_track_ids)
+        hydrated = spotify.get_tracks(ctx.seed_track_ids)  # cache-only once the budget is spent
         picker.offer('seed', [hydrated[track_id] for track_id in ctx.seed_track_ids if track_id in hydrated])
 
     return picker.finish()
@@ -269,6 +297,7 @@ def next_tracks(user, station: Station, count: int = 3, recent_ids: Iterable[str
 
 def crate_track_picks(user, seed_ids: Sequence[str], limit: int) -> List[Dict]:
     """MLCore co-occurrence picks for the crate, hydrated, without exclusions/recency rules."""
-    pairs = mlcore_track_ids('cooccurrence', list(seed_ids)[:MAX_SEEDS], [], limit)
+    with spotify.budget(NEXT_BUDGET_SECONDS):
+        pairs = mlcore_track_ids('cooccurrence', list(seed_ids)[:MAX_SEEDS], [], limit)
     hydrated = spotify.get_tracks([track_id for track_id, _ in pairs])
     return [hydrated.get(track_id) or _evidence_track(track_id, evidence) for track_id, evidence in pairs]

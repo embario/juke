@@ -6,8 +6,9 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from radio.models import Exclusion, ListeningEvent, Station, TrackReaction
+from radio.models import QUEUED_EVENT, Exclusion, ListeningEvent, Station, TrackReaction
 from radio.services import recommend, signals, spotify, suggestions
+from radio.services.spotify import get_client as real_get_client
 from tests.radio_support import FakeSpotify, canonical_with_alias, engine_response, sp_track
 
 ENGINE = 'recommender.services.client.fetch_identity_recommendations'
@@ -39,7 +40,8 @@ class SpotifyHydrationTests(RadioTestCase):
     def test_track_payload_matches_contract(self):
         self.fake.add(sp_track('t1', artist_id='ar1', artist_name='Ana'))
         track = spotify.get_tracks(['t1'])['t1']
-        self.assertEqual(set(track), {'spotifyId', 'uri', 'title', 'artist', 'artistId', 'album', 'albumId', 'artworkUrl',
+        self.assertEqual(set(track), {'spotifyId', 'uri', 'title', 'artist', 'artistId', 'artistIds', 'artistNames',
+                                      'album', 'albumId', 'artworkUrl',
                                       'durationMs'})
         self.assertEqual((track['artistId'], track['albumId'], track['artworkUrl']), ('ar1', 'album-1', 'https://img.test/album-1.jpg'))
 
@@ -288,3 +290,151 @@ class SessionTests(RadioTestCase):
         session = signals.current_session_events(self.user)
         self.assertEqual([event.spotify_track_id for event in session], ['a', 'b', 'c'])
         self.assertEqual(session[0].pk, first.pk)
+
+
+class SpotifyResilienceTests(RadioTestCase):
+    def test_timeout_does_not_fan_out_and_trips_breaker(self):
+        self.fake.fail_batch = TimeoutError('read timed out')
+        self.fake.add(*[sp_track(f't{idx}') for idx in range(20)])
+        self.assertEqual(spotify.get_tracks([f't{idx}' for idx in range(20)]), {})
+        self.assertEqual(self.fake.called('track'), [])
+        self.assertTrue(spotify.breaker_open())
+        # While the breaker is open nothing reaches Spotify at all.
+        self.assertEqual(spotify.search_tracks('late night'), [])
+        self.assertEqual(len(self.fake.calls), 1)
+
+    def test_server_errors_and_rate_limits_trip_breaker_but_client_errors_do_not(self):
+        from spotipy.exceptions import SpotifyException
+
+        for status, trips in ((500, True), (429, True), (400, False), (404, False)):
+            with self.subTest(status=status):
+                cache.clear()
+                self.fake.fail_batch = SpotifyException(status, -1, 'nope')
+                spotify.get_tracks(['x'])
+                self.assertEqual(spotify.breaker_open(), trips)
+
+    def test_refused_batch_falls_back_to_capped_single_lookups(self):
+        self.fake.fail_batch = True  # 403
+        self.fake.add(*[sp_track(f't{idx}') for idx in range(12)])
+        result = spotify.get_tracks([f't{idx}' for idx in range(12)])
+        self.assertEqual(len(self.fake.called('track')), spotify.SINGLE_LOOKUP_LIMIT)
+        self.assertEqual(len(result), spotify.SINGLE_LOOKUP_LIMIT)
+        self.assertFalse(spotify.breaker_open())
+
+    def test_budget_stops_network_calls_but_serves_cache(self):
+        self.fake.add(sp_track('cached'), sp_track('fresh'))
+        spotify.get_tracks(['cached'])
+        clock = [100.0]
+        with mock.patch('radio.services.spotify.time.monotonic', side_effect=lambda: clock[0]):
+            with spotify.budget(4):
+                clock[0] += 5
+                self.assertTrue(spotify.out_of_time())
+                self.assertEqual(set(spotify.get_tracks(['cached', 'fresh'])), {'cached'})
+        self.assertEqual(len(self.fake.called('tracks')), 1)
+        self.assertIsNone(spotify.remaining())
+
+    def test_nested_budget_never_extends_outer(self):
+        with spotify.budget(1):
+            with spotify.budget(60):
+                self.assertLessEqual(spotify.remaining(), 1)
+
+    @mock.patch('radio.services.spotify.settings')
+    def test_real_client_has_short_timeout_and_no_retries(self, fake_settings):
+        fake_settings.SPOTIFY_USE_STUB_DATA = False
+        with mock.patch('radio.services.spotify._client', None), mock.patch('spotipy.Spotify') as spotify_cls, \
+                mock.patch('spotipy.oauth2.SpotifyClientCredentials') as credentials:
+            real_get_client()
+        kwargs = spotify_cls.call_args.kwargs
+        self.assertEqual((kwargs['retries'], kwargs['status_retries'], kwargs['backoff_factor']), (0, 0, 0))
+        self.assertEqual(kwargs['requests_timeout'], spotify.REQUEST_TIMEOUT_SECONDS)
+        self.assertEqual(credentials.call_args.kwargs['requests_timeout'], spotify.REQUEST_TIMEOUT_SECONDS)
+
+
+class BudgetedPipelineTests(RadioTestCase):
+    def test_slow_engine_returns_evidence_tracks_within_budget(self):
+        clock = [0.0]
+        item = canonical_with_alias('slow-1')
+        self.fake.add(sp_track('slow-1'))
+
+        def slow_engine(ranker, payload, timeout=None):
+            self.assertLessEqual(timeout, recommend.NEXT_BUDGET_SECONDS)
+            clock[0] += recommend.NEXT_BUDGET_SECONDS  # the engine used the whole budget
+            return engine_response(item)
+
+        with mock.patch('radio.services.spotify.time.monotonic', side_effect=lambda: clock[0]), \
+                mock.patch(ENGINE, side_effect=slow_engine) as engine:
+            result = recommend.next_tracks(self.user, self.station(), count=2)
+        self.assertEqual(engine.call_count, 1)  # metadata ranker skipped: no budget left
+        self.assertEqual([track['spotifyId'] for track in result.tracks], ['slow-1'])
+        self.assertEqual(result.tracks[0]['title'], 'Evidence slow-1')  # not hydrated
+        self.assertEqual(self.fake.called('tracks'), [])
+        self.assertEqual(self.fake.called('search'), [])
+
+    def test_engine_timeout_is_capped_by_remaining_budget(self):
+        clock = [0.0]
+        with mock.patch('radio.services.spotify.time.monotonic', side_effect=lambda: clock[0]), \
+                mock.patch(ENGINE, return_value={'items': []}) as engine:
+            with spotify.budget(2.5):
+                recommend.mlcore_track_ids('cooccurrence', ['seed'], [], 5)
+                clock[0] += 2.4
+                recommend.mlcore_track_ids('cooccurrence', ['seed'], [], 5)
+        self.assertEqual(engine.call_args_list[0].kwargs['timeout'], 2.5)
+        self.assertEqual(engine.call_count, 1)  # <0.3 s left: engine not called
+
+    def test_engine_exclusions_keep_most_recent(self):
+        for idx in range(120):
+            self.event(f'h{idx}', minutes_ago=200 - idx)
+        flt = signals.ExclusionFilter.build([], ['client-latest'] + signals.recent_track_ids(self.user))
+        exclude = flt.engine_exclusions(10)
+        self.assertEqual(exclude[:3], ['client-latest', 'h119', 'h118'])
+        self.assertEqual(len(exclude), 10)
+
+
+class ArtistExclusionTests(RadioTestCase):
+    def build(self, *rules):
+        return signals.ExclusionFilter.build([Exclusion(user=self.user, scope='everywhere', kind='artist', value=value, label=label)
+                                              for value, label in rules])
+
+    def test_featured_artist_is_excluded(self):
+        self.fake.add(sp_track('feat', artist_id='main', artist_name='Main', featuring=[('guest', 'Guest Star')]))
+        track = spotify.get_tracks(['feat'])['feat']
+        self.assertEqual(track['artistIds'], ['main', 'guest'])
+        self.assertTrue(self.build(('guest', '')).blocks_track(track))
+        self.assertTrue(self.build(('other-id', 'guest star')).blocks_track(track))
+        self.assertFalse(self.build(('other-id', 'Someone')).blocks_track(track))
+
+    def test_evidence_only_tracks(self):
+        evidence = recommend._evidence_track('ev', {'name': 'x', 'artists': ['Main', 'Guest Star']})
+        self.assertTrue(self.build(('guest-id', 'Guest Star')).blocks_track(evidence))
+        self.assertFalse(self.build(('guest-id', 'Nobody')).blocks_track(evidence))
+        # An id-only rule can't be checked against evidence, so evidence-only tracks are dropped.
+        self.assertTrue(self.build(('guest-id', '')).blocks_track(evidence))
+
+    def test_artist_ids_are_case_sensitive(self):
+        track = recommend._evidence_track('t', {'name': 'x', 'artists': ['A']})
+        track.update({'artistId': 'AbC', 'artistIds': ['AbC']})
+        self.assertFalse(self.build(('abc', 'zzz')).blocks_track(track))
+        self.assertTrue(self.build(('AbC', 'zzz')).blocks_track(track))
+
+    def test_pipeline_skips_featured_artist(self):
+        items = [canonical_with_alias(name) for name in ('with-guest', 'clean')]
+        self.fake.add(sp_track('with-guest', artist_id='m1', featuring=[('guest', 'Guest')]), sp_track('clean', artist_id='m2'))
+        Exclusion.objects.create(user=self.user, scope='everywhere', kind='artist', value='guest', label='Guest')
+        with mock.patch(ENGINE, return_value=engine_response(*items)):
+            result = recommend.next_tracks(self.user, self.station(), count=2)
+        self.assertEqual([track['spotifyId'] for track in result.tracks], ['clean'])
+
+
+class SessionSongTests(RadioTestCase):
+    def test_queued_tracks_count_once_followed_by_a_client_event(self):
+        self.event('q1', QUEUED_EVENT, minutes_ago=10)
+        self.event('q1', 'skip', minutes_ago=9)
+        self.event('q2', QUEUED_EVENT, minutes_ago=5)
+        self.event('p1', 'play', minutes_ago=4)
+        self.event('s1', 'skip', minutes_ago=3)  # skip without play/queue: not counted
+        events = signals.current_session_events(self.user)
+        self.assertEqual(signals.session_song_ids(events), ['q1', 'p1'])
+
+    def test_stale_session_is_empty(self):
+        self.event('old', 'complete', minutes_ago=31)
+        self.assertEqual(signals.current_session_events(self.user), [])

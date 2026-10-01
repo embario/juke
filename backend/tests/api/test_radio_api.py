@@ -218,7 +218,8 @@ class NextTests(RadioAPITestCase):
         self.assertEqual(response.data['source'], 'mlcore')
         self.assertEqual([t['spotifyId'] for t in response.data['tracks']], ['ml-2', 'ml-3'])
         track = response.data['tracks'][0]
-        self.assertEqual(set(track), {'spotifyId', 'uri', 'title', 'artist', 'artistId', 'album', 'albumId', 'artworkUrl',
+        self.assertEqual(set(track), {'spotifyId', 'uri', 'title', 'artist', 'artistId', 'artistIds', 'artistNames',
+                                      'album', 'albumId', 'artworkUrl',
                                       'durationMs'})
         self.assertEqual(self.client.post(f"{BASE}stations/{station['id']}/next/", {}, format='json').status_code, 200)
 
@@ -399,3 +400,102 @@ class SessionSummaryTests(RadioAPITestCase):
         self.assertEqual([track['spotifyId'] for track in data['tracks']], ['a', 'b'])
         self.assertEqual(data['reactions'], ['🔥', '🌙'])
         self.assertIsNotNone(data['startedAt'])
+
+
+class ReviewFollowUpTests(RadioAPITestCase):
+    def test_patch_accepts_raw_doubles_and_snaps(self):
+        station = self.create_station()
+        url = f"{BASE}stations/{station['id']}/"
+        for raw, expected in ((95.27384, 95.3), (95.29999999999999, 95.3), (100.0000001, 100.1), ('99.4', 99.5)):
+            with self.subTest(raw=raw):
+                response = self.client.patch(url, {'frequency': raw}, format='json')
+                self.assertEqual((response.status_code, response.data['frequency']), (200, expected))
+        for bad in ('NaN', 'Infinity', -5, 5000):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.client.patch(url, {'frequency': bad}, format='json').status_code, 400)
+
+    def test_station_writes_take_the_dial_lock(self):
+        from radio import views
+
+        with mock.patch.object(views, 'lock_dial', wraps=views.lock_dial) as lock:
+            station = self.create_station()
+            self.client.patch(f"{BASE}stations/{station['id']}/", {'frequency': 99.1}, format='json')
+        self.assertEqual(lock.call_count, 2)
+
+    def test_duplicate_exclusions_collapse_to_one_row(self):
+        from django.db import IntegrityError, transaction
+
+        station = self.create_station()
+        Exclusion.objects.create(user=self.user, scope='everywhere', kind='artist', value='ar', label='Ar')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Exclusion.objects.create(user=self.user, scope='everywhere', kind='artist', value='ar')
+        scoped = Station.objects.get(id=station['id'])
+        Exclusion.objects.create(user=self.user, station=scoped, scope='station', kind='track', value='t')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Exclusion.objects.create(user=self.user, station=scoped, scope='station', kind='track', value='t')
+        # Another user / another station may hold the same rule.
+        Exclusion.objects.create(user=self.other, scope='everywhere', kind='artist', value='ar')
+
+    def test_exclusion_race_returns_existing_row(self):
+        from radio import views
+
+        station = Station.objects.get(id=self.create_station()['id'])
+        existing = Exclusion.objects.create(user=self.user, scope='everywhere', kind='track', value='t9')
+        real_filter = Exclusion.objects.filter
+        with mock.patch.object(Exclusion.objects, 'filter',
+                               side_effect=lambda **kw: real_filter(pk=None) if 'value' in kw else real_filter(**kw)):
+            exclusion, created = views.add_exclusion(self.user, station, 'everywhere', 'track', 't9')
+        self.assertEqual((exclusion.pk, created), (existing.pk, False))
+        response = self.client.post(f"{BASE}stations/{station.id}/exclusions/",
+                                    {'scope': 'everywhere', 'kind': 'track', 'value': 't9'}, format='json')
+        self.assertEqual((response.status_code, response.data['id']), (200, str(existing.pk)))
+
+    def test_artist_exclusion_labels_are_resolved(self):
+        station = self.create_station()
+        self.fake.artists['ar-x'] = 'Resolved Name'
+        response = self.client.post(f"{BASE}stations/{station['id']}/exclusions/",
+                                    {'scope': 'everywhere', 'kind': 'artist', 'value': 'ar-x'}, format='json')
+        self.assertEqual(response.data['label'], 'Resolved Name')
+        self.fake.add(sp_track('duet', artist_id='lead', artist_name='Lead', featuring=[('feat', 'Feature')]))
+        self.client.post(f'{BASE}events/', {'spotifyTrackId': 'duet', 'event': 'never_artist', 'artistId': 'feat'}, format='json')
+        self.assertEqual(Exclusion.objects.get(value='feat').label, 'Feature')
+
+    def test_featured_artist_and_evidence_tracks_respect_exclusions(self):
+        station = self.create_station()
+        items = [canonical_with_alias('duet'), canonical_with_alias('ev-only', evidence={'name': 'E', 'artists': ['Feature']}),
+                 canonical_with_alias('fine')]
+        self.fake.add(sp_track('duet', artist_id='lead', featuring=[('feat', 'Feature')]), sp_track('fine', artist_id='ok'))
+        self.fake.artists['feat'] = 'Feature'
+        self.engine.return_value = engine_response(*items)
+        self.client.post(f"{BASE}stations/{station['id']}/exclusions/",
+                         {'scope': 'everywhere', 'kind': 'artist', 'value': 'feat'}, format='json')
+        response = self.client.post(f"{BASE}stations/{station['id']}/next", {'count': 3}, format='json')
+        self.assertEqual([t['spotifyId'] for t in response.data['tracks']], ['fine'])
+
+    def test_session_summary_counts_queued_tracks_the_client_reported(self):
+        self.fake.add(sp_track('q1'), sp_track('q2'))
+        for track_id, event, minutes in (('q1', 'queued', 12), ('q1', 'complete', 8), ('q2', 'queued', 4)):
+            row = ListeningEvent.objects.create(user=self.user, spotify_track_id=track_id, event=event)
+            ListeningEvent.objects.filter(pk=row.pk).update(created_at=timezone.now() - timedelta(minutes=minutes))
+        data = self.client.get(f'{BASE}session/summary').data
+        self.assertEqual((data['songCount'], [t['spotifyId'] for t in data['tracks']]), (1, ['q1']))
+
+    def test_session_summary_queued_only_is_empty(self):
+        ListeningEvent.objects.create(user=self.user, spotify_track_id='q1', event='queued')
+        self.assertEqual(self.client.get(f'{BASE}session/summary').data['songCount'], 0)
+
+    def test_session_summary_after_gap_is_empty(self):
+        row = ListeningEvent.objects.create(user=self.user, spotify_track_id='a', event='complete')
+        ListeningEvent.objects.filter(pk=row.pk).update(created_at=timezone.now() - timedelta(minutes=45))
+        self.assertIsNone(self.client.get(f'{BASE}session/summary').data['startedAt'])
+
+    def test_session_summary_survives_spotify_outage(self):
+        ListeningEvent.objects.create(user=self.user, spotify_track_id='down-1', event='play')
+        self.fake.fail_batch = TimeoutError('timed out')
+        data = self.client.get(f'{BASE}session/summary').data
+        self.assertEqual((data['songCount'], data['tracks'][0]['spotifyId'], data['tracks'][0]['title']), (1, 'down-1', ''))
+
+    def test_radio_uses_its_own_throttle_scope(self):
+        from radio.views import RadioAPIView
+
+        self.assertEqual([throttle.scope for throttle in RadioAPIView.throttle_classes], ['radio_user'])

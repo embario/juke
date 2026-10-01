@@ -1,12 +1,23 @@
 """Client-credentials Spotify access for radio: hydration, top tracks, album tracks, search.
 
 Every call degrades to an empty result on failure so the radio never 500s because Spotify
-hiccuped. ``SPOTIFY_USE_STUB_DATA`` swaps in deterministic stub data (tests/dev).
+hiccuped, and never waits long:
+
+- short request timeouts and no retries (so spotipy never sleeps on a 429 ``Retry-After``);
+- a circuit breaker that skips Spotify for ``BREAKER_SECONDS`` after a transport failure,
+  timeout, 5xx or 429;
+- an optional per-request time budget (``budget()``) shared by every Spotify and MLCore call
+  made while picking tracks.
+
+``SPOTIFY_USE_STUB_DATA`` swaps in deterministic stub data (tests/dev).
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import hashlib
 import logging
+import time
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.conf import settings
@@ -19,9 +30,42 @@ logger = logging.getLogger(__name__)
 TRACK_CACHE_TTL = 7 * 24 * 3600
 LIST_CACHE_TTL = 24 * 3600
 TRACK_BATCH = 50
+SINGLE_LOOKUP_LIMIT = 5
 SEARCH_LIMIT = 10
 MARKET = 'US'
-_CACHE_PREFIX = 'radio:spotify:v1'
+REQUEST_TIMEOUT_SECONDS = float(getattr(settings, 'RADIO_SPOTIFY_TIMEOUT_SECONDS', 2))
+BREAKER_SECONDS = int(getattr(settings, 'RADIO_SPOTIFY_BREAKER_SECONDS', 60))
+_CACHE_PREFIX = 'radio:spotify:v2'
+_BREAKER_KEY = f'{_CACHE_PREFIX}:breaker'
+
+_deadline: contextvars.ContextVar[Optional[float]] = contextvars.ContextVar('radio_deadline', default=None)
+
+
+@contextlib.contextmanager
+def budget(seconds: float):
+    """Bound every Spotify/MLCore call made inside the block by one overall time budget.
+
+    A nested budget never extends an outer one. Calls already in flight finish within their
+    own request timeout, so the worst case is the budget plus one request timeout.
+    """
+    outer = _deadline.get()
+    deadline = time.monotonic() + seconds
+    token = _deadline.set(min(deadline, outer) if outer is not None else deadline)
+    try:
+        yield
+    finally:
+        _deadline.reset(token)
+
+
+def remaining() -> Optional[float]:
+    """Seconds left in the current budget (None when unbounded)."""
+    deadline = _deadline.get()
+    return None if deadline is None else max(0.0, deadline - time.monotonic())
+
+
+def out_of_time(minimum: float = 0.05) -> bool:
+    left = remaining()
+    return left is not None and left < minimum
 
 
 class StubSpotify:
@@ -32,6 +76,9 @@ class StubSpotify:
 
     def tracks(self, tracks, market=None):
         return {'tracks': [self.track(track_id) for track_id in tracks]}
+
+    def artist(self, artist_id):
+        return spotify_stub.artist_detail(f'spotify:artist:{artist_id}')
 
     def artist_top_tracks(self, artist_id, country=MARKET):
         album = spotify_stub.album_detail('spotify:album:stub-album-0')
@@ -67,9 +114,12 @@ def get_client():
             import spotipy
             from spotipy.oauth2 import SpotifyClientCredentials
             _client = spotipy.Spotify(
-                client_credentials_manager=SpotifyClientCredentials(),
-                requests_timeout=8,
-                retries=1,
+                client_credentials_manager=SpotifyClientCredentials(requests_timeout=REQUEST_TIMEOUT_SECONDS),
+                requests_timeout=REQUEST_TIMEOUT_SECONDS,
+                retries=0,
+                status_retries=0,
+                status_forcelist=(),
+                backoff_factor=0,
             )
         except Exception as exc:  # misconfigured credentials must not break radio
             logger.warning('Spotify client unavailable for radio: %s', exc)
@@ -77,7 +127,26 @@ def get_client():
     return _client
 
 
-def _call(description: str, operation):
+def http_status(exc: Exception) -> Optional[int]:
+    return getattr(exc, 'http_status', None)
+
+
+def breaker_open() -> bool:
+    return bool(cache.get(_BREAKER_KEY))
+
+
+def _trip_breaker(exc: Exception) -> None:
+    status = http_status(exc)
+    # A 4xx other than 429 means "this request is wrong", not "Spotify is unhealthy".
+    if status is not None and 400 <= status < 500 and status != 429:
+        return
+    cache.set(_BREAKER_KEY, True, BREAKER_SECONDS)
+    logger.warning('Spotify unavailable for radio (%s); skipping Spotify for %ss', exc, BREAKER_SECONDS)
+
+
+def _call(description: str, operation, *, failures: Optional[list] = None):
+    if out_of_time() or breaker_open():
+        return None
     client = get_client()
     if client is None:
         return None
@@ -85,6 +154,9 @@ def _call(description: str, operation):
         return operation(client)
     except Exception as exc:  # spotipy/requests raise a variety of errors
         logger.warning('Spotify %s failed: %s', description, exc)
+        _trip_breaker(exc)
+        if failures is not None:
+            failures.append(exc)
         return None
 
 
@@ -97,7 +169,11 @@ def _artwork(images) -> Optional[str]:
 
 
 def track_payload(item: Dict[str, Any], *, album: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-    """Normalize a Spotify track object into the radio ``Track`` contract shape."""
+    """Normalize a Spotify track object into the radio ``Track`` contract shape.
+
+    ``artistIds``/``artistNames`` are additive: every credited artist, so exclusions can
+    match featured (non-first) artists.
+    """
     if not isinstance(item, dict) or not item.get('id'):
         return None
     album = album or item.get('album') or {}
@@ -108,6 +184,8 @@ def track_payload(item: Dict[str, Any], *, album: Optional[Dict[str, Any]] = Non
         'title': item.get('name') or '',
         'artist': ', '.join(artist.get('name') or '' for artist in artists if artist.get('name')),
         'artistId': (artists[0].get('id') or '') if artists else '',
+        'artistIds': [artist['id'] for artist in artists if artist.get('id')],
+        'artistNames': [artist['name'] for artist in artists if artist.get('name')],
         'album': album.get('name') or '',
         'albumId': album.get('id') or '',
         'artworkUrl': _artwork(album.get('images')),
@@ -132,17 +210,25 @@ def remember_tracks(tracks: Iterable[Dict[str, Any]]) -> None:
 
 
 def get_tracks(track_ids: Iterable[str]) -> Dict[str, Dict[str, Any]]:
-    """Hydrate track ids into ``Track`` payloads via ``GET /v1/tracks?ids=`` batches (cached)."""
+    """Hydrate track ids into ``Track`` payloads via ``GET /v1/tracks?ids=`` batches (cached).
+
+    Single-track lookups are a fallback only when Spotify *refuses* the batch endpoint
+    (403/404, e.g. restricted app tiers), capped at ``SINGLE_LOOKUP_LIMIT`` per call.
+    Timeouts, 5xx and 429 trip the circuit breaker instead.
+    """
     ids = [track_id for track_id in dict.fromkeys(track_ids) if track_id]
     result = cached_tracks(ids)
     missing = [track_id for track_id in ids if track_id not in result]
     fetched = []
+    singles_left = SINGLE_LOOKUP_LIMIT
     for start in range(0, len(missing), TRACK_BATCH):
         batch = missing[start:start + TRACK_BATCH]
-        payload = _call('tracks batch', lambda client, batch=batch: client.tracks(batch, market=MARKET))
-        if payload is None and len(batch) > 1:
-            # Some app tiers reject the batch endpoint; fall back to single lookups.
-            items = [_call('track', lambda client, track_id=track_id: client.track(track_id, market=MARKET)) for track_id in batch]
+        failures: list = []
+        payload = _call('tracks batch', lambda client, batch=batch: client.tracks(batch, market=MARKET), failures=failures)
+        if payload is None and failures and http_status(failures[0]) in (403, 404):
+            singles = batch[:singles_left]
+            singles_left -= len(singles)
+            items = [_call('track', lambda client, track_id=track_id: client.track(track_id, market=MARKET)) for track_id in singles]
         else:
             items = (payload or {}).get('tracks') or []
         for item in items:
@@ -154,6 +240,21 @@ def get_tracks(track_ids: Iterable[str]) -> Dict[str, Dict[str, Any]]:
         result[track['spotifyId']] = track
     # Spotify may relink ids; keep only what was asked for, in request order.
     return {track_id: result[track_id] for track_id in ids if track_id in result}
+
+
+def artist_name(artist_id: str) -> str:
+    """Display name for an artist id ('' when Spotify can't tell us right now)."""
+    if not artist_id:
+        return ''
+    key = f'{_CACHE_PREFIX}:artist-name:{artist_id}'
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    payload = _call('artist', lambda client: client.artist(artist_id))
+    name = (payload or {}).get('name') or ''
+    if name:
+        cache.set(key, name, TRACK_CACHE_TTL)
+    return name
 
 
 def artist_top_tracks(artist_id: str) -> List[Dict[str, Any]]:

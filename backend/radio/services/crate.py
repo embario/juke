@@ -60,7 +60,7 @@ def personal_crate(user, kind: str) -> List[Dict]:
         if kind == 'tracks':
             items.setdefault(track['spotifyId'], _track_item(track))
         elif kind == 'artists' and track.get('artistId'):
-            primary = (track.get('artist') or '').split(', ')[0]
+            primary = (track.get('artistNames') or [(track.get('artist') or '').split(', ')[0]])[0]
             items.setdefault(track['artistId'], crate_item('artist', track['artistId'], primary, '', track.get('artworkUrl')))
         elif kind == 'albums' and track.get('albumId'):
             items.setdefault(track['albumId'], crate_item('album', track['albumId'], track.get('album'), track.get('artist'),

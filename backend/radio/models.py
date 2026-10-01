@@ -76,6 +76,18 @@ class Exclusion(models.Model):
     class Meta:
         ordering = ['created_at']
         indexes = [models.Index(fields=['user', 'station'], name='radio_exclusion_user_stn_idx')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'scope', 'kind', 'value'],
+                condition=models.Q(station__isnull=True),
+                name='radio_exclusion_everywhere_uniq',
+            ),
+            models.UniqueConstraint(
+                fields=['user', 'station', 'kind', 'value'],
+                condition=models.Q(station__isnull=False),
+                name='radio_exclusion_station_uniq',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.scope}:{self.kind}:{self.value}'

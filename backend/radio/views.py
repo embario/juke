@@ -18,18 +18,24 @@ from radio.serializers import (CrateQuerySerializer, EventSerializer, ExclusionC
 from radio.services import crate, signals, spotify, suggestions
 from radio.services.recommend import next_tracks
 from vibe.authentication import VIBE_AUTHENTICATION_CLASSES
-from vibe.views import VibeUserThrottle
+from rest_framework.throttling import UserRateThrottle
 
 logger = logging.getLogger(__name__)
 
 PERSONAL_STATION_NAME = 'My Station'
+SPOTIFY_BUDGET_SECONDS = 4
 MAX_NAME_LENGTH = 120
+
+
+class RadioUserThrottle(UserRateThrottle):
+    # Radio clients post chatty listening events; keep them off the stricter Vibe budget.
+    scope = 'radio_user'
 
 
 class RadioAPIView(APIView):
     authentication_classes = VIBE_AUTHENTICATION_CLASSES
     permission_classes = [IsAuthenticated]
-    throttle_classes = [VibeUserThrottle]
+    throttle_classes = [RadioUserThrottle]
 
     def validated(self, serializer_cls, data):
         serializer = serializer_cls(data=data)
@@ -56,6 +62,17 @@ def ensure_personal_station(user):
         return Station.objects.get(user=user, kind=STATION_KIND_PERSONAL)
 
 
+def lock_dial(user):
+    """Per-user mutex for frequency placement: lock the personal station row (created first).
+
+    ``select_for_update`` on the user's stations alone can't stop two concurrent requests from
+    both choosing the same free slot, because a new station's row doesn't exist yet. Must be
+    called inside a transaction.
+    """
+    ensure_personal_station(user)
+    return Station.objects.select_for_update().get(user=user, kind=STATION_KIND_PERSONAL)
+
+
 def default_name(seeds, feelings):
     if seeds:
         base = seeds[0]['title']
@@ -80,7 +97,8 @@ class StationCollectionView(RadioAPIView):
         data = self.validated(StationCreateSerializer, request.data)
         ensure_personal_station(request.user)
         with transaction.atomic():
-            others = list(Station.objects.select_for_update().filter(user=request.user).values_list('frequency', flat=True))
+            lock_dial(request.user)
+            others = list(Station.objects.filter(user=request.user).values_list('frequency', flat=True))
             station = Station.objects.create(
                 user=request.user,
                 kind=STATION_KIND_CUSTOM,
@@ -98,7 +116,9 @@ class StationDetailView(RadioAPIView):
 
     def patch(self, request, station_id):
         data = self.validated(StationUpdateSerializer, request.data)
+        ensure_personal_station(request.user)
         with transaction.atomic():
+            lock_dial(request.user)
             station = get_object_or_404(Station.objects.select_for_update(), id=station_id, user=request.user)
             for field in ('name', 'seeds', 'feelings', 'learning'):
                 if field in data:
@@ -118,14 +138,41 @@ class StationDetailView(RadioAPIView):
 
 
 def add_exclusion(user, station, scope, kind, value, label=''):
-    """Idempotent: re-adding the same rule returns the existing exclusion."""
+    """Idempotent: re-adding the same rule returns the existing exclusion.
+
+    Partial unique constraints back this up, so concurrent duplicates resolve to one row.
+    Artist exclusions get the artist's name as label when the caller didn't send one, so
+    tracks known only by artist name (MLCore evidence) are filtered too.
+    """
     target = None if scope == EXCLUSION_SCOPE_EVERYWHERE else station
-    exclusion, created = Exclusion.objects.get_or_create(
-        user=user, station=target, scope=scope, kind=kind, value=value, defaults={'label': label})
+    lookup = {'user': user, 'station': target, 'scope': scope, 'kind': kind, 'value': value}
+    if kind == 'artist' and not label:
+        with spotify.budget(SPOTIFY_BUDGET_SECONDS):
+            label = spotify.artist_name(value)
+    exclusion = Exclusion.objects.filter(**lookup).first()
+    created = False
+    if exclusion is None:
+        try:
+            with transaction.atomic():
+                exclusion = Exclusion.objects.create(**lookup, label=label)
+                created = True
+        except IntegrityError:  # a concurrent request created it first
+            exclusion = Exclusion.objects.get(**lookup)
     if not created and label and not exclusion.label:
         exclusion.label = label
         exclusion.save(update_fields=['label'])
     return exclusion, created
+
+
+def _artist_from_track(track, artist_id=''):
+    """(artist id, name) for ``artist_id`` on ``track``, or its primary artist."""
+    ids, names = track.get('artistIds') or [], track.get('artistNames') or []
+    if artist_id and artist_id in ids:
+        index = ids.index(artist_id)
+        return artist_id, names[index] if index < len(names) else ''
+    if artist_id:
+        return artist_id, ''
+    return (ids[0] if ids else track.get('artistId') or ''), (names[0] if names else '')
 
 
 class StationExclusionsView(RadioAPIView):
@@ -209,10 +256,10 @@ class EventsView(RadioAPIView):
         artist_id = (data.get('artistId') or '').strip()
         event = data['event']
         label = ''
-        if event == 'never_artist' and not artist_id:
-            track = spotify.get_tracks([track_id]).get(track_id) or {}
-            artist_id = track.get('artistId') or ''
-            label = (track.get('artist') or '').split(', ')[0]
+        if event == 'never_artist':
+            with spotify.budget(SPOTIFY_BUDGET_SECONDS):
+                track = spotify.get_tracks([track_id]).get(track_id) or {}
+            artist_id, label = _artist_from_track(track, artist_id)
         ListeningEvent.objects.create(user=request.user, station=station, spotify_track_id=track_id, spotify_artist_id=artist_id,
                                       event=event, position_ms=data.get('positionMs'), source=data.get('source') or '')
         # Explicit "keep out" gestures become exclusions so every later pick honours them.
@@ -231,24 +278,31 @@ class CrateView(RadioAPIView):
     def get(self, request):
         data = self.validated(CrateQuerySerializer, request.query_params)
         query = data['q'].strip()
-        items = crate.search_crate(data['kind'], query) if query else crate.personal_crate(request.user, data['kind'])
+        with spotify.budget(SPOTIFY_BUDGET_SECONDS):
+            items = crate.search_crate(data['kind'], query) if query else crate.personal_crate(request.user, data['kind'])
         return Response({'items': items})
 
 
 class SessionSummaryView(RadioAPIView):
     def get(self, request):
-        events = [event for event in signals.current_session_events(request.user) if event.event != QUEUED_EVENT]
-        if not events:
+        events = signals.current_session_events(request.user)
+        track_ids = signals.session_song_ids(events)
+        if not events or not track_ids:
             return Response({'startedAt': None, 'songCount': 0, 'reactions': [], 'tracks': []})
-        track_ids = list(dict.fromkeys(event.spotify_track_id for event in events if event.event in ('play', 'complete')))
         reaction_rows = TrackReaction.objects.filter(user=request.user, spotify_track_id__in=track_ids,
                                                      updated_at__gte=events[0].created_at)
         reactions = list(dict.fromkeys(reaction for row in reaction_rows.order_by('updated_at') for reaction in row.reactions))
-        hydrated = spotify.get_tracks(track_ids[:50])
+        with spotify.budget(SPOTIFY_BUDGET_SECONDS):
+            hydrated = spotify.get_tracks(track_ids[:50])
         return Response({
             'startedAt': events[0].created_at.isoformat(),
             'songCount': len(track_ids),
             'reactions': reactions,
-            'tracks': [hydrated[track_id] for track_id in track_ids if track_id in hydrated],
+            'tracks': [hydrated.get(track_id) or minimal_track(track_id) for track_id in track_ids[:50]],
         })
 
+
+def minimal_track(track_id):
+    """Placeholder when Spotify can't hydrate a track right now."""
+    return {'spotifyId': track_id, 'uri': f'spotify:track:{track_id}', 'title': '', 'artist': '', 'artistId': '',
+            'artistIds': [], 'artistNames': [], 'album': '', 'albumId': '', 'artworkUrl': None, 'durationMs': 0}

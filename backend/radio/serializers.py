@@ -1,4 +1,6 @@
 """Request validation for the radio API (camelCase in, camelCase out)."""
+import math
+
 from rest_framework import serializers
 
 from radio.models import EXCLUSION_KIND_CHOICES, EXCLUSION_SCOPE_CHOICES, LISTENING_EVENTS
@@ -75,7 +77,8 @@ class StationCreateSerializer(serializers.Serializer):
 
 class StationUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=120, required=False)
-    frequency = serializers.DecimalField(max_digits=6, decimal_places=3, required=False, coerce_to_string=False)
+    # Raw doubles from a dial drag (e.g. 95.29999999999999) are accepted and snapped by frequencies.place.
+    frequency = serializers.FloatField(required=False, min_value=0, max_value=1000)
     seeds = SeedSerializer(many=True, required=False)
     feelings = FeelingsField(required=False)
     learning = serializers.BooleanField(required=False)
@@ -91,6 +94,11 @@ class StationUpdateSerializer(serializers.Serializer):
         if len(seeds) > MAX_SEEDS:
             raise serializers.ValidationError(f'At most {MAX_SEEDS} seeds.')
         return seeds
+
+    def validate_frequency(self, value):
+        if not math.isfinite(value):
+            raise serializers.ValidationError('Frequency must be a finite number.')
+        return value
 
 
 class ExclusionCreateSerializer(serializers.Serializer):
