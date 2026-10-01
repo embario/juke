@@ -27,4 +27,5 @@ urlpatterns = [
     path('api/v1/', include('powerhour.urls')),
     path('api/v1/tunetrivia/', include('tunetrivia.urls')),
     path('api/v1/vibe/', include('vibe.urls')),
+    path('api/v1/radio/', include('radio.urls')),
 ]
