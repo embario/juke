@@ -43,6 +43,8 @@ final class AppModel {
     let settings: JukeSettings
     /// Album-art colour feeding `JukeTheme`.
     let artwork = ArtworkPalette()
+    /// Cross-section requests (New Station route, Library focus, station starts).
+    let coordinator = JukeCoordinator()
     /// Typed client for the Juke REST API, authenticated as the signed-in user.
     /// Radio endpoints are in `JukeAPI+Radio.swift`.
     let api: JukeAPI

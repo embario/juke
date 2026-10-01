@@ -47,6 +47,7 @@
 		7417A2100C92E758F2FA6F6C /* MemoryClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1AE984ADE0F99CA87BD3E1 /* MemoryClient.swift */; };
 		80B05F2C749286111165B866 /* SectionStage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E2BF23683BD4B133A06EA3E /* SectionStage.swift */; };
 		81F70F503C1003890A6BEE16 /* stations.json in Resources */ = {isa = PBXBuildFile; fileRef = 12F7BA783F2A9C8A8FF0708C /* stations.json */; };
+		86C6B7E0AC87C7FBA88F646F /* NewStationScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CCC8B5714C63463401E96D /* NewStationScreen.swift */; };
 		8B866413DEB4C665316507A5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9362A6B3B5353DD4D0A760C1 /* Assets.xcassets */; };
 		91FFA7DFACA1D64B54EE8574 /* MusicDetectionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAFCFDE0F3DB1934E6D3ECB1 /* MusicDetectionController.swift */; };
 		9250F5A992C37AEF428C5E75 /* JukeColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 886AEA3F54EF0EB3A8531890 /* JukeColor.swift */; };
@@ -59,6 +60,7 @@
 		A5109EF468FFAFE0F0291DC4 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61EB7FC9B5F97310189A1F59 /* SystemAudioCapture.swift */; };
 		A75BF998D620A44588F1201B /* ChatScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D68A1ACFB1780C5B871B81 /* ChatScreen.swift */; };
 		AADBF68B2914041043A16D2D /* MemoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3FE04E17DA41AEA2D286703 /* MemoriesView.swift */; };
+		ADF9AA08788C2F06E108ED6B /* JukeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAFEF2D0AB396B4CC78C311E /* JukeCoordinator.swift */; };
 		B8E10099E4845D1F6474F776 /* JukeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D933934488CB278693589BC2 /* JukeRootView.swift */; };
 		BAD995D4F45453D21570420C /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D30C2ACC81E97496850E7C /* DiscoverView.swift */; };
 		C1B9C5B94A10BB206C915356 /* JukeAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87FD0686640271360D08EB4A /* JukeAccount.swift */; };
@@ -141,6 +143,7 @@
 		8A308AA24CEF86992E090F87 /* ShazamRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamRecognizer.swift; sourceTree = "<group>"; };
 		8A98A53C2911A8C10AC242F9 /* MemoryPhotoLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPhotoLibrary.swift; sourceTree = "<group>"; };
 		9362A6B3B5353DD4D0A760C1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		98CCC8B5714C63463401E96D /* NewStationScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewStationScreen.swift; sourceTree = "<group>"; };
 		991A73B7F1308E3E69AE5FCF /* JukeMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JukeMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2BE0D3AD19036BBAF3CB5C7 /* JukeHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeHeader.swift; sourceTree = "<group>"; };
 		A3FE04E17DA41AEA2D286703 /* MemoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoriesView.swift; sourceTree = "<group>"; };
@@ -171,6 +174,7 @@
 		EDDFD76C2195202121C26721 /* JukeAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeAPI.swift; sourceTree = "<group>"; };
 		F1F82FDFFCD2046EEDDE12E4 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F4AC4B3714FECC82D783DCC8 /* MusicMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicMemory.swift; sourceTree = "<group>"; };
+		FAFEF2D0AB396B4CC78C311E /* JukeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeCoordinator.swift; sourceTree = "<group>"; };
 		FEAAB753C2A4B7974593C201 /* JukeKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeKeychain.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -181,6 +185,7 @@
 				B21AA12B03CFDC325A4B0279 /* Chat */,
 				C8E1DCBBEFE2DCF949B5AA00 /* Library */,
 				6728C7C8A3A7A06DC957B2FE /* Memories */,
+				47CCDD7E92BC1BC63BAA6889 /* NewStation */,
 				3715FEBCD0C008E403683B57 /* Radio */,
 				4A34F26F42A252CE21B8C965 /* Settings */,
 				4B6427224C8F9F86946E854D /* Shared */,
@@ -262,6 +267,14 @@
 			path = Fixtures;
 			sourceTree = "<group>";
 		};
+		47CCDD7E92BC1BC63BAA6889 /* NewStation */ = {
+			isa = PBXGroup;
+			children = (
+				98CCC8B5714C63463401E96D /* NewStationScreen.swift */,
+			);
+			path = NewStation;
+			sourceTree = "<group>";
+		};
 		4A34F26F42A252CE21B8C965 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
@@ -294,6 +307,7 @@
 			children = (
 				401A3809A0EC7939C51D6422 /* AppModel.swift */,
 				6CAF09AE4A4B5A8899CD0880 /* JukeApp.swift */,
+				FAFEF2D0AB396B4CC78C311E /* JukeCoordinator.swift */,
 				A74471EB5E903AF76CEBE674 /* JukeSection.swift */,
 			);
 			path = App;
@@ -579,6 +593,7 @@
 				61C792E35DBFF346134825E0 /* JukeAuthenticationService.swift in Sources */,
 				9250F5A992C37AEF428C5E75 /* JukeColor.swift in Sources */,
 				E1D68082B078695CF0E1128D /* JukeComponents.swift in Sources */,
+				ADF9AA08788C2F06E108ED6B /* JukeCoordinator.swift in Sources */,
 				466B8FA1349719B5AFAF1B98 /* JukeHeader.swift in Sources */,
 				D0EE1ABF89BD1CB55DDDF1B2 /* JukeKeychain.swift in Sources */,
 				32C66AA334669CC8DA2F788F /* JukeMotion.swift in Sources */,
@@ -602,6 +617,7 @@
 				91FFA7DFACA1D64B54EE8574 /* MusicDetectionController.swift in Sources */,
 				67CA1C22AC991066C00C97FF /* MusicMemory.swift in Sources */,
 				E42200448BA9424A6CBEEF5F /* NeptuneVibeClient.swift in Sources */,
+				86C6B7E0AC87C7FBA88F646F /* NewStationScreen.swift in Sources */,
 				19DBDCBABF318DC6AB4E11FC /* NowPlayingBar.swift in Sources */,
 				98EF1AA0310D5334FB8DFBFB /* PlaybackClient.swift in Sources */,
 				F6FB8A898B8A1065DE8FF87C /* PlayerMetadataMonitor.swift in Sources */,
