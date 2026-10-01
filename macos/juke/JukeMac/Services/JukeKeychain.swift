@@ -3,16 +3,14 @@ import Security
 
 /// Keychain access shared by the Juke Apple apps.
 ///
-/// `accessGroup` is the Juke group every new item is written to. `legacyAccessGroup`
-/// is the group used by Juke; the app keeps it in its entitlements only so the
-/// iCloud-synchronised chat encryption key can be found and carried over, which keeps
-/// encrypted chat history readable after the rename.
+/// The group keeps its Juke Vibe name on purpose: the chat encryption key is an
+/// iCloud-synchronised item in this group, shared with Juke for iPhone. Renaming
+/// the group (or the chat-vault service) would orphan that key and make the
+/// encrypted chat records stored on Juke unreadable.
 enum JukeKeychain {
-    static let teamPrefix = "2WMS6785YD"
-    static let accessGroup = "\(teamPrefix).com.juke.shared"
-    static let legacyAccessGroup = "\(teamPrefix).com.juke.vibe.shared"
+    static let accessGroup = "2WMS6785YD.com.juke.vibe.shared"
 
-    static func genericPasswordQuery(service: String, account: String, accessGroup: String = JukeKeychain.accessGroup) -> [String: Any] {
+    static func genericPasswordQuery(service: String, account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

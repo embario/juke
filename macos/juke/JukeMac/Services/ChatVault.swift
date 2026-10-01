@@ -5,8 +5,8 @@ import Security
 enum ChatVaultError: Error { case keychain(OSStatus), malformedCiphertext }
 
 actor ChatVault {
-    private let service = "com.juke.shared.chat-vault"
-    static let legacyService = "com.juke.vibe.shared.chat-vault"
+    // Shared with Juke for iPhone through iCloud Keychain. Never rename.
+    private let service = "com.juke.vibe.shared.chat-vault"
     private let account: String
     private var cachedKey: SymmetricKey?
 
@@ -24,8 +24,6 @@ actor ChatVault {
         return try JSONDecoder().decode(PrivateChatPayload.self, from: clear)
     }
 
-    // The authenticated-data label predates the rename. It is part of every
-    // stored ciphertext, so it must not change.
     // This authenticated-data label predates the rename and is bound into every
     // stored ciphertext, so it must never change.
     private func context(_ id: UUID) -> Data { Data("juke-vibe-chat:v1:\(id.uuidString)".utf8) }
@@ -35,45 +33,28 @@ actor ChatVault {
             return SymmetricKey(data: Data(repeating: 0x4A, count: 32))
         }
         if let cachedKey { return cachedKey }
-        if let data = try readKey(service: service, accessGroup: JukeKeychain.accessGroup) {
-            return cache(data)
-        }
-        // Juke stored the key under its own group; adopt it so existing
-        // encrypted chat records (local and on Juke) stay readable.
-        if let legacy = try? readKey(service: Self.legacyService, accessGroup: JukeKeychain.legacyAccessGroup) {
-            try? addKey(legacy)
-            return cache(legacy)
-        }
-        let data = Data(SymmetricKey(size: .bits256).withUnsafeBytes(Array.init))
-        try addKey(data)
-        return cache(data)
-    }
-
-    private func cache(_ data: Data) -> SymmetricKey {
-        let key = SymmetricKey(data: data)
-        cachedKey = key
-        return key
-    }
-
-    private func readKey(service: String, accessGroup: String) throws -> Data? {
-        var query = JukeKeychain.genericPasswordQuery(service: service, account: account, accessGroup: accessGroup)
+        var query = JukeKeychain.genericPasswordQuery(service: service, account: account)
         query[kSecAttrSynchronizable as String] = true
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = result as? Data else { throw ChatVaultError.keychain(status) }
-        return data
-    }
-
-    private func addKey(_ data: Data) throws {
+        if status == errSecSuccess, let data = result as? Data {
+            let key = SymmetricKey(data: data)
+            cachedKey = key
+            return key
+        }
+        guard status == errSecItemNotFound else { throw ChatVaultError.keychain(status) }
+        let data = Data(SymmetricKey(size: .bits256).withUnsafeBytes(Array.init))
         var add = JukeKeychain.genericPasswordQuery(service: service, account: account)
         add[kSecAttrSynchronizable as String] = true
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         add[kSecValueData as String] = data
         let added = SecItemAdd(add as CFDictionary, nil)
         guard added == errSecSuccess else { throw ChatVaultError.keychain(added) }
+        let key = SymmetricKey(data: data)
+        cachedKey = key
+        return key
     }
 }
 
