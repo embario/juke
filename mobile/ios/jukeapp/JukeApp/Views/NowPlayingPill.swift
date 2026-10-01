@@ -12,7 +12,7 @@ struct NowPlayingPill: View {
             Spacer()
             Menu {
                 Button(model.nowPlaying.isListeningAroundMe ? "Stop Around Me" : "Identify Around Me") { Task { await model.nowPlaying.setAroundMe(!model.nowPlaying.isListeningAroundMe) } }
-                Text("Apple Music and connected Spotify playback are checked automatically while Juke Vibe is active.")
+                Text("Apple Music and connected Spotify playback are checked automatically while Juke is active.")
             } label: { Image(systemName: "ellipsis.circle").font(.title3) }
         }.padding(10).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18)).padding(.horizontal).padding(.bottom, 4)
     }

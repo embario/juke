@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 @main
-struct JukeVibeApp: App {
+struct JukeIOSApp: App {
     private let container: ModelContainer
     @State private var model: VibeAppModel
 
@@ -13,11 +13,11 @@ struct JukeVibeApp: App {
             let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             let configuration = testing
-                ? ModelConfiguration("JukeVibeTests", schema: schema, isStoredInMemoryOnly: true)
-                : ModelConfiguration("JukeVibe", schema: schema, url: support.appending(path: "JukeVibe.store"), cloudKitDatabase: .none)
+                ? ModelConfiguration("JukeAppTests", schema: schema, isStoredInMemoryOnly: true)
+                : ModelConfiguration("JukeApp", schema: schema, url: support.appending(path: "JukeApp.store"), cloudKitDatabase: .none)
             let container = try ModelContainer(for: schema, configurations: [configuration])
             self.container = container; _model = State(initialValue: VibeAppModel(container: container))
-        } catch { fatalError("Unable to open Juke Vibe's private store: \(error.localizedDescription)") }
+        } catch { fatalError("Unable to open Juke's private store: \(error.localizedDescription)") }
     }
 
     var body: some Scene {

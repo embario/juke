@@ -504,6 +504,8 @@ VIBE_OAUTH_CLIENTS = {
     # Juke for macOS (formerly Juke Vibe, macos/juke).
     'juke-app-mac': {'juke-app://auth/callback'},
     'juke-vibe-ios': {'juke-vibe://auth/callback'},
+    # Juke for iPhone (formerly Juke Vibe, mobile/ios/jukeapp).
+    'juke-app-ios': {'juke-app://auth/callback'},
 }
 
 

@@ -7,7 +7,7 @@ envelope's opaque base64 ciphertext and metadata needed for reconciliation.
 ## Routes
 
 - `POST /api/v1/auth/vibe/authorize`: authenticated web handoff for the
-  allowlisted Apple clients (`juke-app-mac` with `juke-app://auth/callback`, plus
+  allowlisted Apple clients (`juke-app-mac` and `juke-app-ios` with `juke-app://auth/callback`, plus
   the legacy `juke-vibe-mac`/`juke-vibe-ios` with `juke-vibe://auth/callback`).
   Accepts S256 PKCE parameters and returns the custom-scheme callback URL.
 - `POST /api/v1/auth/vibe/exchange`: exchanges a one-time, two-minute code for

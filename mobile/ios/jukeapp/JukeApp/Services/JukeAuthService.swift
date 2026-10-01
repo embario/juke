@@ -6,21 +6,24 @@ import UIKit
 
 @MainActor
 final class JukeAuthService: NSObject, ASWebAuthenticationPresentationContextProviding {
-    private let baseURL = URL(string: "https://neptune.tail647b75.ts.net/")!
-    private let keychainService = "com.juke.vibe.ios.authentication"
+    nonisolated static let clientID = "juke-app-ios"
+    nonisolated static let callbackScheme = "juke-app"
+    nonisolated static let redirectURI = "juke-app://auth/callback"
+    private let configuration = AppConfiguration.shared
+    private let keychainService = "com.juke.app.ios.authentication"
     private var webSession: ASWebAuthenticationSession?
 
     func signIn(path: String = "accounts/login") async throws -> JukeSession {
         let state = randomString(24)
         let verifier = randomString(32)
         let challenge = base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
-        var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(url: configuration.frontendURL.appending(path: path), resolvingAgainstBaseURL: false)!
         components.queryItems = [
-            .init(name: "client", value: "juke-vibe-ios"), .init(name: "redirect_uri", value: "juke-vibe://auth/callback"),
+            .init(name: "client", value: Self.clientID), .init(name: "redirect_uri", value: Self.redirectURI),
             .init(name: "state", value: state), .init(name: "code_challenge", value: challenge), .init(name: "code_challenge_method", value: "S256"),
         ]
         let callback = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-            let session = ASWebAuthenticationSession(url: components.url!, callbackURLScheme: "juke-vibe") { url, error in
+            let session = ASWebAuthenticationSession(url: components.url!, callbackURLScheme: Self.callbackScheme) { url, error in
                 if let url { continuation.resume(returning: url) } else { continuation.resume(throwing: error ?? CocoaError(.userCancelled)) }
             }
             session.presentationContextProvider = self
@@ -32,9 +35,9 @@ final class JukeAuthService: NSObject, ASWebAuthenticationPresentationContextPro
               returned.first(where: { $0.name == "state" })?.value == state,
               let code = returned.first(where: { $0.name == "code" })?.value else { throw CocoaError(.validationMissingMandatoryProperty) }
         struct Body: Encodable { let code: String; let code_verifier: String; let redirect_uri: String }
-        var request = URLRequest(url: baseURL.appending(path: "api/v1/auth/vibe/exchange"))
+        var request = URLRequest(url: configuration.apiBaseURL.appending(path: "auth/vibe/exchange"))
         request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(Body(code: code, code_verifier: verifier, redirect_uri: "juke-vibe://auth/callback"))
+        request.httpBody = try JSONEncoder().encode(Body(code: code, code_verifier: verifier, redirect_uri: Self.redirectURI))
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw CocoaError(.fileReadUnknown) }
         let value = try JSONDecoder().decode(JukeSession.self, from: data)

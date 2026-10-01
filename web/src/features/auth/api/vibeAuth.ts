@@ -5,6 +5,7 @@ const vibeClientRedirects = {
   'juke-vibe-mac': 'juke-vibe://auth/callback',
   'juke-app-mac': 'juke-app://auth/callback',
   'juke-vibe-ios': 'juke-vibe://auth/callback',
+  'juke-app-ios': 'juke-app://auth/callback',
 } as const;
 
 type VibeClientId = keyof typeof vibeClientRedirects;
@@ -55,7 +56,7 @@ export const parseVibeAuthorizationRequest = (
 export const authorizeVibeRequest = async (token: string, search: string) => {
   const request = parseVibeAuthorizationRequest(search);
   if (!request) {
-    throw new Error('The Juke app sign-in request is invalid or incomplete.');
+    throw new Error('The Juke sign-in request is invalid or incomplete.');
   }
   return apiClient.post<{ redirect_to: string }>(
     '/api/v1/auth/vibe/authorize',

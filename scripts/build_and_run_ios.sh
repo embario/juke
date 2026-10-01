@@ -18,13 +18,13 @@ usage() {
 Usage: $(basename "$0") -p project [-s simulator] [--boot-simulator]
 
 Options:
-  -p  iOS project name under ${IOS_ROOT} (required: juke, jukevibe, tunetrivia, shotclock)
+  -p  iOS project name under ${IOS_ROOT} (required: juke, jukeapp, tunetrivia, shotclock)
   -s  Simulator name or UUID (default: ${SIM_TARGET_DEFAULT})
   --boot-simulator  Boot and target the specified simulator, even if another is booted
 EOF
 }
 
-ALLOWED_PROJECTS=("juke" "jukevibe" "tunetrivia" "shotclock")
+ALLOWED_PROJECTS=("juke" "jukeapp" "tunetrivia" "shotclock")
 
 list_available_projects() {
     local project
@@ -128,11 +128,11 @@ case "${IOS_PROJECT_NAME}" in
         BUNDLE_ID="com.juke.juke"
         APP_NAME="juke-iOS.app"
         ;;
-    jukevibe)
-        XCODEPROJ_NAME="JukeVibe.xcodeproj"
-        SCHEME_NAME="JukeVibe"
-        BUNDLE_ID="com.juke.vibe"
-        APP_NAME="Juke Vibe.app"
+    jukeapp)
+        XCODEPROJ_NAME="JukeApp.xcodeproj"
+        SCHEME_NAME="JukeApp"
+        BUNDLE_ID="com.juke.app"
+        APP_NAME="JukeApp.app"
         ;;
     shotclock)
         XCODEPROJ_NAME="ShotClock.xcodeproj"
