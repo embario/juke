@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, 'integration/**' ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, 'integration/**' ]
 
 jobs:
   changes:
@@ -16,6 +16,7 @@ jobs:
       ios_jukekit: ${{ steps.filter.outputs.ios_jukekit }}
       android_juke: ${{ steps.filter.outputs.android_juke }}
       android_shotclock: ${{ steps.filter.outputs.android_shotclock }}
+      macos_juke: ${{ steps.filter.outputs.macos_juke }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -39,6 +40,8 @@ jobs:
               - 'mobile/android/juke/**'
             android_shotclock:
               - 'mobile/android/shotclock/**'
+            macos_juke:
+              - 'macos/**'
 
   build:
     runs-on: ubuntu-latest
@@ -101,6 +104,16 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose -f docker-compose.ci.yml down
+
+  macos_tests_juke:
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.macos_juke == 'true' }}
+    runs-on: macos-26
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run macOS unit tests
+        run: bash scripts/test_macos.sh
 
   ios_tests_juke:
     needs: changes
