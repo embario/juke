@@ -502,6 +502,8 @@ VIBE_AUTH_CODE_TTL_SECONDS = int(os.environ.get('VIBE_AUTH_CODE_TTL_SECONDS', '1
 VIBE_OAUTH_CLIENTS = {
     'juke-vibe-mac': {'juke-vibe://auth/callback'},
     'juke-vibe-ios': {'juke-vibe://auth/callback'},
+    # Juke for iPhone (formerly Juke Vibe, mobile/ios/jukeapp).
+    'juke-app-ios': {'juke-app://auth/callback'},
 }
 
 

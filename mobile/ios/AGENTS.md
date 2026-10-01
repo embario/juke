@@ -4,7 +4,8 @@
 
 ```
 mobile/ios/
-├── juke/                        # Juke app target + tests
+├── juke/                        # Older Juke app (juke-iOS, com.juke.juke) + tests
+├── jukeapp/                     # Juke app, formerly Juke Vibe (JukeApp, com.juke.app; XcodeGen) + tests
 ├── shotclock/                   # ShotClock app target + tests
 ├── tunetrivia/                  # TuneTrivia app target + tests
 └── Packages/JukeKit/            # Shared Swift package used by all iOS apps
@@ -14,7 +15,7 @@ All iOS projects and shared packages live under `mobile/ios`.
 
 ## Naming Conventions (MANDATORY)
 
-These naming rules apply to all iOS app targets (`juke`, `shotclock`, `tunetrivia`) and shared packages (`Packages/JukeKit`):
+These naming rules apply to all iOS app targets (`juke`, `jukeapp`, `shotclock`, `tunetrivia`) and shared packages (`Packages/JukeKit`):
 
 - Use `UpperCamelCase` for Swift types (`struct`, `class`, `enum`, `protocol`) and `lowerCamelCase` for properties, methods, and variables.
 - Use `camelCase` model properties in Swift for API payloads (`inviteCode`, `tracksPerPlayer`) and rely on shared coding strategy for snake_case JSON from backend.
@@ -35,13 +36,13 @@ When introducing shared logic, prefer moving it into `Packages/JukeKit` with neu
 
 - Xcode 15+ recommended (script targets latest simulator OS).
 - Swift Package Manager dependencies are embedded in the project; run `xcodebuild -resolvePackageDependencies` if needed.
-- Bundle IDs follow `com.juke.<project-name>` (for example `com.juke.juke`).
+- Bundle IDs follow `com.juke.<project-name>` (for example `com.juke.juke`); the Juke app (`jukeapp`) uses `com.juke.app`.
 
 ## Build & Run
 
 ```bash
 # Automated path (build + simulator boot + install + launch)
-scripts/build_and_run_ios.sh -p <project>      # required: juke, shotclock, tunetrivia
+scripts/build_and_run_ios.sh -p <project>      # required: juke, jukeapp, shotclock, tunetrivia
 scripts/build_and_run_ios.sh -p <project> -s "iPhone 17 Pro"   # optional simulator override
 
 # Manual path
@@ -50,7 +51,7 @@ xed mobile/ios/juke/juke-iOS.xcodeproj          # opens Xcode
 ```
 
 The helper script:
-1. Builds the selected project scheme (`juke-iOS`, `ShotClock`, or `TuneTrivia`) into `.derived-data` at repo root.
+1. Builds the selected project scheme (`juke-iOS`, `JukeApp`, `ShotClock`, or `TuneTrivia`) into `.derived-data` at repo root.
 2. Resolves/boots the requested simulator via `xcrun simctl`.
 3. Installs the Debug app bundle (`.app`).
 4. Launches it using `xcrun simctl launch` and the bundle ID.
@@ -78,7 +79,7 @@ Per-run logs are written under `logs/` (for example `ios-build-<project>-<timest
 
 - Unit tests: `juke-iOSTests` target (`⌘U` in Xcode or `xcodebuild test -scheme juke-iOS -destination "platform=iOS Simulator,name=iPhone 17 Pro"`).
 - UI tests: `juke-iOSUITests` target; keep selectors resilient to design tweaks by referencing accessibility identifiers.
-- Repo script: `scripts/test_mobile.sh -p <project> --ios-only` (required: `juke`, `shotclock`, or `tunetrivia`; defaults to iPhone 17 Pro / iOS 26.2; override with `-s <sim>` / `-o <os>`).
+- Repo script: `scripts/test_mobile.sh -p <project> --ios-only` (required: `juke`, `jukeapp`, `shotclock`, or `tunetrivia`; defaults to iPhone 17 Pro / iOS 26.2; override with `-s <sim>` / `-o <os>`).
 
 ## Release Checklist for Agents
 

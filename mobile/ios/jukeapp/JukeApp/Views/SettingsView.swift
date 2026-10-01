@@ -12,7 +12,7 @@ struct SettingsView: View {
                 LabeledContent("Apple Music", value: "On while active")
                 LabeledContent("Spotify", value: "Through Juke")
                 Toggle("Identify Around Me", isOn: Binding(get: { model.nowPlaying.isListeningAroundMe }, set: { enabled in Task { await model.nowPlaying.setAroundMe(enabled) } }))
-                Text("iOS does not expose a universal queue or another app's raw audio. Juke Vibe reads Apple Music's current item, checks linked Spotify playback through Neptune, and uses the microphone only when you enable Around Me.").font(.caption).foregroundStyle(.secondary)
+                Text("iOS does not expose a universal queue or another app's raw audio. Juke reads Apple Music's current item, checks linked Spotify playback through Neptune, and uses the microphone only when you enable Around Me.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Conversation privacy") {
                 Label("Encrypted before local storage", systemImage: "lock.shield")

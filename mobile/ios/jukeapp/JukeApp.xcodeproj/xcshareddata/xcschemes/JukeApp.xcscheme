@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "6971C0DF3832AB1EC974FC4F"
-               BuildableName = "JukeVibe.app"
-               BlueprintName = "JukeVibe"
-               ReferencedContainer = "container:JukeVibe.xcodeproj">
+               BlueprintIdentifier = "0DDE17E72C8DBBFB99C44E92"
+               BuildableName = "JukeApp.app"
+               BlueprintName = "JukeApp"
+               ReferencedContainer = "container:JukeApp.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
@@ -29,10 +29,10 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "C3AFB82D2D7510EC1BCB13C0"
-               BuildableName = "JukeVibeTests.xctest"
-               BlueprintName = "JukeVibeTests"
-               ReferencedContainer = "container:JukeVibe.xcodeproj">
+               BlueprintIdentifier = "540321AA56F29DD23D1CA917"
+               BuildableName = "JukeAppTests.xctest"
+               BlueprintName = "JukeAppTests"
+               ReferencedContainer = "container:JukeApp.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,10 +46,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6971C0DF3832AB1EC974FC4F"
-            BuildableName = "JukeVibe.app"
-            BlueprintName = "JukeVibe"
-            ReferencedContainer = "container:JukeVibe.xcodeproj">
+            BlueprintIdentifier = "0DDE17E72C8DBBFB99C44E92"
+            BuildableName = "JukeApp.app"
+            BlueprintName = "JukeApp"
+            ReferencedContainer = "container:JukeApp.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -58,10 +58,10 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "C3AFB82D2D7510EC1BCB13C0"
-               BuildableName = "JukeVibeTests.xctest"
-               BlueprintName = "JukeVibeTests"
-               ReferencedContainer = "container:JukeVibe.xcodeproj">
+               BlueprintIdentifier = "540321AA56F29DD23D1CA917"
+               BuildableName = "JukeAppTests.xctest"
+               BlueprintName = "JukeAppTests"
+               ReferencedContainer = "container:JukeApp.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -82,10 +82,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6971C0DF3832AB1EC974FC4F"
-            BuildableName = "JukeVibe.app"
-            BlueprintName = "JukeVibe"
-            ReferencedContainer = "container:JukeVibe.xcodeproj">
+            BlueprintIdentifier = "0DDE17E72C8DBBFB99C44E92"
+            BuildableName = "JukeApp.app"
+            BlueprintName = "JukeApp"
+            ReferencedContainer = "container:JukeApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -99,10 +99,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6971C0DF3832AB1EC974FC4F"
-            BuildableName = "JukeVibe.app"
-            BlueprintName = "JukeVibe"
-            ReferencedContainer = "container:JukeVibe.xcodeproj">
+            BlueprintIdentifier = "0DDE17E72C8DBBFB99C44E92"
+            BuildableName = "JukeApp.app"
+            BlueprintName = "JukeApp"
+            ReferencedContainer = "container:JukeApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

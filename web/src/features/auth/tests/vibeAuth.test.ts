@@ -22,7 +22,18 @@ describe('Vibe browser authentication bridge', () => {
     expect(parseVibeAuthorizationRequest(validSearch.replace('juke-vibe-mac', 'juke-vibe-ios')))
       .toEqual(expect.objectContaining({ client_id: 'juke-vibe-ios' }));
     expect(parseVibeAuthorizationRequest(validSearch.replace('juke-vibe-mac', 'evil'))).toBeNull();
+    expect(parseVibeAuthorizationRequest(validSearch.replace('juke-vibe-mac', 'constructor'))).toBeNull();
     expect(parseVibeAuthorizationRequest(validSearch.replace('S256', 'plain'))).toBeNull();
+  });
+
+  it('pairs the Juke iPhone client with its own juke-app redirect', () => {
+    const jukeAppSearch = validSearch
+      .replace('juke-vibe-mac', 'juke-app-ios')
+      .replace(encodeURIComponent('juke-vibe://auth/callback'), encodeURIComponent('juke-app://auth/callback'));
+    expect(parseVibeAuthorizationRequest(jukeAppSearch)).toEqual(
+      expect.objectContaining({ client_id: 'juke-app-ios', redirect_uri: 'juke-app://auth/callback' }),
+    );
+    expect(parseVibeAuthorizationRequest(validSearch.replace('juke-vibe-mac', 'juke-app-ios'))).toBeNull();
   });
 
   it('sends the validated request with the signed-in Juke token', async () => {
