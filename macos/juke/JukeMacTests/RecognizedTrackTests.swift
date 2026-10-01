@@ -3,6 +3,32 @@ import Security
 @testable import Juke
 
 final class RecognizedTrackTests: XCTestCase {
+    func testBrowserSignInMatchesDeployedNeptuneContract() async throws {
+        let service = JukeAuthenticationService()
+        let url = await service.browserURL(for: .login)
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let items = try XCTUnwrap(components.queryItems)
+        XCTAssertEqual(items.first { $0.name == "client" }?.value, "juke-vibe-mac")
+        XCTAssertEqual(items.first { $0.name == "redirect_uri" }?.value, "juke-vibe://auth/callback")
+        XCTAssertEqual(items.first { $0.name == "code_challenge_method" }?.value, "S256")
+        XCTAssertEqual(items.first { $0.name == "code_challenge" }?.value?.count, 43)
+        let second = await service.browserURL(for: .login)
+        let nextItems = URLComponents(url: second, resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertNotEqual(items.first { $0.name == "state" }?.value, nextItems?.first { $0.name == "state" }?.value)
+    }
+
+    func testBrowserCallbackRejectsMismatchedStateBeforeExchange() async throws {
+        let service = JukeAuthenticationService()
+        _ = await service.browserURL(for: .login)
+        let callback = try XCTUnwrap(URL(string: "juke-vibe://auth/callback?code=test-code&state=wrong-state"))
+        do {
+            _ = try await service.complete(callbackURL: callback)
+            XCTFail("A callback with the wrong state must never exchange a code.")
+        } catch JukeAuthError.invalidCallback {
+            // Rejected before any network or Keychain operation.
+        }
+    }
+
     func testProviderIdentityTakesPriorityOverMetadata() {
         let track = makeTrack(providerNamespace: "spotify", providerTrackID: "4uLU6hMCjMI75M1A2tKUQC")
 

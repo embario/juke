@@ -21,6 +21,7 @@ struct JukeRootView: View {
             theme.bg.color.ignoresSafeArea()
             if model.session == nil {
                 SignInView()
+                    .disabled(model.isAuthenticating)
             } else {
                 signedInContent
                     .disabled(model.lock.isLocked)

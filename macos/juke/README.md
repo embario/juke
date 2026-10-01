@@ -30,7 +30,7 @@ Accessibility access; Juke does not bypass those protections.
 | | |
 | --- | --- |
 | App / tests / UI tests | `com.juke.mac`, `com.juke.mac.tests`, `com.juke.mac.uitests` |
-| Sign-in client | `juke-app-mac`, callback `juke-app://auth/callback` |
+| Sign-in client | `juke-vibe-mac`, callback `juke-vibe://auth/callback` via ASWebAuthenticationSession (deployed Neptune compatibility) |
 | Session token (Keychain) | service `com.juke.mac.authentication` |
 | Keychain group | `com.juke.vibe.shared` (shared with Juke for iPhone) |
 | Chat key (iCloud Keychain) | service `com.juke.vibe.shared.chat-vault`, AAD `juke-vibe-chat:v1:<id>` |

@@ -1,4 +1,5 @@
 import AppKit
+import AuthenticationServices
 import CryptoKit
 import Foundation
 import Security
@@ -38,10 +39,11 @@ actor JukeAuthenticationService {
         }
     }
 
-    /// OAuth-like client registered in the backend's `VIBE_OAUTH_CLIENTS`.
-    nonisolated static let clientID = "juke-app-mac"
-    nonisolated static let callbackScheme = "juke-app"
-    nonisolated static let redirectURI = "juke-app://auth/callback"
+    /// The deployed Neptune web/backend contract still uses the Vibe name.
+    /// This wire identity is independent of the app's com.juke.mac bundle ID.
+    nonisolated static let clientID = "juke-vibe-mac"
+    nonisolated static let callbackScheme = "juke-vibe"
+    nonisolated static let redirectURI = "juke-vibe://auth/callback"
 
     private let service = "com.juke.mac.authentication"
     private let account = "current-juke-session-v1"
@@ -167,5 +169,41 @@ actor JukeAuthenticationService {
 
     private static func base64URL(_ data: Data) -> String {
         data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+}
+
+/// Keeps the callback in the requesting process, even when other worktree builds
+/// own the same URL scheme in Launch Services. No legacy scheme registration is
+/// needed in the app's Info.plist.
+@MainActor
+final class JukeBrowserAuthentication: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private var webSession: ASWebAuthenticationSession?
+
+    func authenticate(at url: URL) async throws -> URL {
+        guard webSession == nil else { throw JukeAuthError.invalidCallback }
+        defer { webSession = nil }
+        return try await withCheckedThrowingContinuation { continuation in
+            let authentication = ASWebAuthenticationSession(
+                url: url,
+                callbackURLScheme: JukeAuthenticationService.callbackScheme
+            ) { callback, error in
+                if let callback {
+                    continuation.resume(returning: callback)
+                } else {
+                    continuation.resume(throwing: error ?? JukeAuthError.invalidCallback)
+                }
+            }
+            authentication.presentationContextProvider = self
+            webSession = authentication
+            if !authentication.start() {
+                continuation.resume(throwing: JukeAuthError.exchangeUnavailable)
+            }
+        }
+    }
+
+    func cancel() { webSession?.cancel() }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        NSApp.keyWindow ?? NSApp.mainWindow ?? NSWindow()
     }
 }

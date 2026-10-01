@@ -1,4 +1,5 @@
 import AppKit
+import AuthenticationServices
 import Foundation
 import Observation
 import SwiftData
@@ -29,6 +30,7 @@ final class AppModel {
     var isSending = false
     var isAwaitingReply = false
     var banner: String?
+    var isAuthenticating = false
     var privacyWelcomePresented = false
     var chatTextSize = AppModel.defaultChatTextSize {
         didSet {
@@ -61,6 +63,7 @@ final class AppModel {
 
     private let context: ModelContext
     private let auth = JukeAuthenticationService()
+    private let browserAuthentication = JukeBrowserAuthentication()
     private let neptune = NeptuneVibeClient()
     private let localIntelligence = LocalVibeIntelligence()
     private let isUITesting: Bool
@@ -173,6 +176,7 @@ final class AppModel {
     /// in Settings signs out. The token is dropped synchronously, before any
     /// client can build a request for the new host; teardown follows.
     func backendChanged() {
+        browserAuthentication.cancel()
         let wasSignedIn = session != nil
         endSession()
         Task { [auth] in await auth.cancelPendingAttempt() }
@@ -197,8 +201,19 @@ final class AppModel {
     }
 
     func beginAuthentication(_ destination: JukeAuthDestination) async {
+        guard !isAuthenticating else { return }
+        isAuthenticating = true
+        defer { isAuthenticating = false }
         let url = await auth.browserURL(for: destination)
-        NSWorkspace.shared.open(url)
+        do {
+            let callback = try await browserAuthentication.authenticate(at: url)
+            await completeAuthentication(callback)
+        } catch ASWebAuthenticationSessionError.canceledLogin {
+            await auth.cancelPendingAttempt()
+        } catch {
+            await auth.cancelPendingAttempt()
+            banner = error.localizedDescription
+        }
     }
 
     func completeAuthentication(_ url: URL) async {
