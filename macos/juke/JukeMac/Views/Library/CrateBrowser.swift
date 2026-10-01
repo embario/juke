@@ -123,17 +123,22 @@ final class CrateBrowser {
     func reveal(kind targetKind: Radio.SeedKind, spotifyId: String, title: String) async {
         searchTask?.cancel()
         kind = targetKind == .unknown ? .track : targetKind
-        if !trimmedQuery.isEmpty || phase != .loaded || items.first?.kind != kind {
-            query = ""
-            await reload()
-        }
-        if let index = index(of: spotifyId) {
-            focus = index
-            return
+        // Without a Spotify id (a song playing outside radio) only the title can find it.
+        let hasID = !spotifyId.isEmpty
+        if hasID {
+            if !trimmedQuery.isEmpty || phase != .loaded || items.first?.kind != kind {
+                query = ""
+                await reload()
+            }
+            if let index = index(of: spotifyId) {
+                focus = index
+                return
+            }
         }
         query = title
         await reload()
-        focus = index(of: spotifyId) ?? items.firstIndex { $0.title.localizedCaseInsensitiveCompare(title) == .orderedSame } ?? 0
+        let byID = hasID ? index(of: spotifyId) : nil
+        focus = byID ?? items.firstIndex { $0.title.localizedCaseInsensitiveCompare(title) == .orderedSame } ?? 0
     }
 
     func reveal(_ seed: Radio.Seed) async {

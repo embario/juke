@@ -120,8 +120,11 @@ struct CrateView: View {
             .clipShape(RoundedRectangle(cornerRadius: JukeRadius.sleeve, style: .continuous))
             .shadow(color: .black.opacity(0.28), radius: 18, y: 18)
             .scaleEffect(t.scale, anchor: anchor)
-            .rotation3DEffect(.degrees(t.rotationY), axis: (x: 0, y: 1, z: 0), anchor: anchor, perspective: 0.3)
-            .rotation3DEffect(.degrees(t.rotationX), axis: (x: 1, y: 0, z: 0), anchor: anchor, perspective: 0.3)
+            // SwiftUI's rotation sense is the mirror of CSS `rotateY`/`rotateX`, so the
+            // prototype's angles are negated (side records: inner edge back; the
+            // front record in the bin tips towards you).
+            .rotation3DEffect(.degrees(-t.rotationY), axis: (x: 0, y: 1, z: 0), anchor: anchor, perspective: 0.3)
+            .rotation3DEffect(.degrees(-t.rotationX), axis: (x: 1, y: 0, z: 0), anchor: anchor, perspective: 0.3)
             .offset(x: t.x, y: mode.sleeveTop + t.y)
             .opacity(t.opacity)
             .zIndex(t.zIndex)
@@ -254,7 +257,7 @@ struct RecordArtwork: View {
     }
 
     /// Two colours derived from a stable hash of the id, so a record keeps its look.
-    static func placeholderColors(for seed: String) -> (RGB, RGB) {
+    nonisolated static func placeholderColors(for seed: String) -> (RGB, RGB) {
         var hash: UInt32 = 5381
         for byte in seed.utf8 { hash = (hash &* 33) ^ UInt32(byte) }
         let hue = Double(hash % 360)
