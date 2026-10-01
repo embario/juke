@@ -65,7 +65,7 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
 3. **Testing**
    - Backend: `docker compose exec backend python manage.py test`
    - Frontend: `cd web && npm test`
-   - Mobile: `scripts/test_mobile.sh -p <project>` (required: `juke`, `shotclock`, or `tunetrivia`; `--ios-only`, `--android-only`, `-s <sim>`, `-o <os>` options; defaults to iPhone 17 Pro / iOS 26.2)
+   - Mobile: `scripts/test_mobile.sh -p <project>` (required: `juke`, `jukeapp` (iOS-only), `shotclock`, or `tunetrivia`; `--ios-only`, `--android-only`, `-s <sim>`, `-o <os>` options; defaults to iPhone 17 Pro / iOS 26.2)
 4. **Mobile config (.env)**
    - Mobile build/test scripts load `.env` via `scripts/load_env.sh`; set `BACKEND_URL` and `DISABLE_REGISTRATION` there to configure iOS + Android builds consistently.
 5. **iOS workflow**

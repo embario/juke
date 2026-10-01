@@ -4,6 +4,9 @@ import Security
 
 actor ChatVault {
     let accountID: String
+    // The vault key, its keychain group and the AEAD context keep their original "vibe" names on purpose:
+    // the key syncs through iCloud Keychain between the iOS and macOS apps, and renaming any of them would
+    // make chat records already stored on the backend undecryptable.
     private let service = "com.juke.vibe.shared.chat-vault"
 
     init(accountID: String) { self.accountID = accountID }

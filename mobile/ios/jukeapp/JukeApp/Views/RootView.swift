@@ -9,7 +9,7 @@ struct RootView: View {
             if model.session == nil { SignInView() } else { main }
         }
         .onChange(of: model.nowPlaying.track?.id) { _, _ in model.trackChanged() }
-        .alert("Juke Vibe", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("OK") { model.errorMessage = nil } } message: { Text(model.errorMessage ?? "") }
+        .alert("Juke", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("OK") { model.errorMessage = nil } } message: { Text(model.errorMessage ?? "") }
     }
 
     private var main: some View {
@@ -27,7 +27,7 @@ private struct SignInView: View {
         VStack(spacing: 24) {
             Spacer()
             Image(systemName: "waveform.path.ecg.rectangle.fill").font(.system(size: 58)).foregroundStyle(model.atmosphere.primary)
-            Text("Juke Vibe").font(.largeTitle.bold())
+            Text("Juke").font(.largeTitle.bold())
             Text("A private music companion that listens along.").font(.title3).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Sign in with Juke") { Task { await model.signIn() } }.buttonStyle(.borderedProminent).controlSize(.large).tint(model.atmosphere.primary)
             Button("Create an account") { Task { await model.signIn(create: true) } }
