@@ -1,0 +1,33 @@
+{
+  "stations": [
+    {
+      "id": 1,
+      "name": "My Station",
+      "kind": "personal",
+      "frequency": 88.7,
+      "seeds": [
+        {"kind": "track", "spotifyId": "2xUiZ1nM0Tc7MfJNHJoVa3", "title": "Maria También", "subtitle": "Khruangbin", "artworkUrl": "https://i.scdn.co/image/maria"},
+        {"kind": "artist", "spotifyId": "2mVVjNmdjXZZDvhgQWiakk", "title": "Khruangbin", "subtitle": null, "artworkUrl": null}
+      ],
+      "thumbnails": ["https://i.scdn.co/image/maria", "https://i.scdn.co/image/pink", "https://i.scdn.co/image/journey"],
+      "feelings": ["😌", "☀️", "✨"],
+      "learning": true,
+      "exclusions": [
+        {"id": 7, "scope": "everywhere", "kind": "genre", "value": "holiday", "label": "Holiday music"}
+      ],
+      "createdAt": "2026-10-01T12:00:00Z"
+    },
+    {
+      "id": "6c7d7f8e-2f0b-4d38-9d5e-2a0e7d1c9b11",
+      "name": "Night Drive",
+      "kind": "custom",
+      "frequency": 97.1,
+      "seeds": [],
+      "thumbnails": [],
+      "feelings": ["🌙", "🚗"],
+      "learning": false,
+      "exclusions": [],
+      "createdAt": "2026-10-01T12:30:15.123456Z"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": 12,
+  "name": "Pink + White Radio",
+  "kind": "custom",
+  "frequency": 101.5,
+  "seeds": [{"kind": "track", "spotifyId": "3xKsf9qdS1CyvXSMEid6g8", "title": "Pink + White", "subtitle": "Frank Ocean", "artworkUrl": "https://i.scdn.co/image/pinkwhite"}],
+  "thumbnails": ["https://i.scdn.co/image/pinkwhite"],
+  "feelings": [],
+  "learning": true,
+  "exclusions": [],
+  "createdAt": "2026-10-01T13:00:00.5Z"
+}

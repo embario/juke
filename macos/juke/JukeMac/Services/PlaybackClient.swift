@@ -93,7 +93,7 @@ actor PlaybackClient {
 
     private struct ErrorBody: Decodable { let detail: String? }
 
-    private let baseURL = URL(string: "https://neptune.tail647b75.ts.net/api/v1/playback/")!
+    private var baseURL: URL { JukeServer.apiURL().appending(path: "playback/") }
     private let session: URLSession
     private let usesFixtures = ProcessInfo.processInfo.arguments.contains("--uitesting")
     private var fixtureIsPlaying = true

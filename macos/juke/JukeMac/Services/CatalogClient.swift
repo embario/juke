@@ -216,7 +216,7 @@ actor CatalogClient {
             case thumbnailURL = "thumbnail_url"
         }
     }
-    private let baseURL = URL(string: "https://neptune.tail647b75.ts.net/api/v1/")!
+    private var baseURL: URL { JukeServer.apiURL() }
     private let usesFixtures = ProcessInfo.processInfo.arguments.contains("--uitesting")
 
     func search(_ query: String, kind: String, token: String) async throws -> [CatalogSearchResult] {
@@ -255,7 +255,7 @@ actor CatalogClient {
                 albumName: "Kind of Blue",
                 artistNames: "Miles Davis",
                 durationMs: 327_000,
-                albumLink: URL(string: "https://neptune.tail647b75.ts.net/api/v1/albums/1959/"),
+                albumLink: JukeServer.apiURL().appending(path: "albums/1959/"),
                 artworkURL: URL(string: "https://i.scdn.co/image/example"),
                 spotifyData: nil
             )]

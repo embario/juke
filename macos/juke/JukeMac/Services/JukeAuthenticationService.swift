@@ -38,24 +38,24 @@ actor JukeAuthenticationService {
     }
 
     /// OAuth-like client registered in the backend's `VIBE_OAUTH_CLIENTS`.
-    nonisolated static let clientID = "juke-mac"
+    nonisolated static let clientID = "juke-app-mac"
     nonisolated static let callbackScheme = "juke-app"
     nonisolated static let redirectURI = "juke-app://auth/callback"
 
     private let service = "com.juke.mac.authentication"
     private let account = "current-juke-session-v1"
-    private let baseURL = URL(string: "https://neptune.tail647b75.ts.net/")!
+    private var baseURL: URL { JukeServer.baseURL() }
     private var pendingAttempt: PendingAttempt?
     private let session: URLSession
 
-    nonisolated static func spotifyConnectTicketRequest(token: String) throws -> URLRequest {
-        let url = URL(string: "https://neptune.tail647b75.ts.net/api/v1/auth/spotify/connect-ticket/")!
+    nonisolated static func spotifyConnectTicketRequest(token: String, baseURL: URL = JukeServer.baseURL()) throws -> URLRequest {
+        let url = baseURL.appending(path: "api/v1/auth/spotify/connect-ticket/")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "return_to": "https://neptune.tail647b75.ts.net/",
+            "return_to": baseURL.absoluteString,
         ])
         return request
     }

@@ -76,10 +76,12 @@ final class VibeNetworkContractTests: XCTestCase {
     }
 
     func testSpotifyConnectionUsesJukeAuthenticatedConnectFlow() throws {
-        let request = try JukeAuthenticationService.spotifyConnectTicketRequest(token: "secret token")
+        let base = try XCTUnwrap(URL(string: "https://juke.example.test/"))
+        let request = try JukeAuthenticationService.spotifyConnectTicketRequest(token: "secret token", baseURL: base)
         let url = try XCTUnwrap(request.url)
         let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
 
+        XCTAssertEqual(components.host, "juke.example.test")
         XCTAssertEqual(components.path, "/api/v1/auth/spotify/connect-ticket/")
         XCTAssertNil(components.query)
         XCTAssertEqual(request.httpMethod, "POST")
@@ -88,7 +90,7 @@ final class VibeNetworkContractTests: XCTestCase {
         let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
         XCTAssertEqual(
             payload["return_to"],
-            "https://neptune.tail647b75.ts.net/"
+            "https://juke.example.test/"
         )
     }
 
@@ -254,7 +256,7 @@ final class JukeKeychainConfigurationTests: XCTestCase {
         let query = JukeKeychain.genericPasswordQuery(service: "test-service", account: "test-account")
 
         XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
-        XCTAssertEqual(query[kSecAttrAccessGroup as String] as? String, "2WMS6785YD.com.juke.shared")
+        XCTAssertEqual(query[kSecAttrAccessGroup as String] as? String, "2WMS6785YD.com.juke.vibe.shared")
     }
 
     func testDataProtectionKeychainRoundTripDoesNotNeedLegacyACL() throws {

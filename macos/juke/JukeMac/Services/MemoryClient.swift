@@ -6,16 +6,19 @@ struct MemoryServiceError: LocalizedError {
 }
 
 actor MemoryClient {
-    static let defaultBaseURL = URL(string: "https://neptune.tail647b75.ts.net/api/v1/vibe/")!
-    let baseURL: URL
+    /// The configured backend's Vibe memories root (`<api>/vibe/`).
+    static var defaultBaseURL: URL { JukeServer.apiURL().appending(path: "vibe/") }
+    /// A fixed root for tests and the live check; `nil` follows Settings.
+    private let fixedBaseURL: URL?
+    nonisolated var baseURL: URL { fixedBaseURL ?? Self.defaultBaseURL }
     private let session: URLSession
     private let fixtures: Bool
     private var fixtureMemories: [MusicMemory] = []
     private var fixtureTags: [String] = []
     private var fixtureMedia: [UUID: (MemoryMedia, Data)] = [:]
 
-    init(baseURL: URL = MemoryClient.defaultBaseURL, session: URLSession? = nil, fixtures: Bool = false) {
-        self.baseURL = baseURL; self.fixtures = fixtures
+    init(baseURL: URL? = nil, session: URLSession? = nil, fixtures: Bool = false) {
+        fixedBaseURL = baseURL; self.fixtures = fixtures
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 45
         config.requestCachePolicy = .reloadIgnoringLocalCacheData

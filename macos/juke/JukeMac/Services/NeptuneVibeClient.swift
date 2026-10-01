@@ -21,7 +21,7 @@ actor NeptuneVibeClient {
     }
 
     private struct ChangeSet: Codable { let envelopes: [EncryptedEnvelope]; let cursor: String? }
-    private let baseURL = URL(string: "https://neptune.tail647b75.ts.net/api/v1/")!
+    private var baseURL: URL { JukeServer.apiURL() }
     private let session: URLSession
 
     init() {
