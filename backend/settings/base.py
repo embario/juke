@@ -170,6 +170,7 @@ INSTALLED_APPS = [
     'recommender',
     'powerhour',
     'tunetrivia',
+    'radio',
 ]
 
 MIDDLEWARE = [
