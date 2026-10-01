@@ -61,6 +61,11 @@ struct MiniNowPlayingPill: View {
     }
 
     private var note: String? {
-        model.detection.providerName ?? model.detection.playbackDeviceName
+        let radio = model.radio
+        if radio.isPutAway { return "Put away" }
+        if radio.isOnAir, let station = radio.currentStation {
+            return radio.pendingStation.map { "Next: \($0.name)" } ?? station.name
+        }
+        return model.detection.providerName ?? model.detection.playbackDeviceName
     }
 }
