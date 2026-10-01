@@ -20,6 +20,7 @@
 		19DBDCBABF318DC6AB4E11FC /* NowPlayingBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D68D1983C2513C4EF84D8E4 /* NowPlayingBar.swift */; };
 		1B4B9139E0F0B6BF406EC942 /* CaptureSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC39AC4E020543A65AE25C13 /* CaptureSource.swift */; };
 		22814A9562C3C5DB4F9C7085 /* exclusion.json in Resources */ = {isa = PBXBuildFile; fileRef = 23ABA178B0CCEBE6960890BA /* exclusion.json */; };
+		26636B9AC5231BEF7F7CCD51 /* RadioServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200410A3AD271D4ECBDB63B /* RadioServices.swift */; };
 		2E6EEFB11E52B1899EAF412F /* MicrophoneAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEFE4BE4BDE260235E9A322B /* MicrophoneAudioCapture.swift */; };
 		31A43B227BF505B45DF9BB31 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 039C54098D8B6D33F4D1C456 /* LibraryScreen.swift */; };
 		32C66AA334669CC8DA2F788F /* JukeMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD5050A2DECC13CCA305BD3D /* JukeMotion.swift */; };
@@ -28,6 +29,7 @@
 		37D90B800AC3270FC43E6E62 /* session-summary.json in Resources */ = {isa = PBXBuildFile; fileRef = 615DF70185A9ACE0747B288E /* session-summary.json */; };
 		395A665CF7551C19CA39514B /* next.json in Resources */ = {isa = PBXBuildFile; fileRef = 43A032D4B7B6D02F0D6928D5 /* next.json */; };
 		3DB7F1A1DCD03FBFEE51014C /* MemoryPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F9B19B7C78941BAD8FB64A /* MemoryPlaybackTests.swift */; };
+		44095BBE9F68E86BA4816917 /* RadioController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FEBE6A9E78CF565442215B5 /* RadioController.swift */; };
 		4583FB7AA5D4DC87040CF985 /* JukeSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A74471EB5E903AF76CEBE674 /* JukeSection.swift */; };
 		466B8FA1349719B5AFAF1B98 /* JukeHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BE0D3AD19036BBAF3CB5C7 /* JukeHeader.swift */; };
 		47437C814A6D76C2F0C34136 /* ChatVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7D2F8FF92EB403C45B82066 /* ChatVault.swift */; };
@@ -38,6 +40,7 @@
 		50296474248066D4FB6AE690 /* MemoryPhotoLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A98A53C2911A8C10AC242F9 /* MemoryPhotoLibrary.swift */; };
 		50805F513CCF25E50C0D144D /* session-summary-empty.json in Resources */ = {isa = PBXBuildFile; fileRef = E28D66FE164ED9C481DDDBE2 /* session-summary-empty.json */; };
 		544589FF303AC94AF326A837 /* JukeServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3946DE4A515B164F1429E133 /* JukeServer.swift */; };
+		56378172E14AE80359AB6611 /* RadioMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16E5E0E2151EF2A254B79D6A /* RadioMath.swift */; };
 		61C792E35DBFF346134825E0 /* JukeAuthenticationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C92FEE71AB32B6637252BB8B /* JukeAuthenticationService.swift */; };
 		62B9466A3ADA5CDAF5DC3E72 /* MiniNowPlayingPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7767787B9F17ADD821C89C30 /* MiniNowPlayingPill.swift */; };
 		67CA1C22AC991066C00C97FF /* MusicMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4AC4B3714FECC82D783DCC8 /* MusicMemory.swift */; };
@@ -50,6 +53,7 @@
 		81F70F503C1003890A6BEE16 /* stations.json in Resources */ = {isa = PBXBuildFile; fileRef = 12F7BA783F2A9C8A8FF0708C /* stations.json */; };
 		86C6B7E0AC87C7FBA88F646F /* NewStationScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CCC8B5714C63463401E96D /* NewStationScreen.swift */; };
 		8B866413DEB4C665316507A5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9362A6B3B5353DD4D0A760C1 /* Assets.xcassets */; };
+		9118F7756810C8B938341980 /* RadioFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1774747C96BC2991A88F17 /* RadioFixtures.swift */; };
 		91FFA7DFACA1D64B54EE8574 /* MusicDetectionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAFCFDE0F3DB1934E6D3ECB1 /* MusicDetectionController.swift */; };
 		9250F5A992C37AEF428C5E75 /* JukeColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 886AEA3F54EF0EB3A8531890 /* JukeColor.swift */; };
 		952BAA56CDEDE0230B1DB9AC /* CatalogClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F4A3E42EC4497DF21EE812 /* CatalogClient.swift */; };
@@ -109,6 +113,7 @@
 		117C21E15ED1D0503519D016 /* RadioScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioScreen.swift; sourceTree = "<group>"; };
 		12C75F33A361E742EBA68EBE /* play.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = play.json; sourceTree = "<group>"; };
 		12F7BA783F2A9C8A8FF0708C /* stations.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = stations.json; sourceTree = "<group>"; };
+		16E5E0E2151EF2A254B79D6A /* RadioMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioMath.swift; sourceTree = "<group>"; };
 		1837351E929B48F577DA4689 /* JukeMacUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JukeMacUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1F6E92903C89485540D6D044 /* JukeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeTheme.swift; sourceTree = "<group>"; };
 		20FA691EB290A34DFB0A6740 /* NeptuneVibeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeptuneVibeClient.swift; sourceTree = "<group>"; };
@@ -125,7 +130,9 @@
 		4E2BF23683BD4B133A06EA3E /* SectionStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionStage.swift; sourceTree = "<group>"; };
 		51044B5F11349DAF26E70683 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5ABC2C4225D0B0CACC6FA38A /* JukeSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeSettings.swift; sourceTree = "<group>"; };
+		5F1774747C96BC2991A88F17 /* RadioFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioFixtures.swift; sourceTree = "<group>"; };
 		5FE9913F81CECD1BC082DAA9 /* reactions-no-suggestion.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "reactions-no-suggestion.json"; sourceTree = "<group>"; };
+		5FEBE6A9E78CF565442215B5 /* RadioController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioController.swift; sourceTree = "<group>"; };
 		60D68A1ACFB1780C5B871B81 /* ChatScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScreen.swift; sourceTree = "<group>"; };
 		615DF70185A9ACE0747B288E /* session-summary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "session-summary.json"; sourceTree = "<group>"; };
 		61EB7FC9B5F97310189A1F59 /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
@@ -162,6 +169,7 @@
 		C92FEE71AB32B6637252BB8B /* JukeAuthenticationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeAuthenticationService.swift; sourceTree = "<group>"; };
 		C97A0D7D23C3BCD6A5D674C7 /* station.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = station.json; sourceTree = "<group>"; };
 		C99AA589D8F887D305763287 /* JukeAPI+Radio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JukeAPI+Radio.swift"; sourceTree = "<group>"; };
+		D200410A3AD271D4ECBDB63B /* RadioServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioServices.swift; sourceTree = "<group>"; };
 		D27BFF3606228A69593CB096 /* MemoryMediaImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMediaImportTests.swift; sourceTree = "<group>"; };
 		D4F4A3E42EC4497DF21EE812 /* CatalogClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogClient.swift; sourceTree = "<group>"; };
 		D5639943CD2564B108F7906B /* LocalVibeIntelligence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalVibeIntelligence.swift; sourceTree = "<group>"; };
@@ -437,8 +445,20 @@
 				8A308AA24CEF86992E090F87 /* ShazamRecognizer.swift */,
 				61EB7FC9B5F97310189A1F59 /* SystemAudioCapture.swift */,
 				52BD459FF9E01CB4768FFA2F /* API */,
+				E3DC6197B35382BCCDE7C4E9 /* Radio */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		E3DC6197B35382BCCDE7C4E9 /* Radio */ = {
+			isa = PBXGroup;
+			children = (
+				5FEBE6A9E78CF565442215B5 /* RadioController.swift */,
+				5F1774747C96BC2991A88F17 /* RadioFixtures.swift */,
+				16E5E0E2151EF2A254B79D6A /* RadioMath.swift */,
+				D200410A3AD271D4ECBDB63B /* RadioServices.swift */,
+			);
+			path = Radio;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -625,8 +645,12 @@
 				19DBDCBABF318DC6AB4E11FC /* NowPlayingBar.swift in Sources */,
 				98EF1AA0310D5334FB8DFBFB /* PlaybackClient.swift in Sources */,
 				F6FB8A898B8A1065DE8FF87C /* PlayerMetadataMonitor.swift in Sources */,
+				44095BBE9F68E86BA4816917 /* RadioController.swift in Sources */,
+				9118F7756810C8B938341980 /* RadioFixtures.swift in Sources */,
+				56378172E14AE80359AB6611 /* RadioMath.swift in Sources */,
 				03490701C707AB79034A41EE /* RadioModels.swift in Sources */,
 				98C571A7E4BCA575F18F2186 /* RadioScreen.swift in Sources */,
+				26636B9AC5231BEF7F7CCD51 /* RadioServices.swift in Sources */,
 				E7A0A3502FCEA9C36EEB728D /* RecognizedTrack.swift in Sources */,
 				80B05F2C749286111165B866 /* SectionStage.swift in Sources */,
 				9A50201F9DC93258E180A71B /* SettingsView.swift in Sources */,

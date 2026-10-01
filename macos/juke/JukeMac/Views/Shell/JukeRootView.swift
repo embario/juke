@@ -42,6 +42,7 @@ struct JukeRootView: View {
             withAnimation(JukeMotion.colorCrossfade(reduceMotion: reduceMotion)) { isDark = dark }
         }
         .task(id: model.session?.accessToken) { await model.memories.configure(session: model.session) }
+        .task(id: model.session?.account.id) { if model.session != nil { await model.radio.start() } }
         .onChange(of: scenePhase) { _, phase in
             let isActive = phase == .active
             model.detection.setApplicationActive(isActive)
