@@ -10,7 +10,7 @@ final class RadioModelDecodingTests: XCTestCase {
         XCTAssertEqual(list.stations.count, 2)
 
         let mine = list.stations[0]
-        XCTAssertEqual(mine.id, 1)
+        XCTAssertEqual(mine.id.rawValue, "0d6c8a1e-5b1f-4c7e-9a52-6f0f6c2b8a01")
         XCTAssertEqual(mine.name, "My Station")
         XCTAssertEqual(mine.kind, .personal)
         XCTAssertTrue(mine.isPersonal)
@@ -45,7 +45,7 @@ final class RadioModelDecodingTests: XCTestCase {
     func testReactionsWithAndWithoutSuggestion() throws {
         let suggested = try decodeFixture("reactions", as: Radio.ReactionsResponse.self)
         XCTAssertEqual(suggested.reactions, ["😌", "slow sunday"])
-        XCTAssertEqual(suggested.suggestion?.stationId, 5)
+        XCTAssertEqual(suggested.suggestion?.stationId.rawValue, "c4d6e8f0-1a3b-4c5d-8e7f-9a0b1c2d3e05")
         XCTAssertEqual(suggested.suggestion?.matched, ["😌", "☕"])
 
         let plain = try decodeFixture("reactions-no-suggestion", as: Radio.ReactionsResponse.self)
@@ -55,6 +55,7 @@ final class RadioModelDecodingTests: XCTestCase {
     func testPlayKeepsOpaquePlaybackState() throws {
         let play = try decodeFixture("play", as: Radio.PlayResponse.self)
         XCTAssertEqual(play.track.title, "Blue in Green")
+        XCTAssertEqual(play.source, .mlcore)
         XCTAssertEqual(play.state?["is_playing"], .bool(true))
         XCTAssertEqual(play.state?["device"]?["name"], .string("Mac"))
     }
@@ -74,8 +75,13 @@ final class RadioModelDecodingTests: XCTestCase {
         XCTAssertEqual(summary.reactions, ["🌙", "late drive"])
         XCTAssertEqual(summary.startedAt, ISO8601DateFormatter().date(from: "2026-10-01T18:04:05Z"))
 
+        let empty = try decodeFixture("session-summary-empty", as: Radio.SessionSummary.self)
+        XCTAssertNil(empty.startedAt, "no radio session yet")
+        XCTAssertEqual(empty.songCount, 0)
+        XCTAssertTrue(empty.tracks.isEmpty)
+
         let exclusion = try decodeFixture("exclusion", as: Radio.Exclusion.self)
-        XCTAssertEqual(exclusion, Radio.Exclusion(id: 31, scope: .station, kind: .artist, value: "4tZwfgrHOc3mvqYlEYSvVi", label: "Daft Punk"))
+        XCTAssertEqual(exclusion, Radio.Exclusion(id: "b7e2a9d4-6c1f-4e3b-a5d8-0f2c4e6a8b31", scope: .station, kind: .artist, value: "4tZwfgrHOc3mvqYlEYSvVi", label: "Daft Punk"))
     }
 
     func testUnknownEnumValuesDoNotBreakDecoding() throws {
@@ -95,7 +101,7 @@ final class RadioModelDecodingTests: XCTestCase {
     }
 
     func testIDsEncodeAsNumbersWhenNumeric() throws {
-        XCTAssertEqual(try jsonString(Radio.PlayRequest(stationId: 12, mode: .queue, deviceId: nil)), #"{"mode":"queue","stationId":12}"#)
+        XCTAssertEqual(try jsonString(Radio.PlayRequest(stationId: 12, mode: .queue)), #"{"mode":"queue","stationId":12}"#)
         XCTAssertEqual(
             try jsonString(Radio.PlayRequest(stationId: "6c7d", mode: .now, deviceId: "dev")),
             #"{"deviceId":"dev","mode":"now","stationId":"6c7d"}"#
@@ -132,11 +138,11 @@ final class JukeAPIRequestTests: XCTestCase {
             switch (request.httpMethod!, path) {
             case ("GET", "/api/v1/radio/stations/"): return (200, try fixture("stations"))
             case ("POST", "/api/v1/radio/stations/"): return (201, try fixture("station"))
-            case ("PATCH", "/api/v1/radio/stations/12/"): return (200, try fixture("station"))
-            case ("DELETE", "/api/v1/radio/stations/12/"), ("DELETE", "/api/v1/radio/exclusions/31/"): return (204, Data())
-            case ("POST", "/api/v1/radio/stations/12/exclusions/"): return (201, try fixture("exclusion"))
+            case ("PATCH", "/api/v1/radio/stations/3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412/"): return (200, try fixture("station"))
+            case ("DELETE", "/api/v1/radio/stations/3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412/"), ("DELETE", "/api/v1/radio/exclusions/b7e2a9d4-6c1f-4e3b-a5d8-0f2c4e6a8b31/"): return (204, Data())
+            case ("POST", "/api/v1/radio/stations/3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412/exclusions/"): return (201, try fixture("exclusion"))
             case ("PUT", "/api/v1/radio/reactions/"): return (200, try fixture("reactions"))
-            case ("POST", "/api/v1/radio/stations/12/next"): return (200, try fixture("next"))
+            case ("POST", "/api/v1/radio/stations/3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412/next"): return (200, try fixture("next"))
             case ("POST", "/api/v1/radio/play"): return (200, try fixture("play"))
             case ("POST", "/api/v1/radio/events/"): return (204, Data())
             case ("GET", "/api/v1/radio/crate/"): return (200, try fixture("crate"))
@@ -149,14 +155,14 @@ final class JukeAPIRequestTests: XCTestCase {
         XCTAssertEqual(stations.count, 2)
         let seed = Radio.Seed(kind: .track, spotifyId: "3xKsf9qdS1CyvXSMEid6g8", title: "Pink + White", subtitle: "Frank Ocean", artworkUrl: nil)
         _ = try await api.createStation(seeds: [seed], feelings: ["🥹"])
-        _ = try await api.updateStation(12, Radio.UpdateStationRequest(frequency: 101.4))
-        try await api.deleteStation(12)
-        _ = try await api.addExclusion(stationID: 12, Radio.CreateExclusionRequest(scope: .station, kind: .artist, value: "4tZw", label: "Daft Punk"))
-        try await api.deleteExclusion(31)
-        _ = try await api.setReactions(spotifyTrackID: "0aWM", stationID: 12, reactions: ["😌"])
-        _ = try await api.nextTracks(stationID: 12, count: 40, recentTrackIDs: ["a", "b"])
-        _ = try await api.play(stationID: 12, mode: .queue)
-        try await api.postEvent(Radio.EventRequest(stationId: 12, spotifyTrackId: "0aWM", event: .skip, positionMs: 4_000, source: "radio"))
+        _ = try await api.updateStation("3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412", Radio.UpdateStationRequest(frequency: 101.4))
+        try await api.deleteStation("3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412")
+        _ = try await api.addExclusion(stationID: "3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412", Radio.CreateExclusionRequest(scope: .station, kind: .artist, value: "4tZw", label: "Daft Punk"))
+        try await api.deleteExclusion("b7e2a9d4-6c1f-4e3b-a5d8-0f2c4e6a8b31")
+        _ = try await api.setReactions(spotifyTrackID: "0aWM", stationID: "3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412", reactions: ["😌"])
+        _ = try await api.nextTracks(stationID: "3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412", count: 40, recentTrackIDs: ["a", "b"])
+        _ = try await api.play(stationID: "3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412", mode: .queue, recentTrackIDs: ["a"])
+        try await api.postEvent(Radio.EventRequest(stationId: "3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412", spotifyTrackId: "0aWM", event: .skip, positionMs: 4_000, source: "radio", artistId: "art1"))
         let crate = try await api.crate(kind: .album, query: "  kind of blue ")
         XCTAssertEqual(crate.count, 2)
         _ = try await api.sessionSummary()
@@ -165,12 +171,12 @@ final class JukeAPIRequestTests: XCTestCase {
         XCTAssertEqual(requests.map { "\($0.method) \($0.path)" }, [
             "GET /api/v1/radio/stations/",
             "POST /api/v1/radio/stations/",
-            "PATCH /api/v1/radio/stations/12/",
-            "DELETE /api/v1/radio/stations/12/",
-            "POST /api/v1/radio/stations/12/exclusions/",
-            "DELETE /api/v1/radio/exclusions/31/",
+            "PATCH /api/v1/radio/stations/3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412/",
+            "DELETE /api/v1/radio/stations/3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412/",
+            "POST /api/v1/radio/stations/3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412/exclusions/",
+            "DELETE /api/v1/radio/exclusions/b7e2a9d4-6c1f-4e3b-a5d8-0f2c4e6a8b31/",
             "PUT /api/v1/radio/reactions/",
-            "POST /api/v1/radio/stations/12/next",
+            "POST /api/v1/radio/stations/3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412/next",
             "POST /api/v1/radio/play",
             "POST /api/v1/radio/events/",
             "GET /api/v1/radio/crate/",
@@ -180,29 +186,48 @@ final class JukeAPIRequestTests: XCTestCase {
         XCTAssertEqual(requests[1].body, #"{"feelings":["🥹"],"seeds":[{"kind":"track","spotifyId":"3xKsf9qdS1CyvXSMEid6g8","subtitle":"Frank Ocean","title":"Pink + White"}]}"#)
         XCTAssertEqual(requests[2].body, #"{"frequency":101.4}"#)
         XCTAssertEqual(requests[4].body, #"{"kind":"artist","label":"Daft Punk","scope":"station","value":"4tZw"}"#)
-        XCTAssertEqual(requests[6].body, #"{"reactions":["😌"],"spotifyTrackId":"0aWM","stationId":12}"#)
+        XCTAssertEqual(requests[6].body, #"{"reactions":["😌"],"spotifyTrackId":"0aWM","stationId":"3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412"}"#)
         XCTAssertEqual(requests[7].body, #"{"count":10,"recentTrackIds":["a","b"]}"#, "count is clamped to the contract's 1-10")
-        XCTAssertEqual(requests[8].body, #"{"mode":"queue","stationId":12}"#)
-        XCTAssertEqual(requests[9].body, #"{"event":"skip","positionMs":4000,"source":"radio","spotifyTrackId":"0aWM","stationId":12}"#)
+        XCTAssertEqual(requests[8].body, #"{"mode":"queue","recentTrackIds":["a"],"stationId":"3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412"}"#)
+        XCTAssertEqual(requests[9].body, #"{"artistId":"art1","event":"skip","positionMs":4000,"source":"radio","spotifyTrackId":"0aWM","stationId":"3f2b9c44-7a1d-4e8b-b3c5-12a9e7d0c412"}"#)
         XCTAssertEqual(requests[10].query, "kind=albums&q=kind%20of%20blue")
         XCTAssertNil(requests[0].body)
     }
 
-    func testErrorsMapFromStatusCodes() async throws {
+    func testErrorsCarryTheServerCodeAndDetail() async throws {
         let api = makeAPI { request in
             switch request.url!.path(percentEncoded: true) {
             case "/api/v1/radio/stations/": return (401, Data(#"{"detail":"Invalid token."}"#.utf8))
             case "/api/v1/radio/stations/1/": return (400, Data(#"{"seeds":["Add at least one seed or feeling."]}"#.utf8))
-            case "/api/v1/radio/play": return (403, Data())
+            case "/api/v1/radio/play": return (400, Data(#"{"code":"playback_provider_not_linked","detail":"Connect Spotify first."}"#.utf8))
+            case "/api/v1/radio/stations/1/next": return (409, Data(#"{"code":"radio_no_tracks","detail":"Nothing left to play."}"#.utf8))
+            case "/api/v1/radio/events/": return (502, Data(#"{"code":"playback_provider_failure","detail":"no active device"}"#.utf8))
+            case "/api/v1/radio/crate/": return (403, Data())
             default: return (503, Data())
             }
         }
-        await assertThrows(JukeAPIError.unauthorized) { _ = try await api.stations() }
-        await assertThrows(JukeAPIError.rejected(status: 400, message: "Add at least one seed or feeling.")) {
+        await assertThrows(JukeAPIError.unauthorized(code: nil, detail: "Invalid token.")) { _ = try await api.stations() }
+        await assertThrows(JukeAPIError.rejected(status: 400, code: nil, detail: "Add at least one seed or feeling.")) {
             _ = try await api.updateStation(1, Radio.UpdateStationRequest(seeds: []))
         }
-        await assertThrows(JukeAPIError.forbidden) { _ = try await api.play(stationID: 1, mode: .now) }
-        await assertThrows(JukeAPIError.server(status: 503)) { _ = try await api.sessionSummary() }
+        await assertThrows(JukeAPIError.rejected(status: 400, code: "playback_provider_not_linked", detail: "Connect Spotify first.")) {
+            _ = try await api.play(stationID: 1, mode: .now)
+        }
+        await assertThrows(JukeAPIError.rejected(status: 409, code: "radio_no_tracks", detail: "Nothing left to play.")) {
+            _ = try await api.nextTracks(stationID: 1)
+        }
+        do {
+            try await api.postEvent(Radio.EventRequest(spotifyTrackId: "x", event: .play))
+            XCTFail("Expected a provider failure")
+        } catch let error as JukeAPIError {
+            XCTAssertEqual(error.code, "playback_provider_failure")
+            XCTAssertEqual(error.detail, "no active device")
+            XCTAssertEqual(error.status, 502)
+            XCTAssertEqual(error.errorDescription, "no active device")
+        }
+        await assertThrows(JukeAPIError.forbidden(code: nil, detail: nil)) { _ = try await api.crate(kind: .track) }
+        await assertThrows(JukeAPIError.server(status: 503, code: nil, detail: nil)) { _ = try await api.sessionSummary() }
+        XCTAssertNil(JukeAPIError.notSignedIn.code)
     }
 
     func testMissingTokenFailsWithoutANetworkRequest() async {

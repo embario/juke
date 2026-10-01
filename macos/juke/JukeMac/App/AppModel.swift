@@ -110,17 +110,21 @@ final class AppModel {
         } else if !isUITesting {
             Task { await restoreSession() }
         }
-        settings.onBackendURLChange = { [weak self] _ in
-            Task { await self?.backendChanged() }
-        }
+        settings.onBackendURLChange = { [weak self] _ in self?.backendChanged() }
     }
 
     /// A token belongs to the server that issued it, so changing the backend
-    /// in Settings signs out.
-    private func backendChanged() async {
-        guard session != nil else { return }
-        await logout()
-        banner = "The Juke server changed. Sign in again to continue."
+    /// in Settings signs out. The token is dropped synchronously, before any
+    /// client can build a request for the new host; teardown follows.
+    func backendChanged() {
+        let wasSignedIn = session != nil
+        endSession()
+        Task { [auth] in await auth.cancelPendingAttempt() }
+        guard wasSignedIn else { return }
+        Task {
+            await finishSignOut()
+            banner = "The Juke server changed. Sign in again to continue."
+        }
     }
 
     func prepareUITestPresentationIfNeeded() async {
@@ -153,15 +157,28 @@ final class AppModel {
     }
 
     func logout() async {
+        endSession()
+        await finishSignOut()
+    }
+
+    /// The synchronous half of signing out: nothing can use the token after this.
+    private func endSession() {
+        accessToken.set(nil)
         replyTask?.cancel()
         replyTask = nil
-        await detection.stop()
-        do { try await auth.logout() } catch { banner = error.localizedDescription }
+        detection.revokeAccess()
         session = nil
         memories.reset()
         messages = []
         chatVault = nil
         chatVaultAccountID = nil
+        section = .radio
+        coordinator.reset()
+    }
+
+    private func finishSignOut() async {
+        await detection.stop()
+        do { try await auth.logout() } catch { banner = error.localizedDescription }
         lock.lockNow()
     }
 

@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 project_dir=""
-for candidate in "$repo_root/macos/juke" "$repo_root/macos/jukevibe"; do
+for candidate in "$repo_root/macos/juke"; do
   if compgen -G "$candidate/*.xcodeproj" > /dev/null; then project_dir="$candidate"; break; fi
 done
 [[ -n "$project_dir" ]] || { echo "No macOS Xcode project found under macos/" >&2; exit 1; }

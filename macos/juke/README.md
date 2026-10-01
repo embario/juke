@@ -40,8 +40,9 @@ on purpose: the chat key syncs between the Mac and iPhone apps, and renaming any
 of them would make encrypted chat stored on Juke unreadable. The App ID needs
 ShazamKit and Keychain Sharing.
 
-Upgrading from Juke Vibe: the new bundle ID gets a new sandbox container and a
-new session item, so people sign in once more. Memories and encrypted chat come
+Upgrading from Juke Vibe: the new bundle ID gets a fresh sandbox container, so
+people sign in once more and local state starts over (preferences, the local
+SwiftData chat store, cached memory media). Memories and encrypted chat come
 back from the backend after sign-in.
 
 ## Settings

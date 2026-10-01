@@ -298,11 +298,22 @@ extension Radio {
         var stationId: ID
         var mode: PlayMode
         var deviceId: String?
+        /// Recently played track IDs the server should not pick again.
+        var recentTrackIds: [String]?
+
+        init(stationId: ID, mode: PlayMode, deviceId: String? = nil, recentTrackIds: [String]? = nil) {
+            self.stationId = stationId
+            self.mode = mode
+            self.deviceId = deviceId
+            self.recentTrackIds = recentTrackIds
+        }
     }
 
     struct PlayResponse: Codable, Hashable, Sendable {
         let track: Track
         let state: JSONValue?
+        /// Where the pick came from, when the server says.
+        let source: PickSource?
     }
 
     enum Event: String, CaseIterable, UnknownCaseDecodable {
@@ -320,6 +331,17 @@ extension Radio {
         var event: Event
         var positionMs: Int?
         var source: String?
+        /// Lets `never_artist` (and taste signals) name the artist.
+        var artistId: String?
+
+        init(stationId: ID? = nil, spotifyTrackId: String, event: Event, positionMs: Int? = nil, source: String? = nil, artistId: String? = nil) {
+            self.stationId = stationId
+            self.spotifyTrackId = spotifyTrackId
+            self.event = event
+            self.positionMs = positionMs
+            self.source = source
+            self.artistId = artistId
+        }
     }
 
     /// One record in the Library crate.
@@ -344,7 +366,8 @@ extension Radio {
 
     /// `GET session/summary`, for "Save as a memory" when radio is put away.
     struct SessionSummary: Codable, Hashable, Sendable {
-        let startedAt: Date
+        /// `nil` when there has been no radio session yet.
+        let startedAt: Date?
         let songCount: Int
         let reactions: [String]
         let tracks: [Track]

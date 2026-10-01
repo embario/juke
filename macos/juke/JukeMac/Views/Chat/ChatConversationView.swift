@@ -12,7 +12,7 @@ struct ChatConversationView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("LISTENING QUESTION").font(.caption.weight(.bold)).tracking(1.6).foregroundStyle(theme.accent.color)
+                            Text("LISTENING QUESTION").font(.caption.weight(.bold)).tracking(1.6).foregroundStyle(theme.sub.color)
                             Text(model.openingQuestion).font(.system(size: 30, weight: .medium, design: .rounded)).textSelection(.enabled)
                         }
                         .padding(.bottom, 18)

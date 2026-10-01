@@ -38,6 +38,8 @@ struct JukeTheme: Equatable, Sendable {
     let lineOpacity: Double
     /// Dial ticks.
     let tick: Color
+    /// Fills, icons and controls. Not AA-safe as small text on every surface:
+    /// use `ink` (with an icon) for text such as errors.
     let accent: RGB
     /// Text/icons on `accent`.
     let onAccent: RGB

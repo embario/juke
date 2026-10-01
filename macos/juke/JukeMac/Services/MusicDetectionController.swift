@@ -145,6 +145,14 @@ final class MusicDetectionController {
         }
     }
 
+    /// Synchronously stops using the current token (polling included). `stop()`
+    /// finishes the teardown.
+    func revokeAccess() {
+        playbackPollTask?.cancel()
+        playbackPollTask = nil
+        accessToken = nil
+    }
+
     func stop() async {
         await stopServices()
         accessToken = nil

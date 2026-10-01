@@ -1,4 +1,5 @@
 {
   "track": {"spotifyId": "0aWMVrwxPNYkKmFthzmpRi", "uri": "spotify:track:0aWMVrwxPNYkKmFthzmpRi", "title": "Blue in Green", "artist": "Miles Davis", "artistId": "0kbYTNQb4Pb1rPbbaF0pT4", "album": "Kind of Blue", "albumId": "1weenld61qoidwYuZ1GESA", "artworkUrl": "https://i.scdn.co/image/kob", "durationMs": 337000},
+  "source": "mlcore",
   "state": {"is_playing": true, "progress_ms": 0, "device": {"id": "abc", "name": "Mac"}}
 }

@@ -25,7 +25,11 @@ struct SectionStage<Content: View>: View {
             .opacity(phase == .shown ? 1 : 0)
             .offset(y: offset)
             .scaleEffect(scale)
-            .onChange(of: selection) { _, target in transition(to: target) }
+            .onChange(of: selection) { previous, target in
+                // Keep showing the section being left until it has faded out.
+                if displayed == nil { displayed = previous }
+                transition(to: target)
+            }
     }
 
     private var offset: CGFloat {

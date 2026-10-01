@@ -1,7 +1,7 @@
 {
   "stations": [
     {
-      "id": 1,
+      "id": "0d6c8a1e-5b1f-4c7e-9a52-6f0f6c2b8a01",
       "name": "My Station",
       "kind": "personal",
       "frequency": 88.7,
@@ -13,7 +13,7 @@
       "feelings": ["😌", "☀️", "✨"],
       "learning": true,
       "exclusions": [
-        {"id": 7, "scope": "everywhere", "kind": "genre", "value": "holiday", "label": "Holiday music"}
+        {"id": "9a1c3e5f-2b4d-4f6a-8c0e-1d3f5a7b9c07", "scope": "everywhere", "kind": "genre", "value": "holiday", "label": "Holiday music"}
       ],
       "createdAt": "2026-10-01T12:00:00Z"
     },

@@ -23,7 +23,7 @@ enum JukeServer {
     /// Validates and normalises user input for the backend URL.
     ///
     /// HTTPS is required, except for loopback hosts used during local
-    /// development. Query strings, fragments and credentials are rejected so a
+    /// development. A trailing `api/v1` is removed, because clients append it. Query strings, fragments and credentials are rejected so a
     /// token is never sent somewhere unexpected.
     static func normalizedBaseURL(_ text: String) -> URL? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -37,7 +37,11 @@ enum JukeServer {
         guard scheme == "https" || (scheme == "http" && loopback) else { return nil }
         components.scheme = scheme
         components.host = host
-        if !components.path.hasSuffix("/") { components.path += "/" }
+        // People often paste the API root; the base is the server root.
+        var path = components.path
+        while path.hasSuffix("/") { path.removeLast() }
+        if path.lowercased().hasSuffix("/api/v1") { path.removeLast("/api/v1".count) }
+        components.path = path + "/"
         return components.url
     }
 }

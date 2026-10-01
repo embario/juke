@@ -28,7 +28,8 @@ enum JukeAuthError: LocalizedError {
 }
 
 actor JukeAuthenticationService {
-    private struct PendingAttempt { let state: String; let verifier: String }
+    /// `server` pins the code exchange to the server that started sign-in.
+    private struct PendingAttempt { let state: String; let verifier: String; let server: URL }
     private struct SpotifyConnectTicketResponse: Decodable {
         let connectURL: URL
 
@@ -93,8 +94,9 @@ actor JukeAuthenticationService {
         let state = randomURLSafeString(byteCount: 24)
         let verifier = randomURLSafeString(byteCount: 32)
         let challenge = Self.base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
-        pendingAttempt = PendingAttempt(state: state, verifier: verifier)
-        var components = URLComponents(url: baseURL.appending(path: destination.path), resolvingAgainstBaseURL: false)!
+        let server = baseURL
+        pendingAttempt = PendingAttempt(state: state, verifier: verifier, server: server)
+        var components = URLComponents(url: server.appending(path: destination.path), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "client", value: Self.clientID),
             URLQueryItem(name: "redirect_uri", value: Self.redirectURI),
@@ -110,9 +112,10 @@ actor JukeAuthenticationService {
               let items = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems,
               let code = items.first(where: { $0.name == "code" })?.value,
               let returnedState = items.first(where: { $0.name == "state" })?.value,
-              let pendingAttempt, returnedState == pendingAttempt.state else { throw JukeAuthError.invalidCallback }
+              let pendingAttempt, returnedState == pendingAttempt.state,
+              pendingAttempt.server == baseURL else { throw JukeAuthError.invalidCallback }
         self.pendingAttempt = nil
-        var request = URLRequest(url: baseURL.appending(path: "api/v1/auth/vibe/exchange"))
+        var request = URLRequest(url: pendingAttempt.server.appending(path: "api/v1/auth/vibe/exchange"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode([
@@ -126,6 +129,11 @@ actor JukeAuthenticationService {
         let value = try JSONDecoder().decode(JukeSession.self, from: data)
         try save(value)
         return value
+    }
+
+    /// Forgets a sign-in started in the browser (used when the server changes).
+    func cancelPendingAttempt() {
+        pendingAttempt = nil
     }
 
     func logout() throws {

@@ -36,6 +36,7 @@
 		4D4BB5C2A97A3EBA8376EC36 /* JukeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F6E92903C89485540D6D044 /* JukeTheme.swift */; };
 		4FE1669A58E3CA7A69D20BAD /* MemoryJourneyIllustration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 359692B2ECCF69904F7C119C /* MemoryJourneyIllustration.swift */; };
 		50296474248066D4FB6AE690 /* MemoryPhotoLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A98A53C2911A8C10AC242F9 /* MemoryPhotoLibrary.swift */; };
+		50805F513CCF25E50C0D144D /* session-summary-empty.json in Resources */ = {isa = PBXBuildFile; fileRef = E28D66FE164ED9C481DDDBE2 /* session-summary-empty.json */; };
 		544589FF303AC94AF326A837 /* JukeServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3946DE4A515B164F1429E133 /* JukeServer.swift */; };
 		61C792E35DBFF346134825E0 /* JukeAuthenticationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C92FEE71AB32B6637252BB8B /* JukeAuthenticationService.swift */; };
 		62B9466A3ADA5CDAF5DC3E72 /* MiniNowPlayingPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7767787B9F17ADD821C89C30 /* MiniNowPlayingPill.swift */; };
@@ -169,6 +170,7 @@
 		DD4BDF6903395F2568E6FBD2 /* JukeMacUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeMacUITests.swift; sourceTree = "<group>"; };
 		DD5050A2DECC13CCA305BD3D /* JukeMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeMotion.swift; sourceTree = "<group>"; };
 		E000DB5AF95A0C6D31FBDF35 /* JukeComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeComponents.swift; sourceTree = "<group>"; };
+		E28D66FE164ED9C481DDDBE2 /* session-summary-empty.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "session-summary-empty.json"; sourceTree = "<group>"; };
 		E7A5326E7651FDD51AC8DD1D /* JukeMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JukeMac.entitlements; sourceTree = "<group>"; };
 		EAFCFDE0F3DB1934E6D3ECB1 /* MusicDetectionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicDetectionController.swift; sourceTree = "<group>"; };
 		EDDFD76C2195202121C26721 /* JukeAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeAPI.swift; sourceTree = "<group>"; };
@@ -244,6 +246,7 @@
 				12C75F33A361E742EBA68EBE /* play.json */,
 				5FE9913F81CECD1BC082DAA9 /* reactions-no-suggestion.json */,
 				2B556DEDB0E4B68394D71564 /* reactions.json */,
+				E28D66FE164ED9C481DDDBE2 /* session-summary-empty.json */,
 				615DF70185A9ACE0747B288E /* session-summary.json */,
 				C97A0D7D23C3BCD6A5D674C7 /* station.json */,
 				12F7BA783F2A9C8A8FF0708C /* stations.json */,
@@ -561,6 +564,7 @@
 				DFD5018F91E2143B1B1BD904 /* play.json in Resources */,
 				DE381AB7C3D5CFE9569518F6 /* reactions-no-suggestion.json in Resources */,
 				057F2E412B87BC91EADB110C /* reactions.json in Resources */,
+				50805F513CCF25E50C0D144D /* session-summary-empty.json in Resources */,
 				37D90B800AC3270FC43E6E62 /* session-summary.json in Resources */,
 				6B8D6792A84587C5126550CD /* station.json in Resources */,
 				81F70F503C1003890A6BEE16 /* stations.json in Resources */,

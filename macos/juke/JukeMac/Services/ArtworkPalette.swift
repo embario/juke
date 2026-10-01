@@ -42,9 +42,17 @@ final class ArtworkPalette {
             return
         }
         task = Task { [weak self, session] in
-            guard let data = try? await Self.load(artworkURL, session: session), !Task.isCancelled else { return }
-            let color = await Task.detached(priority: .utility) { Self.dominantColor(imageData: data) }.value
-            guard let self, !Task.isCancelled, self.currentURL == artworkURL, let color else { return }
+            let data = try? await Self.load(artworkURL, session: session)
+            let color: RGB? = if let data {
+                await Task.detached(priority: .utility) { Self.dominantColor(imageData: data) }.value
+            } else { nil }
+            guard let self, !Task.isCancelled, self.currentURL == artworkURL else { return }
+            guard let color else {
+                // Failed to load or decode: go neutral and let the same URL retry later.
+                self.currentURL = nil
+                self.apply(JukeTheme.neutralBase)
+                return
+            }
             if self.cache.count > 64 { self.cache.removeAll() }
             self.cache[artworkURL] = color
             self.apply(color)
@@ -81,8 +89,8 @@ final class ArtworkPalette {
         return dominantColor(of: image)
     }
 
-    /// The most prominent colour that is neither near-white nor near-black,
-    /// weighted towards saturated pixels, then kept in a lightness band that
+    /// The most prominent colour that is not near-white, near-black or grey,
+    /// weighted by saturation squared, then kept in a lightness band that
     /// both palettes can tint with.
     ///
     /// Pixels are bucketed at 4 bits per channel; the winning bucket's pixels
@@ -116,10 +124,12 @@ final class ArtworkPalette {
             )
             total.r += rgb.red; total.g += rgb.green; total.b += rgb.blue; total.count += 1
             let hsl = rgb.hsl
-            guard hsl.l > 0.1, hsl.l < 0.9, hsl.s > 0.12 || (hsl.l > 0.2 && hsl.l < 0.8) else { continue }
+            // Skip near-white, near-black and greys, so a colourful area wins
+            // even when it is smaller.
+            guard hsl.l > 0.1, hsl.l < 0.9, hsl.s > 0.2 else { continue }
             let key = Int(rgb.r >> 4) << 8 | Int(rgb.g >> 4) << 4 | Int(rgb.b >> 4)
             var bucket = buckets[key, default: Bucket()]
-            bucket.weight += 1 + 2 * hsl.s
+            bucket.weight += hsl.s * hsl.s
             bucket.r += rgb.red; bucket.g += rgb.green; bucket.b += rgb.blue; bucket.count += 1
             buckets[key] = bucket
         }

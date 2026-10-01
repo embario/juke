@@ -2,56 +2,92 @@ import Foundation
 import Synchronization
 
 /// Errors from `JukeAPI`, mapped from HTTP status codes and transport failures.
+///
+/// HTTP errors carry the server's machine-readable `code` (for example
+/// `playback_provider_not_linked`, `radio_no_tracks`,
+/// `playback_provider_failure`) and human-readable `detail` when it sends them.
 enum JukeAPIError: LocalizedError, Equatable, Sendable {
     case notSignedIn
-    case unauthorized
-    case forbidden
-    case notFound
-    /// 400 or 409/422: the server rejected the request. `message` is the first
-    /// human-readable detail the server returned, when there is one.
-    case rejected(status: Int, message: String?)
-    case server(status: Int)
+    case unauthorized(code: String?, detail: String?)
+    case forbidden(code: String?, detail: String?)
+    case notFound(code: String?, detail: String?)
+    /// 400, 409 or 422: the server rejected the request.
+    case rejected(status: Int, code: String?, detail: String?)
+    /// Any other non-2xx status (5xx, 502 provider failures, ...).
+    case server(status: Int, code: String?, detail: String?)
     case transport(String)
     case decoding(String)
     case responseTooLarge
+
+    /// The server's error code, when it sent one.
+    var code: String? {
+        switch self {
+        case .unauthorized(let code, _), .forbidden(let code, _), .notFound(let code, _),
+             .rejected(_, let code, _), .server(_, let code, _): code
+        default: nil
+        }
+    }
+
+    /// The server's human-readable detail, when it sent one.
+    var detail: String? {
+        switch self {
+        case .unauthorized(_, let detail), .forbidden(_, let detail), .notFound(_, let detail),
+             .rejected(_, _, let detail), .server(_, _, let detail): detail
+        default: nil
+        }
+    }
+
+    /// The HTTP status for server errors.
+    var status: Int? {
+        switch self {
+        case .unauthorized: 401
+        case .forbidden: 403
+        case .notFound: 404
+        case .rejected(let status, _, _), .server(let status, _, _): status
+        default: nil
+        }
+    }
 
     var errorDescription: String? {
         switch self {
         case .notSignedIn: "Sign in to Juke first."
         case .unauthorized: "Your Juke session has expired. Sign in again."
-        case .forbidden: "This Juke account cannot do that."
-        case .notFound: "Juke could not find that."
-        case .rejected(_, let message): message ?? "Juke could not accept that request."
-        case .server: "Juke is temporarily unavailable. Try again in a moment."
+        case .forbidden(_, let detail): detail ?? "This Juke account cannot do that."
+        case .notFound(_, let detail): detail ?? "Juke could not find that."
+        case .rejected(_, _, let detail): detail ?? "Juke could not accept that request."
+        case .server(_, _, let detail): detail ?? "Juke is temporarily unavailable. Try again in a moment."
         case .transport: "Juke could not be reached. Check your connection or the server in Settings."
         case .decoding: "Juke sent a response this version of the app does not understand."
         case .responseTooLarge: "Juke sent an unexpectedly large response."
         }
     }
 
-    /// Maps a non-2xx status to an error, reading DRF-style `detail` or field
-    /// errors from the body when present.
+    /// Maps a non-2xx status to an error, reading `code` and `detail` (or the
+    /// first DRF field error) from the body when present.
     static func from(status: Int, body: Data) -> JukeAPIError {
+        let (code, detail) = serverMessage(in: body)
         switch status {
-        case 401: return .unauthorized
-        case 403: return .forbidden
-        case 404: return .notFound
-        case 400, 409, 422: return .rejected(status: status, message: serverMessage(in: body))
-        default: return .server(status: status)
+        case 401: return .unauthorized(code: code, detail: detail)
+        case 403: return .forbidden(code: code, detail: detail)
+        case 404: return .notFound(code: code, detail: detail)
+        case 400, 409, 422: return .rejected(status: status, code: code, detail: detail)
+        default: return .server(status: status, code: code, detail: detail)
         }
     }
 
-    private static func serverMessage(in body: Data) -> String? {
-        guard let object = try? JSONSerialization.jsonObject(with: body) else { return nil }
+    private static func serverMessage(in body: Data) -> (code: String?, detail: String?) {
+        guard let object = try? JSONSerialization.jsonObject(with: body) else { return (nil, nil) }
         if let dictionary = object as? [String: Any] {
-            if let detail = dictionary["detail"] as? String { return detail }
-            for key in dictionary.keys.sorted() {
-                if let text = dictionary[key] as? String { return text }
-                if let list = dictionary[key] as? [String], let first = list.first { return first }
+            let code = dictionary["code"] as? String
+            if let detail = dictionary["detail"] as? String { return (code, detail) }
+            for key in dictionary.keys.sorted() where key != "code" {
+                if let text = dictionary[key] as? String { return (code, text) }
+                if let list = dictionary[key] as? [String], let first = list.first { return (code, first) }
             }
+            return (code, nil)
         }
-        if let list = object as? [String] { return list.first }
-        return nil
+        if let list = object as? [String] { return (nil, list.first) }
+        return (nil, nil)
     }
 }
 

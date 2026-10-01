@@ -70,7 +70,11 @@ struct SettingsView: View {
                         .disabled(JukeServer.normalizedBaseURL(backendText) == model.settings.backendURL)
                 }
                 if let backendError {
-                    Text(backendError).font(.caption).foregroundStyle(theme.accent.color)
+                    // Ink plus an icon: the accent colour is not AA-safe as text on every surface.
+                    Label(backendError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(theme.ink.color)
+                        .accessibilityIdentifier("settings.backendURL.error")
                 } else {
                     Text("Changing the server signs you out of this one.")
                         .font(.caption).foregroundStyle(theme.sub.color)

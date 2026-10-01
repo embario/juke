@@ -60,4 +60,11 @@ final class JukeCoordinator {
     func focusInLibrary(_ focus: LibraryFocus) {
         libraryFocus = focus
     }
+
+    /// Clears every pending request (sign-out).
+    func reset() {
+        radioRoute = .nowPlaying
+        libraryFocus = nil
+        stationRequest = nil
+    }
 }

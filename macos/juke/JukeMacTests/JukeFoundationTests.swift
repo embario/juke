@@ -1,8 +1,8 @@
 import AppKit
+import SwiftData
 import XCTest
 @testable import Juke
 
-@MainActor
 final class JukeSettingsTests: XCTestCase {
     private var suiteName = ""
     private var defaults: UserDefaults!
@@ -19,6 +19,7 @@ final class JukeSettingsTests: XCTestCase {
         super.tearDown()
     }
 
+    @MainActor
     func testDefaults() {
         let settings = JukeSettings(defaults: defaults)
         XCTAssertEqual(settings.appearance, .system)
@@ -28,13 +29,14 @@ final class JukeSettingsTests: XCTestCase {
         XCTAssertTrue(settings.artworkTintEnabled)
     }
 
+    @MainActor
     func testValuesPersistAcrossInstances() throws {
         let settings = JukeSettings(defaults: defaults)
         settings.appearance = .dark
         settings.crateFlipDirection = .frontToBack
         settings.backgroundRecognitionEnabled = false
         settings.artworkTintEnabled = false
-        try settings.setBackendURL("https://juke-extra.example.test:8200")
+        try settings.setBackendURL("https://juke-extra.example.test:8200/api/v1/")
 
         let reloaded = JukeSettings(defaults: defaults)
         XCTAssertEqual(reloaded.appearance, .dark)
@@ -45,6 +47,7 @@ final class JukeSettingsTests: XCTestCase {
         XCTAssertEqual(JukeServer.apiURL(defaults: defaults).absoluteString, "https://juke-extra.example.test:8200/api/v1/")
     }
 
+    @MainActor
     func testUnknownStoredValuesFallBackToDefaults() {
         defaults.set("sepia", forKey: JukeSettings.Key.appearance)
         defaults.set("diagonal", forKey: JukeSettings.Key.crateFlip)
@@ -55,6 +58,7 @@ final class JukeSettingsTests: XCTestCase {
         XCTAssertEqual(settings.backendURL, JukeServer.defaultBaseURL)
     }
 
+    @MainActor
     func testBackendChangesAreValidatedAndAnnouncedOnce() throws {
         let settings = JukeSettings(defaults: defaults)
         var announced: [URL] = []
@@ -76,13 +80,43 @@ final class JukeSettingsTests: XCTestCase {
         XCTAssertEqual(announced.count, 2)
     }
 
+    @MainActor
+    func testChangingTheServerSignsOutBeforeAnyRequestCanUseTheOldToken() async throws {
+        let schema = Schema([ChatMessage.self])
+        let container = try ModelContainer(for: schema, configurations: [ModelConfiguration("ServerChange", schema: schema, isStoredInMemoryOnly: true)])
+        let settings = JukeSettings(defaults: defaults)
+        let model = AppModel(container: container, settings: settings)
+        model.session = JukeSession(account: .localPreview, accessToken: "old-server-token", authenticatedAt: .now)
+        model.section = .chat
+        model.coordinator.openNewStation()
+
+        try settings.setBackendURL("https://other.example.test")
+
+        // Synchronously, before any await: no session, no token for clients.
+        XCTAssertNil(model.session)
+        XCTAssertEqual(model.section, .radio)
+        XCTAssertEqual(model.coordinator.radioRoute, .nowPlaying)
+        do {
+            _ = try await model.api.stations()
+            XCTFail("The API must not have a token after the server changed")
+        } catch let error as JukeAPIError {
+            XCTAssertEqual(error, .notSignedIn)
+        }
+    }
+
+    @MainActor
     func testServerNormalisation() {
         XCTAssertEqual(JukeServer.normalizedBaseURL("http://127.0.0.1:8000")?.absoluteString, "http://127.0.0.1:8000/")
         XCTAssertEqual(JukeServer.normalizedBaseURL("http://localhost:8000/juke")?.absoluteString, "http://localhost:8000/juke/")
+        XCTAssertEqual(JukeServer.normalizedBaseURL("https://juke.example.test/api/v1")?.absoluteString, "https://juke.example.test/")
+        XCTAssertEqual(JukeServer.normalizedBaseURL("https://juke.example.test/api/v1/")?.absoluteString, "https://juke.example.test/")
+        XCTAssertEqual(JukeServer.normalizedBaseURL("https://juke.example.test/API/V1//")?.absoluteString, "https://juke.example.test/")
+        XCTAssertEqual(JukeServer.normalizedBaseURL("https://juke.example.test/juke/api/v1/")?.absoluteString, "https://juke.example.test/juke/")
         XCTAssertNil(JukeServer.normalizedBaseURL("https://"))
         XCTAssertNil(JukeServer.normalizedBaseURL("https://host.example/#frag"))
     }
 
+    @MainActor
     func testAppearanceMapsToAppKit() {
         XCTAssertNil(AppearanceChoice.system.nsAppearance)
         XCTAssertEqual(AppearanceChoice.light.nsAppearance?.name, .aqua)
@@ -206,6 +240,38 @@ final class ArtworkPaletteTests: XCTestCase {
         let color = try XCTUnwrap(ArtworkPalette.dominantColor(of: image))
         XCTAssertGreaterThan(color.red, color.green + 0.3)
         XCTAssertGreaterThan(color.red, color.blue + 0.3)
+    }
+
+    func testGreysDoNotOutvoteASmallerColourfulArea() throws {
+        // Three quarters mid grey, one quarter muted blue.
+        let image = try makeImage { context, size in
+            context.setFillColor(CGColor(srgbRed: 0.5, green: 0.5, blue: 0.52, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+            context.setFillColor(CGColor(srgbRed: 0x2F / 255, green: 0x4B / 255, blue: 0x7C / 255, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: size / 2, height: size / 2))
+        }
+        let color = try XCTUnwrap(ArtworkPalette.dominantColor(of: image))
+        XCTAssertGreaterThan(color.blue, color.red + 0.2)
+        XCTAssertGreaterThan(color.hsl.s, 0.3)
+    }
+
+    @MainActor
+    func testArtworkThatFailsToLoadFallsBackToNeutral() async throws {
+        let palette = ArtworkPalette()
+        palette.apply(RGB(hex: "#3B2A8F"))
+        let missing = URL(fileURLWithPath: "/nonexistent/\(UUID().uuidString).jpg")
+        palette.update(artworkURL: missing)
+        for _ in 0..<100 where palette.base != JukeTheme.neutralBase {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(palette.base, JukeTheme.neutralBase)
+        // The URL is forgotten, so the same artwork is attempted again.
+        palette.apply(RGB(hex: "#3B2A8F"))
+        palette.update(artworkURL: missing)
+        for _ in 0..<100 where palette.base != JukeTheme.neutralBase {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(palette.base, JukeTheme.neutralBase)
     }
 
     func testAllWhiteArtIsPulledIntoAUsableBand() throws {

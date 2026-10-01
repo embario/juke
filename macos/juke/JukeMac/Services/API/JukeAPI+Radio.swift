@@ -46,8 +46,8 @@ extension JukeAPI {
     }
 
     /// `POST play`
-    func play(stationID: Radio.ID, mode: Radio.PlayMode, deviceID: String? = nil) async throws -> Radio.PlayResponse {
-        try await send(.post, Self.radio + "play", body: Radio.PlayRequest(stationId: stationID, mode: mode, deviceId: deviceID))
+    func play(stationID: Radio.ID, mode: Radio.PlayMode, deviceID: String? = nil, recentTrackIDs: [String]? = nil) async throws -> Radio.PlayResponse {
+        try await send(.post, Self.radio + "play", body: Radio.PlayRequest(stationId: stationID, mode: mode, deviceId: deviceID, recentTrackIds: recentTrackIDs))
     }
 
     /// `POST events/` (204)
