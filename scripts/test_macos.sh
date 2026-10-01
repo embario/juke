@@ -5,7 +5,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 project_dir=""
-for candidate in "$repo_root/macos/juke" "$repo_root/macos/jukevibe"; do
+for candidate in "$repo_root/macos/juke"; do
   if compgen -G "$candidate/*.xcodeproj" > /dev/null; then project_dir="$candidate"; break; fi
 done
 [[ -n "$project_dir" ]] || { echo "No macOS Xcode project found under macos/" >&2; exit 1; }
@@ -18,7 +18,7 @@ scheme="$app_scheme"
 extra=()
 if [[ -n "${CI:-}" ]]; then
   # CI runners have no signing identity; skip the tests that need a team-signed Keychain entitlement.
-  extra+=(CODE_SIGNING_ALLOWED=NO "-skip-testing:${app_scheme}Tests/VibeKeychainConfigurationTests")
+  extra+=(CODE_SIGNING_ALLOWED=NO "-skip-testing:${app_scheme}Tests/JukeKeychainConfigurationTests")
 fi
 
 derived="${DERIVED_DATA_PATH:-$repo_root/.build/macos-derived-data}"

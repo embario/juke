@@ -3,6 +3,7 @@ import apiClient from '@shared/api/apiClient';
 // Mirrors backend settings.VIBE_OAUTH_CLIENTS: each Apple client and the one redirect it may use.
 const vibeClientRedirects = {
   'juke-vibe-mac': 'juke-vibe://auth/callback',
+  'juke-app-mac': 'juke-app://auth/callback',
   'juke-vibe-ios': 'juke-vibe://auth/callback',
   'juke-app-ios': 'juke-app://auth/callback',
 } as const;

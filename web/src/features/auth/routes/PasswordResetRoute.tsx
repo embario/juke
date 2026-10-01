@@ -27,7 +27,7 @@ const PasswordResetRoute = () => {
     setError(null);
     try {
       await sendPasswordResetRequest(email.trim());
-      setMessage('Check your inbox to reset your password. Then return here to sign in to Juke Vibe.');
+      setMessage('Check your inbox to reset your password. Then return here to sign in to the Juke app.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to send the reset email.');
     } finally {

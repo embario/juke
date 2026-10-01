@@ -26,6 +26,19 @@ describe('Vibe browser authentication bridge', () => {
     expect(parseVibeAuthorizationRequest(validSearch.replace('S256', 'plain'))).toBeNull();
   });
 
+  it('pairs the Juke Mac client with its own juke-app redirect', () => {
+    const jukeAppSearch = validSearch
+      .replace('juke-vibe-mac', 'juke-app-mac')
+      .replace(encodeURIComponent('juke-vibe://auth/callback'), encodeURIComponent('juke-app://auth/callback'));
+    expect(parseVibeAuthorizationRequest(jukeAppSearch)).toEqual(
+      expect.objectContaining({ client_id: 'juke-app-mac', redirect_uri: 'juke-app://auth/callback' }),
+    );
+    // A client may not borrow another client's redirect scheme.
+    expect(parseVibeAuthorizationRequest(validSearch.replace('juke-vibe-mac', 'juke-app-mac'))).toBeNull();
+    expect(parseVibeAuthorizationRequest(jukeAppSearch.replace('juke-app-mac', 'juke-vibe-mac'))).toBeNull();
+    expect(parseVibeAuthorizationRequest(jukeAppSearch.replace('juke-app-mac', 'toString'))).toBeNull();
+  });
+
   it('pairs the Juke iPhone client with its own juke-app redirect', () => {
     const jukeAppSearch = validSearch
       .replace('juke-vibe-mac', 'juke-app-ios')
