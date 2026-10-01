@@ -40,7 +40,7 @@ struct RadioStatusLine: View {
         } else if let notice = radio.notice {
             line(notice)
         } else if source == .local {
-            line("Press play on the dial’s station to switch to Juke radio.")
+            line("Playing in \(model.detection.providerName ?? "another app"). Press play on the dial to tune in to \(radio.tunedStation?.name ?? "My Station").")
         } else {
             line("Drag the dial to tune · Hold a station to move it · Spin the record to seek")
         }

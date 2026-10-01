@@ -5,13 +5,31 @@ import SwiftUI
 struct RadioScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var naturalHeight: CGFloat = 0
 
     var body: some View {
+        GeometryReader { proxy in
+            stage
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { naturalHeight = $0 }
+                // The card keeps the reference's proportions and scales down to fit short windows.
+                .scaleEffect(fitScale(available: proxy.size.height))
+                .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("radio.screen")
+    }
+
+    private func fitScale(available: CGFloat) -> CGFloat {
+        guard naturalHeight > 0, available > 0 else { return 1 }
+        return min(1, max(0.6, available / naturalHeight))
+    }
+
+    private var stage: some View {
         ZStack {
             switch model.coordinator.radioRoute {
             case .nowPlaying:
                 Group {
-                    if !model.radio.hasTunedIn, !model.radio.isOnAir, model.detection.track == nil {
+                    if !model.radio.hasTunedIn, !model.radio.isOnAir {
                         TuneInCard()
                     } else {
                         RadioCard()
@@ -24,9 +42,7 @@ struct RadioScreen: View {
             }
         }
         .animation(JukeMotion.navigationIn(reduceMotion: reduceMotion), value: model.coordinator.radioRoute)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("radio.screen")
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var stageTransition: AnyTransition {
@@ -72,9 +88,40 @@ private struct TuneInCard: View {
                 if let issue = radio.issue {
                     RadioIssueView(issue: issue)
                 }
+                if let track = model.detection.track {
+                    localRow(track)
+                }
             }
             .frame(width: JukeMetrics.radioCardWidth - 96)
         }
+    }
+}
+
+private extension TuneInCard {
+    /// What Apple Music or Spotify is already playing, with a pause button.
+    func localRow(_ track: RecognizedTrack) -> some View {
+        let detection = model.detection
+        return HStack(spacing: 10) {
+            RadioArtwork(url: track.artworkURL).frame(width: 36, height: 36)
+            Text("\(Text(track.title).bold()) · \(track.artist)")
+                .font(JukeFont.body(14))
+                .lineLimit(1)
+            Text(detection.providerName ?? "")
+                .font(JukeFont.body(13))
+                .foregroundStyle(theme.sub.color)
+            Spacer(minLength: 0)
+            if detection.canControlPlayback {
+                Button { Task { await detection.togglePlayback() } } label: {
+                    RadioIconLabel(systemName: detection.isPlaying ? "pause.fill" : "play.fill", size: 36, iconSize: 14, style: .well)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(detection.isPlaying ? "Pause" : "Play")
+            }
+        }
+        .padding(8)
+        .jukeWell(cornerRadius: 14)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Playing outside radio")
     }
 }
 
@@ -120,7 +167,7 @@ struct RadioCard: View {
                     tunedFrequency: radio.tunedStation?.frequency ?? FMDial.lowest,
                     currentStationID: radio.currentStationID,
                     tunedStationID: radio.tunedStation?.id,
-                    showsCue: !radio.isPutAway && radio.pendingStationID != nil,
+                    showsCue: !radio.isPutAway && (radio.pendingStationID != nil || source == .local),
                     onTune: { radio.tune(to: $0) },
                     onNewStation: { model.coordinator.openNewStation() },
                     onSwitchNow: { Task { await radio.switchNow() } },
