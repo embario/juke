@@ -73,3 +73,11 @@ Return browser sign-in to the new Juke Mac test build with a verified Juke sessi
 - Concrete deployment patch: build/neptune-sign-in.patch, generated against the
   exact running LoginRoute and preserving its Journal authorization path. Only
   LoginRoute and browserRedirect helper change; user approval required to apply.
+- User approved deployment. Applied the exact patch to /srv/juke-dev after
+  verifying original file hash and git apply --check; original backed up at
+  /tmp/juke-login-route-20261001.before.tsx. Live web HTTP 200 serves the fix;
+  targeted ESLint inside web container passes. Journal auth retained.
+- End-to-end success: Neptune authorization and code exchange both HTTP 200
+  at 21:40:44–45 UTC. Native sidebar visibly present after relaunch (PID 78520),
+  proving the account session persisted. Spotify playback polling returns 204
+  (no current playback). No credential handling required for retest.
