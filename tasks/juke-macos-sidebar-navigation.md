@@ -59,7 +59,14 @@ current integration branch's section routing, playback and theme behavior.
   excluded by the script's unsigned CI mode. `git diff --check` passes.
 - Output: `build/sidebar-tests.log`, executable under
   `build/DerivedData/Build/Products/Debug/Juke.app`. No installed app replaced.
-- Signed entitlement validation and live UI/minimum-window visual verification
-  remain pending. New App ID/profile provisioning is separate from unsigned build.
+- Signed Release build succeeded using Apple Development signing and the new
+  `Mac Team Provisioning Profile: com.juke.mac`; bundle and application identifiers
+  verified as `com.juke.mac` and `2WMS6785YD.com.juke.mac`. Strict signature
+  verification passes. No ShazamKit entitlement requested or added.
+- Opened isolated `build/ReleaseDerivedData/Build/Products/Release/Juke.app` for
+  user testing; build log is `build/juke-test-release.log`. Existing installed app
+  was not replaced. Live minimum-window visual verification remains pending.
+- This build contains integrated foundation plus sidebar; other agents' unmerged
+  Radio/Library/Memory slices are not included.
 - Next: review and incorporate the shell change into integration alongside Claude's
   remaining Radio/Library/Memory slices. iOS navigation remains deferred.
