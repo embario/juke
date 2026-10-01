@@ -47,7 +47,7 @@ Return browser sign-in to the new Juke Mac test build with a verified Juke sessi
 - Implemented deployed sign-in protocol in ASWebAuthenticationSession; bundle ID
   remains com.juke.mac. State/server/PKCE checks remain intact. Duplicate starts
   are blocked; cancellation clears pending attempt and server changes cancel UI.
-- 94 unit tests passed (unsigned CI); added deployed-contract, fresh state and
+- 95 unit tests passed (unsigned CI); added deployed-contract, fresh state and
   mismatched-state regression checks. Signed universal Release build passed;
   strict code signature verification passed. Logs: build/auth-handoff-tests.log
   and build/auth-handoff-release.log.
@@ -56,3 +56,7 @@ Return browser sign-in to the new Juke Mac test build with a verified Juke sessi
   completed account handoff require user retest; no credentials accessed.
 - No remote deployment or installed app replacement. The renamed client contract
   can replace this compatibility protocol once Neptune's web/backend support it.
+- Live test exposed a Swift 6 actor assertion on Apple's SafariLaunchAgent XPC
+  callback queue (PID 66168, crash report Juke-2026-10-01-170621.ips). Moved
+  completion creation to a nonisolated Sendable helper; added a regression invoking
+  it on a background queue from MainActor. Rebuilt, verified signature and relaunched.

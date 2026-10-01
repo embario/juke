@@ -3,6 +3,16 @@ import Security
 @testable import Juke
 
 final class RecognizedTrackTests: XCTestCase {
+    @MainActor
+    func testAuthenticationCallbackResumesFromBackgroundQueue() async throws {
+        let expected = try XCTUnwrap(URL(string: "juke-vibe://auth/callback?code=test&state=test"))
+        let result: URL = try await withCheckedThrowingContinuation { continuation in
+            let completion = JukeBrowserAuthentication.completion(for: continuation)
+            DispatchQueue.global().async { completion(expected, nil) }
+        }
+        XCTAssertEqual(result, expected)
+    }
+
     func testBrowserSignInMatchesDeployedNeptuneContract() async throws {
         let service = JukeAuthenticationService()
         let url = await service.browserURL(for: .login)

@@ -185,14 +185,9 @@ final class JukeBrowserAuthentication: NSObject, ASWebAuthenticationPresentation
         return try await withCheckedThrowingContinuation { continuation in
             let authentication = ASWebAuthenticationSession(
                 url: url,
-                callbackURLScheme: JukeAuthenticationService.callbackScheme
-            ) { callback, error in
-                if let callback {
-                    continuation.resume(returning: callback)
-                } else {
-                    continuation.resume(throwing: error ?? JukeAuthError.invalidCallback)
-                }
-            }
+                callbackURLScheme: JukeAuthenticationService.callbackScheme,
+                completionHandler: Self.completion(for: continuation)
+            )
             authentication.presentationContextProvider = self
             webSession = authentication
             if !authentication.start() {
@@ -202,6 +197,21 @@ final class JukeBrowserAuthentication: NSObject, ASWebAuthenticationPresentation
     }
 
     func cancel() { webSession?.cancel() }
+
+    /// AuthenticationServices calls this on an XPC queue on macOS. Construct it
+    /// outside MainActor isolation; resuming the continuation returns the caller
+    /// to MainActor without asserting on Apple's callback thread.
+    nonisolated static func completion(
+        for continuation: CheckedContinuation<URL, any Error>
+    ) -> @Sendable (URL?, (any Error)?) -> Void {
+        { callback, error in
+            if let callback {
+                continuation.resume(returning: callback)
+            } else {
+                continuation.resume(throwing: error ?? JukeAuthError.invalidCallback)
+            }
+        }
+    }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         NSApp.keyWindow ?? NSApp.mainWindow ?? NSWindow()
