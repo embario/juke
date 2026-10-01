@@ -1,54 +1,75 @@
-# Juke Vibe for macOS
+# Juke for macOS
 
-Juke Vibe is an authenticated music-memory companion for Juke. Save songs,
-photos, videos, and stories, then explore your personal soundtrack over time.
-It observes Apple Music or Spotify player metadata, can explicitly use ShazamKit
-for other sources, and preserves the existing private chat experience.
+Juke is the Mac app for Juke radio, your Library crate, music Memories and
+private Chat (formerly Juke Vibe). It plays radio through Spotify, follows
+Apple Music or Spotify metadata, can use ShazamKit in the background, and keeps
+chat encrypted.
 
 ## Local build
 
 1. Install XcodeGen and run `xcodegen generate` in this directory after changing
-   `project.yml`.
-2. Open `JukeVibeMac.xcodeproj` in Xcode.
-3. Select the `JukeVibeMac` scheme and the paid Juke development team.
+   `project.yml` (or adding/removing files). Commit the regenerated project;
+   never commit `xcuserdata`.
+2. Open `JukeMac.xcodeproj`, select the `JukeMac` scheme and the paid Juke
+   development team.
 
 ## Testing
 
-The default `JukeVibeMac` scheme runs the permission-free unit and integration
-suite. It does not launch or control other applications:
-
 ```sh
-xcodebuild -project JukeVibeMac.xcodeproj \
-  -scheme JukeVibeMac \
-  -destination 'platform=macOS' test
+bash scripts/test_macos.sh          # unit + integration suite (permission-free)
+CI=1 bash scripts/test_macos.sh     # unsigned, like CI (skips the Keychain tests)
+bash scripts/test_macos.sh --ui     # JukeMacUIAutomation scheme
 ```
 
-UI-driving tests are intentionally isolated in the
-`JukeVibeMacUIAutomation` scheme. They are opt-in because macOS requires the
-person running them to grant Xcode or the invoking terminal Automation and
-Accessibility access. Juke Vibe does not attempt to bypass those protections.
-4. Run the Debug build.
+UI-driving tests are isolated in `JukeMacUIAutomation`. They are opt-in because
+macOS requires the person running them to grant the test runner Automation and
+Accessibility access; Juke does not bypass those protections.
 
-The app signs in through `https://neptune.tail647b75.ts.net` and returns through
-the `juke-vibe://auth/callback` URL scheme.
+## Identity
 
-## Signing capabilities
+| | |
+| --- | --- |
+| App / tests / UI tests | `com.juke.mac`, `com.juke.mac.tests`, `com.juke.mac.uitests` |
+| Sign-in client | `juke-app-mac`, callback `juke-app://auth/callback` |
+| Session token (Keychain) | service `com.juke.mac.authentication` |
+| Keychain group | `com.juke.vibe.shared` (shared with Juke for iPhone) |
+| Chat key (iCloud Keychain) | service `com.juke.vibe.shared.chat-vault`, AAD `juke-vibe-chat:v1:<id>` |
 
-The `com.juke.vibe.mac` App ID and provisioning profile require ShazamKit and
-Keychain Sharing. The shared keychain group is `com.juke.vibe.shared`.
+The Keychain group, chat-vault service and AAD label keep their Juke Vibe names
+on purpose: the chat key syncs between the Mac and iPhone apps, and renaming any
+of them would make encrypted chat stored on Juke unreadable. The App ID needs
+ShazamKit and Keychain Sharing.
 
-Chat is encrypted before local persistence or Neptune sync. The current private
-beta shares its encryption key across the user's Apple devices through iCloud
-Keychain; both devices must use the same Apple ID with Keychain sync enabled.
-Account-level device linking and key recovery are a future hardening step.
+Upgrading from Juke Vibe: the new bundle ID gets a new sandbox container and a
+new session item, so people sign in once more. Memories and encrypted chat come
+back from the backend after sign-in.
 
-## Platform behavior
+## Settings
 
-- Apple Music and Spotify metadata are the default, quiet detection path.
-- Around Me asks for microphone access only when selected.
-- This Mac's Audio asks for Screen & System Audio Recording only when selected.
-- The visual palette follows artwork and local audio presence while preserving
-  layout, contrast, Reduce Motion, and Reduce Transparency behavior.
+Settings (Command-,) are stored in `UserDefaults` by `JukeSettings`:
+appearance (Match system, Light, Dark), crate flip direction, album-art tint,
+background recognition, and the backend URL (default
+`https://neptune.tail647b75.ts.net`). Every client resolves the server through
+`JukeServer`; changing it signs out, because a token belongs to its server.
+
+## Code map
+
+- `JukeMac/App`: `JukeApp` (scenes, menu commands: Command-1 to 4 switch
+  sections), `AppModel` (session, `api`, `settings`, `artwork`, `section`),
+  `JukeSection`.
+- `JukeMac/Settings/JukeSettings.swift`: persisted preferences.
+- `JukeMac/Design`: `JukeTheme` (prototype `palette(dark, base)` tokens with a
+  WCAG AA guard), `RGB` (`mix`, contrast), `JukeMotion`, `JukeRadius`,
+  `JukeMetrics`, `JukeFont`, and shared components (`JukeCard`, button styles,
+  `VinylDisc`). Bricolage Grotesque is not bundled yet; the system rounded
+  design stands in.
+- `JukeMac/Services/ArtworkPalette.swift`: dominant album-art colour feeding the theme.
+- `JukeMac/Services/API`: `JukeServer`, `JukeAPI` (typed requests, token auth,
+  error mapping), `RadioModels.swift` (`Radio.Track`, `Radio.Station`, ...),
+  `JukeAPI+Radio.swift` (every `/api/v1/radio/` endpoint).
+- `JukeMac/Views/Shell`: root window, header, `SectionStage` transitions, mini player.
+- `JukeMac/Views/Radio`, `Library`, `Memories`, `Chat`: one folder per section.
+- `JukeMac/Views/Settings`, `Views/Shared`.
 
 ## Music memories (macOS first)
 
@@ -86,7 +107,7 @@ they are separate from encrypted private chat. The Jev adapter is unconfigured
 by default: creation works with an explicit unavailable status and user tags.
 Configure the backend boundary described in `backend/vibe/MEMORIES.md` later.
 Apply all Vibe migrations (through `0003_widen_normalized_memory_tag`) before using the new client in a shared
-environment. The client continues to target the existing private Neptune URL.
+environment. The client uses the backend URL from Settings.
 
 Saved Spotify tracks support start/end segments through authorized Juke playback.
 Music library tracks support local Apple Music controls with Automation access.

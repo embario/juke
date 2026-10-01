@@ -16,18 +16,13 @@ final class AppModel {
     static let chatTextSizeRange = 14.0...22.0
     static let defaultChatTextSize = 17.0
 
-    enum Route: String, CaseIterable, Identifiable {
-        case memories, vibe, discover, library
-        var id: String { rawValue }
-        var title: String { rawValue.capitalized }
-        var symbol: String {
-            switch self { case .memories: "photo.stack"; case .vibe: "sparkles"; case .discover: "safari"; case .library: "music.note.house" }
-        }
-    }
-
     var memoryJourneyActive = false
-    var session: JukeSession?
-    var route: Route = .memories
+    var session: JukeSession? {
+        didSet { accessToken.set(session?.accessToken) }
+    }
+    /// The selected section. Set it from anywhere (nav, menu, mini player);
+    /// `SectionStage` animates the old section out and the new one in.
+    var section: JukeSection = .radio
     var messages: [DisplayChatMessage] = []
     var openingQuestion = "What are you hearing differently right now?"
     var draft = ""
@@ -45,19 +40,27 @@ final class AppModel {
     let memories = MemoryStore()
     let lock = AppLockController()
     let detection = MusicDetectionController()
-    let atmosphere = VisualAtmosphere()
+    let settings: JukeSettings
+    /// Album-art colour feeding `JukeTheme`.
+    let artwork = ArtworkPalette()
+    /// Typed client for the Juke REST API, authenticated as the signed-in user.
+    /// Radio endpoints are in `JukeAPI+Radio.swift`.
+    let api: JukeAPI
 
     private let context: ModelContext
     private let auth = JukeAuthenticationService()
     private let neptune = NeptuneVibeClient()
     private let localIntelligence = LocalVibeIntelligence()
     private let isUITesting: Bool
+    @ObservationIgnored private let accessToken = AccessTokenStore()
     @ObservationIgnored private var replyTask: Task<Void, Never>?
     @ObservationIgnored private var chatVault: ChatVault?
     @ObservationIgnored private var chatVaultAccountID: String?
     nonisolated private static let chatTextSizeKey = "vibe.chatTextSize"
 
-    init(container: ModelContainer) {
+    init(container: ModelContainer, settings: JukeSettings = JukeSettings()) {
+        self.settings = settings
+        api = JukeAPI(token: { [accessToken] in accessToken.get() })
         let arguments = ProcessInfo.processInfo.arguments
         #if DEBUG
         isUITesting = arguments.contains("--uitesting")
@@ -97,13 +100,25 @@ final class AppModel {
             detection.providerName = "Apple Music"
             detection.isAudioPresent = true
             detection.configureUITestPlayback(token: "ui-test-token")
-            syncAtmosphere()
+            accessToken.set(session?.accessToken)
+            syncArtwork()
             if arguments.contains("--uitesting-reset-privacy-welcome") {
                 UserDefaults.standard.removeObject(forKey: privacyWelcomeKey(accountID: JukeAccount.localPreview.id))
             }
         } else if !isUITesting {
             Task { await restoreSession() }
         }
+        settings.onBackendURLChange = { [weak self] _ in
+            Task { await self?.backendChanged() }
+        }
+    }
+
+    /// A token belongs to the server that issued it, so changing the backend
+    /// in Settings signs out.
+    private func backendChanged() async {
+        guard session != nil else { return }
+        await logout()
+        banner = "The Juke server changed. Sign in again to continue."
     }
 
     func prepareUITestPresentationIfNeeded() async {
@@ -205,8 +220,9 @@ final class AppModel {
         } catch { }
     }
 
-    func syncAtmosphere() {
-        atmosphere.update(track: detection.track, isAudioPresent: detection.isAudioPresent)
+    /// Points the theme at the current track's artwork.
+    func syncArtwork() {
+        artwork.update(artworkURL: detection.track?.artworkURL, enabled: settings.artworkTintEnabled)
     }
 
     private func restoreSession() async {

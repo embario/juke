@@ -46,6 +46,7 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
 - ML service: `recommender_engine/app/main.py` describes FastAPI endpoints backed by Postgres embeddings.
 - Frontend: `web/` (Vite project) with `web/src/features`, `shared`, `uikit`, etc.
 - Mobile: `mobile/android/juke` (Gradle multi-module project) and `mobile/ios/juke` (Xcode workspace).
+- macOS: `macos/juke` (XcodeGen `project.yml`, Juke app formerly Juke Vibe). Run `bash scripts/test_macos.sh` (`--ui` for UI automation); see `macos/juke/README.md` for the code map.
 - Utility scripts: `scripts/` includes build helpers for both mobile platforms and log tailers.
 
 ## Common Workflows

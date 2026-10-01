@@ -739,7 +739,7 @@ struct MemoryComposerView: View {
         Task {
             guard let image = await MemoryPhotoLibrary.thumbnail(for: first), isActive else { return }
             leadThumbnail = image
-            leadColor = VisualAtmosphere.averageColor(image).map(Color.journeyAccent(from:))
+            leadColor = ArtworkPalette.averageColor(image).map(Color.journeyAccent(from:))
         }
     }
     private func remove(_ item: Attachment) {
@@ -756,7 +756,7 @@ struct MemoryComposerView: View {
         attachments.append(Attachment(media: media, metadata: details, thumbnail: file.thumbnail.flatMap(NSImage.init(data:)), assetID: assetID))
         draft.mediaIDs.append(media.id); reviewed = false
         if leadThumbnail == nil, attachments.count == 1, let image = attachments.first?.thumbnail {
-            leadColor = VisualAtmosphere.averageColor(image).map(Color.journeyAccent(from:))
+            leadColor = ArtworkPalette.averageColor(image).map(Color.journeyAccent(from:))
         }
         let place = await details.placeName()
         if let index = attachments.firstIndex(where: { $0.id == media.id }) { attachments[index].place = place }

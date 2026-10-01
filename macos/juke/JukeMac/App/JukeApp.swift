@@ -29,11 +29,36 @@ struct JukeApp: App {
             JukeRootView()
                 .environment(model)
                 .modelContainer(container)
-                .frame(minWidth: 900, minHeight: 640)
+                .frame(minWidth: 1000, minHeight: 680)
                 .onOpenURL { url in Task { await model.completeAuthentication(url) } }
         }
         .windowResizability(.contentMinSize)
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+        .commands { JukeCommands(model: model) }
 
-        Settings { VibeSettingsView().environment(model).frame(width: 520) }
+        Settings {
+            SettingsView()
+                .environment(model)
+                .frame(width: 540, height: 620)
+        }
+    }
+}
+
+/// Menu commands: Command-1…4 switch sections, and Sign Out lives in the app menu.
+private struct JukeCommands: Commands {
+    let model: AppModel
+
+    var body: some Commands {
+        CommandMenu("Go") {
+            ForEach(JukeSection.allCases) { section in
+                Button(section.title) { model.section = section }
+                    .keyboardShortcut(KeyEquivalent(section.shortcut), modifiers: .command)
+                    .disabled(model.session == nil)
+            }
+        }
+        CommandGroup(after: .appSettings) {
+            Button("Sign Out") { Task { await model.logout() } }
+                .disabled(model.session == nil)
+        }
     }
 }

@@ -110,7 +110,7 @@ final class JourneyArtworkCache {
             defer { inFlight.remove(url) }
             guard let (data, _) = try? await URLSession.shared.data(from: url), data.count < 12_000_000, let image = NSImage(data: data) else { return }
             images[url] = image
-            if let color = VisualAtmosphere.averageColor(image) { colors[url] = .journeyAccent(from: color) }
+            if let color = ArtworkPalette.averageColor(image) { colors[url] = .journeyAccent(from: color) }
         }
     }
 }

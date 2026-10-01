@@ -23,11 +23,43 @@ final class JukeMacUITests: XCTestCase {
         XCTAssertTrue(app.buttons["authentication.createAccount"].exists)
     }
 
-    func testSidebarStartsCompressed() {
+    func testRadioIsTheStartingSectionAndNavigationReachesEverySection() {
         launch(arguments: ["--uitesting-authenticated"])
 
+        XCTAssertTrue(element("radio.screen").waitForExistence(timeout: 4))
+        for section in ["radio", "library", "memories", "chat"] {
+            XCTAssertTrue(app.buttons["nav.\(section)"].exists, section)
+        }
+        XCTAssertFalse(element("miniPlayer").exists, "Radio shows the full player, not the mini pill")
+        attachScreenshot("radio")
+
+        open("library")
+        XCTAssertTrue(element("miniPlayer").waitForExistence(timeout: 2))
+        attachScreenshot("library")
+        open("memories")
         XCTAssertTrue(app.buttons["memory.new"].waitForExistence(timeout: 4))
-        XCTAssertFalse(app.buttons["sidebar.discover"].exists)
+        attachScreenshot("memories")
+        open("chat")
+        XCTAssertTrue(element("chat.composer").waitForExistence(timeout: 4))
+        attachScreenshot("chat")
+
+        app.buttons["miniPlayer.openRadio"].click()
+        XCTAssertTrue(element("radio.screen").waitForExistence(timeout: 3))
+        XCTAssertFalse(element("miniPlayer").waitForExistence(timeout: 1))
+
+        app.typeKey("3", modifierFlags: .command)
+        XCTAssertTrue(element("memories.screen").waitForExistence(timeout: 3))
+    }
+
+    func testAppearanceControlSwitchesLightAndDark() {
+        launch(arguments: ["--uitesting-authenticated"])
+        XCTAssertTrue(app.buttons["appearance.dark"].waitForExistence(timeout: 4))
+        app.buttons["appearance.dark"].click()
+        attachScreenshot("radio-dark")
+        app.buttons["appearance.light"].click()
+        attachScreenshot("radio-light")
+        app.buttons["appearance.system"].click()
+        XCTAssertTrue(element("radio.screen").exists)
     }
 
     func testChatRespondsAsynchronouslyWithTypingFeedback() {
@@ -60,7 +92,7 @@ final class JukeMacUITests: XCTestCase {
         pause.click()
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 2))
 
-        app.buttons["sidebar.discover"].click()
+        open("library")
         let search = element("discover.query")
         XCTAssertTrue(search.waitForExistence(timeout: 3))
         search.click()
@@ -72,13 +104,15 @@ final class JukeMacUITests: XCTestCase {
         XCTAssertTrue(element("catalog.albumDetail").waitForExistence(timeout: 4))
         XCTAssertTrue(element("catalog.track.highlighted").exists)
 
-        app.buttons["sidebar.library"].click()
-        XCTAssertTrue(app.staticTexts["Your Juke library"].waitForExistence(timeout: 3))
+        XCTAssertTrue(element("miniPlayer").exists)
 
-        app.buttons["sidebar.settings"].click()
+        app.typeKey(",", modifierFlags: .command)
         XCTAssertTrue(element("settings.view").waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["Conversation privacy"].exists)
         XCTAssertTrue(element("settings.chatTextSize").exists)
+        XCTAssertTrue(element("settings.appearance").exists)
+        XCTAssertTrue(element("settings.crateFlip").exists)
+        XCTAssertTrue(element("settings.backgroundRecognition").exists)
+        XCTAssertTrue(element("settings.backendURL").exists)
     }
 
     func testEncryptionEducationIsAOneTimeLoginMoment() {
@@ -106,7 +140,7 @@ final class JukeMacUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Playback mode"].waitForExistence(timeout: 2))
         app.typeKey(.escape, modifierFlags: [])
 
-        app.buttons["sidebar.discover"].click()
+        open("library")
         XCTAssertTrue(element("discover.spectatorMode").waitForExistence(timeout: 3))
         let search = element("discover.query")
         search.click()
@@ -137,7 +171,8 @@ final class JukeMacUITests: XCTestCase {
     }
 
     func testAuthenticatedMemoryCanBeReviewedSavedBrowsedAndRetagged() {
-        launch(arguments: ["--uitesting-authenticated", "--uitesting-expanded-sidebar"])
+        launch(arguments: ["--uitesting-authenticated"])
+        open("memories")
         beginStory()
         let body = element("memory.body")
         body.click(); body.typeText("The long way home. #Rainy-walks")
@@ -171,11 +206,13 @@ final class JukeMacUITests: XCTestCase {
 
     func testMemoryComposerRequiresContentBeforeReview() {
         launch(arguments: ["--uitesting-authenticated"])
+        open("memories")
         beginStory()
         XCTAssertFalse(app.buttons["memory.next"].isEnabled)
         XCTAssertFalse(element("memory.title").exists)
         XCTAssertFalse(app.buttons["memory.photos"].exists)
         XCTAssertFalse(element("nowPlaying.bar").exists)
+        XCTAssertFalse(element("miniPlayer").exists, "the mini player hides during the memory journey")
         let body = element("memory.body")
         body.click(); body.typeText("A few words are enough.")
         XCTAssertTrue(app.buttons["memory.next"].isEnabled)
@@ -189,6 +226,7 @@ final class JukeMacUITests: XCTestCase {
 
     func testInlineTimeTravelAndSongOnlyMemory() {
         launch(arguments: ["--uitesting-authenticated"])
+        open("memories")
         XCTAssertTrue(app.buttons["memory.new"].waitForExistence(timeout: 4))
         app.buttons["memory.new"].click()
         XCTAssertFalse(element("memory.body").exists)
@@ -253,7 +291,8 @@ final class JukeMacUITests: XCTestCase {
         app.launchEnvironment["VIBE_MEMORY_E2E_TOKEN"] = authentication.token
         app.launchEnvironment["VIBE_MEMORY_E2E_ACCOUNT_ID"] = credentials.accountID
         app.launchEnvironment["VIBE_MEMORY_E2E_BASE_URL"] = base.absoluteString
-        launch(arguments: ["--uitesting-authenticated", "--uitesting-expanded-sidebar"])
+        launch(arguments: ["--uitesting-authenticated"])
+        open("memories")
 
         let unique = String(UUID().uuidString.prefix(8))
         let memoryTitle = "Live memory \(unique)"
@@ -343,11 +382,26 @@ final class JukeMacUITests: XCTestCase {
     }
 
     private func launchAuthenticated(additionalArguments: [String] = []) {
-        launch(arguments: ["--uitesting-authenticated", "--uitesting-expanded-sidebar"] + additionalArguments)
+        launch(arguments: ["--uitesting-authenticated"] + additionalArguments)
         if !additionalArguments.contains("--uitesting-show-privacy-welcome") {
-            XCTAssertTrue(app.buttons["sidebar.vibe"].waitForExistence(timeout: 4))
-            app.buttons["sidebar.vibe"].click()
+            open("chat")
         }
+    }
+
+    /// Clicks a section in the header nav and waits for its screen.
+    private func open(_ section: String) {
+        let tab = app.buttons["nav.\(section)"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 4), section)
+        tab.click()
+        XCTAssertTrue(element("\(section).screen").waitForExistence(timeout: 3), section)
+    }
+
+    private func attachScreenshot(_ name: String) {
+        Thread.sleep(forTimeInterval: 1.2) // let the stage and colour transitions settle
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func launch(arguments: [String] = []) {

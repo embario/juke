@@ -1,6 +1,7 @@
 import SwiftUI
 
-struct VibeChatView: View {
+struct ChatConversationView: View {
+    @Environment(\.jukeTheme) private var theme
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focused: Bool
@@ -11,7 +12,7 @@ struct VibeChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("LISTENING QUESTION").font(.caption.weight(.bold)).tracking(1.6).foregroundStyle(model.atmosphere.primary)
+                            Text("LISTENING QUESTION").font(.caption.weight(.bold)).tracking(1.6).foregroundStyle(theme.accent.color)
                             Text(model.openingQuestion).font(.system(size: 30, weight: .medium, design: .rounded)).textSelection(.enabled)
                         }
                         .padding(.bottom, 18)
@@ -73,12 +74,12 @@ struct VibeChatView: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 16)
                     .strokeBorder(
-                        focused ? model.atmosphere.primary.opacity(0.85) : Color.white.opacity(0.34),
+                        focused ? theme.accent.color.opacity(0.85) : Color.white.opacity(0.34),
                         lineWidth: focused ? 1.5 : 1
                     )
             }
             Button { model.send() } label: { Image(systemName: "arrow.up").font(.headline).frame(width: 34, height: 34) }
-                .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(model.atmosphere.primary)
+                .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(theme.accent.color)
                 .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isSending)
                 .accessibilityLabel("Send message")
                 .accessibilityIdentifier("chat.send")

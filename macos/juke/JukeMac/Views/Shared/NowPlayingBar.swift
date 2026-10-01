@@ -1,6 +1,9 @@
 import SwiftUI
 
+/// Current-track metadata, playback controls, progress and the listening-mode
+/// menu. Hosted by the Radio placeholder until S3 replaces it with the record card.
 struct NowPlayingBar: View {
+    @Environment(\.jukeTheme) private var theme
     @Environment(AppModel.self) private var model
     @State private var scrubPosition: TimeInterval = 0
     @State private var isScrubbing = false
@@ -22,7 +25,7 @@ struct NowPlayingBar: View {
                 Spacer(minLength: 12)
                 playbackAccessBadge
                 Circle()
-                    .fill(model.detection.isAudioPresent ? model.atmosphere.primary : .secondary.opacity(0.35))
+                    .fill(model.detection.isAudioPresent ? theme.accent.color : .secondary.opacity(0.35))
                     .frame(width: 8, height: 8)
                 detectionMenu
             }
@@ -47,9 +50,6 @@ struct NowPlayingBar: View {
                     .accessibilityIdentifier("nowPlaying.error")
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 11)
-        .background(.ultraThinMaterial)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("nowPlaying.bar")
     }
@@ -92,7 +92,7 @@ struct NowPlayingBar: View {
         ResponsivePlaybackButton(
             label: label,
             symbol: symbol,
-            tint: model.atmosphere.primary,
+            tint: theme.accent.color,
             prominent: prominent,
             isBusy: model.detection.isPlaybackBusy,
             action: action
@@ -187,7 +187,7 @@ struct NowPlayingBar: View {
                         }
                     }
                 )
-                .tint(model.atmosphere.primary)
+                .tint(theme.accent.color)
                 .controlSize(.large)
                 .disabled(model.detection.isPlaybackBusy)
                 .accessibilityLabel("Playback position")
@@ -211,7 +211,7 @@ struct NowPlayingBar: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.secondary.opacity(0.2)).frame(height: 5)
                 Capsule()
-                    .fill(model.atmosphere.primary.opacity(0.8))
+                    .fill(theme.accent.color.opacity(0.8))
                     .frame(width: proxy.size.width * fraction, height: 5)
             }
             .frame(maxHeight: .infinity)
@@ -226,9 +226,9 @@ struct NowPlayingBar: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         } else {
             RoundedRectangle(cornerRadius: 8)
-                .fill(model.atmosphere.primary.opacity(0.24))
+                .fill(theme.accent.color.opacity(0.24))
                 .frame(width: 48, height: 48)
-                .overlay(Image(systemName: "waveform").foregroundStyle(model.atmosphere.primary))
+                .overlay(Image(systemName: "waveform").foregroundStyle(theme.accent.color))
         }
     }
 

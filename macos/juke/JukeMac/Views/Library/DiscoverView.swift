@@ -6,6 +6,7 @@ private enum CatalogRoute: Hashable {
 }
 
 struct DiscoverView: View {
+    @Environment(\.jukeTheme) private var theme
     @Environment(AppModel.self) private var model
     @State private var query = ""
     @State private var kind = "tracks"
@@ -57,7 +58,7 @@ struct DiscoverView: View {
                 .frame(width: 120)
                 Button("Search") { search() }
                     .buttonStyle(.borderedProminent)
-                    .tint(model.atmosphere.primary)
+                    .tint(theme.accent.color)
                     .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty || isSearching)
                     .accessibilityIdentifier("discover.search")
             }
@@ -114,6 +115,7 @@ struct DiscoverView: View {
 }
 
 private struct CatalogResultCard: View {
+    @Environment(\.jukeTheme) private var theme
     @Environment(AppModel.self) private var model
     let result: CatalogSearchResult
     let kind: String
@@ -129,8 +131,8 @@ private struct CatalogResultCard: View {
                     image.resizable().scaledToFill()
                 } placeholder: {
                     Rectangle()
-                        .fill(model.atmosphere.primary.opacity(0.15))
-                        .overlay(Image(systemName: "music.note").font(.title2).foregroundStyle(model.atmosphere.primary))
+                        .fill(theme.accent.color.opacity(0.15))
+                        .overlay(Image(systemName: "music.note").font(.title2).foregroundStyle(theme.accent.color))
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -162,10 +164,10 @@ private struct CatalogResultCard: View {
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
-                    .strokeBorder(model.atmosphere.primary.opacity(isHovered ? 0.7 : 0.12), lineWidth: isHovered ? 2 : 1)
+                    .strokeBorder(theme.accent.color.opacity(isHovered ? 0.7 : 0.12), lineWidth: isHovered ? 2 : 1)
             }
             .scaleEffect(isHovered ? 1.018 : 1)
-            .shadow(color: model.atmosphere.primary.opacity(isHovered ? 0.2 : 0), radius: 12, y: 4)
+            .shadow(color: theme.accent.color.opacity(isHovered ? 0.2 : 0), radius: 12, y: 4)
         }
         .buttonStyle(.plain)
         .contentShape(RoundedRectangle(cornerRadius: 18))
@@ -270,6 +272,7 @@ private struct AlbumDetailPage: View {
 }
 
 private struct AlbumTrackRow: View {
+    @Environment(\.jukeTheme) private var theme
     @Environment(AppModel.self) private var model
     let track: CatalogTrackDetail
     let album: CatalogAlbumDetail
@@ -296,7 +299,7 @@ private struct AlbumTrackRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
-            model.atmosphere.primary.opacity(isHighlighted ? 0.24 : (isHovered ? 0.12 : 0)),
+            theme.accent.color.opacity(isHighlighted ? 0.24 : (isHovered ? 0.12 : 0)),
             in: RoundedRectangle(cornerRadius: 11)
         )
         .onHover { hovering in withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering } }
@@ -482,28 +485,4 @@ private func formatDuration(_ milliseconds: Int?) -> String {
     guard let milliseconds else { return "—" }
     let seconds = max(0, milliseconds / 1_000)
     return "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
-}
-
-struct PrivateListeningLibraryView: View {
-    @Environment(AppModel.self) private var model
-    var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Text("Your Juke library").font(.system(size: 32, weight: .semibold, design: .rounded))
-            Text("Saved music and provider connections will live here. The first build keeps this surface intentionally small while catalog browsing and listening context connect to Neptune.")
-                .foregroundStyle(.secondary).frame(maxWidth: 560, alignment: .leading)
-            HStack(spacing: 16) {
-                libraryCard("Spotify", symbol: "dot.radiowaves.left.and.right", detail: "Connect and browse through Juke")
-                libraryCard("Apple Music", symbol: "music.note", detail: "Current playback is detected locally")
-            }
-            Spacer()
-        }.padding(30).frame(maxWidth: .infinity, alignment: .leading).navigationTitle("Library")
-    }
-
-    private func libraryCard(_ title: String, symbol: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: symbol).font(.title).foregroundStyle(model.atmosphere.primary)
-            Text(title).font(.headline)
-            Text(detail).font(.caption).foregroundStyle(.secondary)
-        }.frame(maxWidth: 220, alignment: .leading).padding(18).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-    }
 }

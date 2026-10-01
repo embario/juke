@@ -1,48 +1,114 @@
 import SwiftUI
 
-struct VibeSettingsView: View {
+/// The Settings window (Command-,). Every preference lives in `JukeSettings`;
+/// chat text size and the privacy lock keep their existing homes.
+struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var backendText = ""
+    @State private var backendError: String?
+
+    private var theme: JukeTheme { JukeTheme.palette(dark: colorScheme == .dark, base: model.artwork.base) }
+
     var body: some View {
-        ZStack {
-            VibeAtmosphereBackground(atmosphere: model.atmosphere)
-            Form {
-                Section("Visual atmosphere") {
-                    Toggle("Let the interface respond to the music", isOn: Bindable(model.atmosphere).isEnabled)
-                    Text("Artwork shapes the palette; active audio gently raises the visual intensity. Reduce Motion is always respected.").font(.caption).foregroundStyle(.secondary)
+        @Bindable var settings = model.settings
+        Form {
+            Section("Appearance") {
+                Picker("Appearance", selection: $settings.appearance) {
+                    ForEach(AppearanceChoice.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) }
                 }
-                Section("Chat appearance") {
-                    HStack {
-                        Text("Text size")
-                        Slider(
-                            value: Bindable(model).chatTextSize,
-                            in: AppModel.chatTextSizeRange,
-                            step: 1
-                        )
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings.appearance")
+                Toggle("Tint the window with the album art", isOn: $settings.artworkTintEnabled)
+                    .accessibilityIdentifier("settings.artworkTint")
+                Text("Colours follow the current record and always keep text readable. Reduce Motion is respected.")
+                    .font(.caption).foregroundStyle(theme.sub.color)
+            }
+
+            Section("Library") {
+                Picker("Flip through the crate", selection: $settings.crateFlipDirection) {
+                    ForEach(CrateFlipDirection.allCases) { Text($0.label).tag($0) }
+                }
+                .accessibilityIdentifier("settings.crateFlip")
+            }
+
+            Section("Listening") {
+                Toggle("Recognize music in the background", isOn: $settings.backgroundRecognitionEnabled)
+                    .accessibilityIdentifier("settings.backgroundRecognition")
+                Text("Juke quietly notes what plays in Spotify or Apple Music (and, when you allow it, what Shazam hears) so your station keeps learning.")
+                    .font(.caption).foregroundStyle(theme.sub.color)
+            }
+
+            Section("Chat") {
+                HStack {
+                    Text("Text size")
+                    Slider(value: Bindable(model).chatTextSize, in: AppModel.chatTextSizeRange, step: 1)
                         .accessibilityIdentifier("settings.chatTextSize")
-                        Text("\(Int(model.chatTextSize)) pt")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                            .frame(width: 42, alignment: .trailing)
-                    }
-                    Text("Juke keeps chat text between 14 and 22 points so conversations remain readable without crowding the window.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text("\(Int(model.chatTextSize)) pt")
+                        .monospacedDigit()
+                        .foregroundStyle(theme.sub.color)
+                        .frame(width: 42, alignment: .trailing)
                 }
-                Section("Privacy lock") {
-                    Picker("Lock after", selection: Bindable(model.lock).lockAfterMinutes) {
-                        Text("Immediately").tag(0); Text("1 minute").tag(1); Text("5 minutes").tag(5); Text("15 minutes").tag(15)
-                    }
-                    Button("Lock now") { model.lock.lockNow() }
+                Label("Chat is encrypted before it reaches local storage or Juke.", systemImage: "lock.shield")
+                    .font(.caption)
+            }
+
+            Section("Privacy lock") {
+                Picker("Lock after", selection: Bindable(model.lock).lockAfterMinutes) {
+                    Text("Immediately").tag(0); Text("1 minute").tag(1); Text("5 minutes").tag(5); Text("15 minutes").tag(15)
                 }
-                Section("Conversation privacy") {
-                    Label("Chat is encrypted before it reaches local storage.", systemImage: "lock.shield")
-                    Text("Past conversation stays on your devices. Cloud chat receives only the message you deliberately send and current-track metadata.").font(.caption).foregroundStyle(.secondary)
+                Button("Lock now") { model.lock.lockNow() }
+            }
+
+            Section("Server") {
+                HStack {
+                    TextField("Juke server", text: $backendText, prompt: Text(JukeServer.defaultBaseURL.absoluteString))
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(applyBackend)
+                        .accessibilityIdentifier("settings.backendURL")
+                    Button("Apply", action: applyBackend)
+                        .disabled(JukeServer.normalizedBaseURL(backendText) == model.settings.backendURL)
+                }
+                if let backendError {
+                    Text(backendError).font(.caption).foregroundStyle(theme.accent.color)
+                } else {
+                    Text("Changing the server signs you out of this one.")
+                        .font(.caption).foregroundStyle(theme.sub.color)
+                }
+                if model.settings.backendURL != JukeServer.defaultBaseURL {
+                    Button("Use the default server") {
+                        model.settings.resetBackendURL()
+                        backendText = model.settings.backendURL.absoluteString
+                        backendError = nil
+                    }
                 }
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .padding()
-            .accessibilityIdentifier("settings.view")
-        }.navigationTitle("Juke Settings")
+
+            if let session = model.session {
+                Section("Account") {
+                    LabeledContent("Signed in as", value: session.account.displayName)
+                    Button("Sign out", role: .destructive) { Task { await model.logout() } }
+                        .accessibilityIdentifier("settings.signOut")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(theme.bg.color)
+        .tint(theme.accent.color)
+        .environment(\.jukeTheme, theme)
+        .onAppear { backendText = model.settings.backendURL.absoluteString }
+        .accessibilityIdentifier("settings.view")
+        .navigationTitle("Juke Settings")
+    }
+
+    private func applyBackend() {
+        do {
+            try model.settings.setBackendURL(backendText)
+            backendText = model.settings.backendURL.absoluteString
+            backendError = nil
+        } catch {
+            backendError = error.localizedDescription
+        }
     }
 }
