@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The single Juke window: page background, header, the section stage and
+/// The single Juke window: page background, sidebar, the section stage and
 /// the floating mini player. Builds the `JukeTheme` from the appearance and
 /// the current artwork colour and injects it for every screen.
 struct JukeRootView: View {
@@ -71,20 +71,27 @@ struct JukeRootView: View {
     private var signedInContent: some View {
         let section = model.section
         let showsPill = section.showsMiniPlayer && !model.memoryJourneyActive
-        return VStack(spacing: 0) {
-            JukeHeader()
-            SectionStage(selection: section) { shown in
-                screen(for: shown)
+        return HStack(spacing: 0) {
+            JukeSidebar()
+            Rectangle()
+                .fill(theme.sub.color.opacity(0.15))
+                .frame(width: 1)
+            VStack(spacing: 0) {
+                SectionStage(selection: section) { shown in
+                    screen(for: shown)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, JukeMetrics.headerHorizontalPadding)
+                .padding(.top, JukeMetrics.headerVerticalPadding)
+                .padding(.bottom, section.showsMiniPlayer ? JukeMetrics.stageBottomPaddingWithPill : JukeMetrics.stageBottomPaddingRadio)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, JukeMetrics.headerHorizontalPadding)
-            .padding(.bottom, section.showsMiniPlayer ? JukeMetrics.stageBottomPaddingWithPill : JukeMetrics.stageBottomPaddingRadio)
-        }
-        .overlay(alignment: .bottom) {
-            if showsPill {
-                MiniNowPlayingPill()
-                    .padding(.bottom, JukeMetrics.miniPillBottomInset)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .overlay(alignment: .bottom) {
+                if showsPill {
+                    MiniNowPlayingPill()
+                        .padding(.bottom, JukeMetrics.miniPillBottomInset)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
             }
         }
         .animation(JukeMotion.navigationIn(reduceMotion: reduceMotion), value: showsPill)

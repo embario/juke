@@ -422,7 +422,7 @@ final class JukeMacUITests: XCTestCase {
         }
     }
 
-    /// Clicks a section in the header nav and waits for its screen.
+    /// Clicks a section in the Mac sidebar and waits for its screen.
     private func open(_ section: String) {
         let tab = app.buttons["nav.\(section)"]
         XCTAssertTrue(tab.waitForExistence(timeout: 4), section)

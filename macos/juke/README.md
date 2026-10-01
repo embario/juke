@@ -82,7 +82,8 @@ background recognition, and the backend URL (default
 - `JukeMac/Services/API`: `JukeServer`, `JukeAPI` (typed requests, token auth,
   error mapping), `RadioModels.swift` (`Radio.Track`, `Radio.Station`, ...),
   `JukeAPI+Radio.swift` (every `/api/v1/radio/` endpoint).
-- `JukeMac/Views/Shell`: root window, header, `SectionStage` transitions, mini player.
+- `JukeMac/Views/Shell`: root window, Mac sidebar with section navigation,
+  appearance and Settings, `SectionStage` transitions, and mini player in the detail pane.
 - `JukeMac/Services/Radio`: `RadioController` (stations, tuned/pending station,
   Spotify state polling, queues the next pick 20 s before a song ends, listening
   events, first-run and resume-on-launch flags in `RadioPreferences`),
