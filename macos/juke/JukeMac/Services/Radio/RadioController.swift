@@ -20,6 +20,9 @@ import Observation
 final class RadioController {
     /// Seconds before the end of a song when the next pick is queued.
     static let queueLeadTime: TimeInterval = 20
+    /// A queued song that starts with this much (or less) of the previous
+    /// one left counts as a natural finish (`complete`); earlier is a skip.
+    static let naturalEndWindow: TimeInterval = 5
     /// How long a just-started song may take to show up in Spotify's state.
     static let startGracePeriod: TimeInterval = 8
     static let defaultStripEmoji = ["🔥", "🥹", "💃", "🌙", "☀️"]
@@ -62,12 +65,15 @@ final class RadioController {
 
     /// Called whenever the playing song changes (artwork colour follows it).
     @ObservationIgnored var onTrackChange: (@MainActor (Radio.Track?) -> Void)?
+    /// Every Spotify state radio reads. While radio is on air the app's
+    /// recognition helper pauses its own Spotify polling and takes these instead.
+    @ObservationIgnored var onSnapshot: (@MainActor (RadioPlaybackSnapshot) -> Void)?
 
     // MARK: Private state
 
     @ObservationIgnored private let backend: any RadioBackend
     @ObservationIgnored private let playback: any RadioPlaybackControlling
-    @ObservationIgnored private let preferences: RadioPreferences
+    @ObservationIgnored private var preferences: RadioPreferences
     @ObservationIgnored private let now: @MainActor () -> Date
     @ObservationIgnored private let saveMemory: @MainActor (MemoryDraft) async throws -> Void
     @ObservationIgnored private let autoPoll: Bool
@@ -85,6 +91,22 @@ final class RadioController {
     @ObservationIgnored private var recentTrackIDs: [String] = []
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var started = false
+    /// Bumped on sign-out; responses from an older session are dropped.
+    @ObservationIgnored private var generation = 0
+    /// Every song radio picked this session, with the station it came from.
+    @ObservationIgnored private var knownPicks: [String: (track: Radio.Track, stationID: Radio.ID?)] = [:]
+    /// Queued picks Spotify will still play although radio moved on (its
+    /// queue cannot be cleared); skipped when they start.
+    @ObservationIgnored private var staleQueuedIDs: Set<String> = []
+    /// Consecutive polls showing a song radio did not pick.
+    @ObservationIgnored private var mismatchCount = 0
+    /// Automatic restarts (song ended with nothing queued) back off after failures.
+    @ObservationIgnored private var autoStartFailures = 0
+    @ObservationIgnored private var nextAutoStart: Date = .distantPast
+    /// The song ended with nothing queued; keep trying (with back-off) until a pick starts.
+    @ObservationIgnored private var awaitingRestart = false
+    /// The latest station asked for while a start was in flight.
+    @ObservationIgnored private var deferredStart: Radio.ID?
 
     init(
         backend: any RadioBackend,
@@ -148,11 +170,19 @@ final class RadioController {
 
     // MARK: Lifecycle
 
-    /// Loads stations after sign-in and resumes radio when it was playing at quit.
-    func start() async {
+    /// Loads stations after sign-in and resumes radio when it was playing at
+    /// quit. Preferences are kept per account.
+    func start(accountID: String? = nil) async {
         guard !started else { return }
         started = true
+        if let accountID {
+            preferences = preferences.scoped(to: accountID)
+            hasTunedIn = preferences.hasTunedIn
+            customReactions = preferences.customReactions
+        }
+        let session = generation
         await loadStations()
+        guard session == generation else { return }
         if let last = preferences.lastStationID, station(last) != nil { currentStationID = last }
         if currentStationID == nil { currentStationID = personalStation?.id }
         if hasTunedIn, preferences.wasPlaying { await resumeOnLaunch() }
@@ -163,6 +193,27 @@ final class RadioController {
         pollTask?.cancel()
         pollTask = nil
         started = false
+        generation += 1
+        deviceID = nil
+        deviceName = nil
+        recentTrackIDs = []
+        knownPicks = [:]
+        staleQueuedIDs = []
+        expectedTrackID = nil
+        expectationDeadline = .distantPast
+        queueInFlight = false
+        queueFailures = 0
+        userPaused = false
+        currentTrackSkipped = false
+        mismatchCount = 0
+        autoStartFailures = 0
+        nextAutoStart = .distantPast
+        awaitingRestart = false
+        deferredStart = nil
+        isBusy = false
+        hasTunedIn = false
+        customReactions = []
+        preferences = preferences.scoped(to: nil)
         stations = []
         stationsLoaded = false
         currentStationID = nil
@@ -181,22 +232,36 @@ final class RadioController {
     }
 
     func loadStations() async {
+        let session = generation
         do {
-            stations = try await backend.stations()
+            let loaded = try await backend.stations()
+            guard session == generation else { return }
+            stations = loaded
             stationsLoaded = true
             if issue == .signedOut { issue = nil }
         } catch is CancellationError {
         } catch {
+            guard session == generation else { return }
             issue = RadioIssue.from(error, stationName: "Radio")
         }
     }
 
     private func resumeOnLaunch() async {
-        // Never interrupt what is already playing: adopt it and keep the radio going after it.
-        if let snapshot = try? await playback.state(), snapshot.isPlaying, let playing = snapshot.radioTrack {
-            adopt(snapshot, track: playing)
-            preferences.wasPlaying = true
-            ensurePolling()
+        // Never interrupt what is already playing. A radio song still playing
+        // is adopted and the radio carries on after it; anything else (another
+        // playlist, a podcast) is left alone.
+        let session = generation
+        let snapshot = try? await playback.state()
+        guard session == generation else { return }
+        if let snapshot, snapshot.isPlaying {
+            if let playing = snapshot.radioTrack, preferences.recentRadioTrackIDs.contains(playing.spotifyId) {
+                adopt(snapshot, track: playing)
+                preferences.wasPlaying = true
+                ensurePolling()
+            } else {
+                notice = "Spotify is playing something else. Press play to bring the radio back."
+                preferences.wasPlaying = false
+            }
             return
         }
         if let id = currentStationID ?? personalStation?.id { await startNow(id) }
@@ -212,13 +277,32 @@ final class RadioController {
     }
 
     /// Plays the next pick from `stationID` immediately (`mode: "now"`).
-    func startNow(_ stationID: Radio.ID) async {
-        guard !isBusy else { return }
+    @discardableResult
+    func startNow(_ stationID: Radio.ID) async -> Bool {
+        guard !isBusy else {
+            // Keep the latest request and run it when the current one finishes.
+            deferredStart = stationID
+            return false
+        }
         isBusy = true
-        defer { isBusy = false }
+        let session = generation
+        let started = await performStart(stationID, session: session)
+        if session == generation { isBusy = false }
+        if session == generation, let next = deferredStart {
+            deferredStart = nil
+            if next != currentStationID || !started { return await startNow(next) }
+        }
+        return started
+    }
+
+    private func performStart(_ stationID: Radio.ID, session: Int) async -> Bool {
         let name = station(stationID)?.name ?? "This station"
         do {
             let response = try await backend.playRadio(stationID: stationID, mode: .now, deviceID: deviceID, recentTrackIDs: recentTrackIDs)
+            guard session == generation else { return false }
+            // Spotify keeps an already-queued pick and plays it after this
+            // song; skip it when it starts.
+            if let stale = queuedTrack { staleQueuedIDs.insert(stale.spotifyId) }
             issue = nil
             notice = nil
             suggestion = nil
@@ -227,6 +311,10 @@ final class RadioController {
             queuedTrack = nil
             queuedStationID = nil
             queueFailures = 0
+            autoStartFailures = 0
+            nextAutoStart = .distantPast
+            awaitingRestart = false
+            mismatchCount = 0
             isPutAway = false
             isOnAir = true
             userPaused = false
@@ -234,7 +322,7 @@ final class RadioController {
             expectedTrackID = response.track.spotifyId
             expectationDeadline = now().addingTimeInterval(Self.startGracePeriod)
             setTrack(response.track)
-            remember(response.track.spotifyId)
+            remember(response.track, station: stationID)
             if let snapshot = RadioPlaybackSnapshot(json: response.state), snapshot.trackID == response.track.spotifyId {
                 apply(snapshot)
             } else {
@@ -245,9 +333,13 @@ final class RadioController {
             preferences.wasPlaying = true
             preferences.lastStationID = stationID
             ensurePolling()
+            return true
         } catch is CancellationError {
+            return false
         } catch {
+            guard session == generation else { return false }
             issue = RadioIssue.from(error, stationName: name)
+            return false
         }
     }
 
@@ -258,8 +350,8 @@ final class RadioController {
         guard let target = station(request.stationID) else { return }
         switch request.timing {
         case .afterCurrentSong where isOnAir && isPlaying:
-            tune(to: target.id)
-            notice = "\(target.name) starts when this song ends."
+            await tune(to: target.id)
+            if target.id != currentStationID { notice = "\(target.name) starts when this song ends." }
         default:
             await startNow(target.id)
         }
@@ -295,16 +387,19 @@ final class RadioController {
         if isPlaying { await pause() } else { await resume() }
     }
 
-    func pause() async {
-        guard isOnAir, isPlaying else { return }
+    @discardableResult
+    func pause() async -> Bool {
+        guard isOnAir, isPlaying else { return true }
         let position = position(at: now())
         do {
             try await playback.pause(deviceID: deviceID)
             userPaused = true
             setPosition(position, playing: false)
             preferences.wasPlaying = false
+            return true
         } catch {
             issue = RadioIssue.from(error, stationName: currentStation?.name ?? "Radio")
+            return false
         }
     }
 
@@ -375,7 +470,8 @@ final class RadioController {
     // MARK: Put away
 
     func putAway() async {
-        if isOnAir, isPlaying { await pause() }
+        // If Spotify would not pause, the record stays out and the error shows.
+        guard await pause() else { return }
         isPutAway = true
         isOnAir = false
         notice = nil
@@ -451,18 +547,29 @@ final class RadioController {
 
     // MARK: Tuning
 
-    /// Tunes the dial: the station plays after the current song.
-    func tune(to id: Radio.ID) {
+    /// Tunes the dial: the station plays after the current song. If a pick
+    /// from another station is already queued, a pick from the tuned station
+    /// is queued too and the stale one is skipped when it starts, so the
+    /// change still lands after this song.
+    func tune(to id: Radio.ID) async {
         pendingStationID = id == currentStationID && (isOnAir || isPutAway) ? nil : id
         if !isOnAir, !isPutAway { currentStationID = id; pendingStationID = nil }
         suggestion = nil
         notice = nil
+        let target = pendingStationID ?? currentStationID
+        if isOnAir, let queued = queuedTrack, queuedStationID != target {
+            staleQueuedIDs.insert(queued.spotifyId)
+            queuedTrack = nil
+            queuedStationID = nil
+            queueFailures = 0
+            await queueNextIfNeeded()
+        }
     }
 
-    func tuneStep(_ direction: Int) -> FMDial.Mark? {
+    func tuneStep(_ direction: Int) async -> FMDial.Mark? {
         let tuned = tunedStation?.frequency ?? FMDial.lowest
         guard let slot = FMDial.step(from: tuned, direction: direction, in: FMDial.slots(stations)) else { return nil }
-        if case .station(let id) = slot.mark { tune(to: id) }
+        if case .station(let id) = slot.mark { await tune(to: id) }
         return slot.mark
     }
 
@@ -508,10 +615,10 @@ final class RadioController {
         }
     }
 
-    func acceptSuggestion() {
+    func acceptSuggestion() async {
         guard let offer = suggestion else { return }
         suggestion = nil
-        pendingStationID = offer.stationId
+        await tune(to: offer.stationId)
     }
 
     func dismissSuggestion() {
@@ -592,10 +699,10 @@ final class RadioController {
     /// Commits a station moved on the dial. The server snaps and spaces the
     /// frequency; the returned value wins.
     @discardableResult
-    func moveStation(_ id: Radio.ID, to frequency: Double) async -> Double? {
+    func moveStation(_ id: Radio.ID, to frequency: Double, preferring direction: Int = 1) async -> Double? {
         guard let station = station(id) else { return nil }
         let others = stations.filter { $0.id != id }.map(\.frequency)
-        let proposal = FMDial.freeSlot(near: frequency, others: others)
+        let proposal = FMDial.freeSlot(near: frequency, others: others, preferring: direction)
         guard abs(proposal - station.frequency) >= 0.05 else { return station.frequency }
         do {
             let updated = try await backend.updateStation(id, Radio.UpdateStationRequest(frequency: proposal))
@@ -639,28 +746,46 @@ final class RadioController {
     /// Reads Spotify's state once and runs the continuous-play loop.
     func refresh() async {
         guard isOnAir else { return }
+        let session = generation
         let snapshot: RadioPlaybackSnapshot?
         do {
             snapshot = try await playback.state()
         } catch is CancellationError {
             return
         } catch {
+            guard session == generation else { return }
             issue = RadioIssue.from(error, stationName: currentStation?.name ?? "Radio")
             return
         }
-        guard isOnAir else { return }
+        guard session == generation, isOnAir else { return }
         guard let snapshot else {
             issue = .noActiveDevice
             if isPlaying { setPosition(position(at: now()), playing: false) }
             return
         }
+        onSnapshot?(snapshot)
         if issue == .noActiveDevice || issue == .spotifyFailed { issue = nil }
         deviceID = snapshot.deviceID ?? deviceID
         deviceName = snapshot.deviceName ?? deviceName
+        // A state without a song (between tracks, an ad) says nothing.
+        guard let playingID = snapshot.trackID, !playingID.isEmpty else { return }
         let lastRemaining = duration - position(at: now())
 
+        if staleQueuedIDs.contains(playingID), playingID != track?.spotifyId {
+            // A pick queued before a station change (Spotify's queue cannot be
+            // cleared): move past it to the tuned station's pick.
+            mismatchCount = 0
+            staleQueuedIDs.remove(playingID)
+            try? await playback.next(deviceID: deviceID)
+            if let queued = queuedTrack {
+                expectedTrackID = queued.spotifyId
+                expectationDeadline = now().addingTimeInterval(Self.startGracePeriod)
+            }
+            return
+        }
+
         if let expected = expectedTrackID {
-            if snapshot.trackID == expected {
+            if playingID == expected {
                 expectedTrackID = nil
             } else if now() < expectationDeadline {
                 return
@@ -669,25 +794,59 @@ final class RadioController {
             }
         }
 
-        if let id = snapshot.trackID, id == track?.spotifyId {
+        if playingID == track?.spotifyId {
+            mismatchCount = 0
             apply(snapshot)
-        } else if let queued = queuedTrack, snapshot.trackID == queued.spotifyId {
-            startQueued(queued, naturally: !currentTrackSkipped)
+        } else if let queued = queuedTrack, playingID == queued.spotifyId {
+            mismatchCount = 0
+            startQueued(queued, naturally: !currentTrackSkipped && lastRemaining <= Self.naturalEndWindow)
             apply(snapshot)
+        } else if let known = knownPicks[playingID] {
+            // A song radio picked earlier this session (for example a pick
+            // queued before a station change): it is still the radio.
+            mismatchCount = 0
+            let picked = known.track
+            let stationID = known.stationID ?? currentStationID
+            if let stationID { currentStationID = stationID }
+            if pendingStationID == currentStationID { pendingStationID = nil }
+            setTrack(picked)
+            currentTrackSkipped = false
+            apply(snapshot)
+            let postStation = currentStationID
+            Task { await self.post(.play, track: picked, stationID: postStation, positionMs: 0) }
         } else {
-            // Spotify moved on to something radio did not pick.
-            goOffAir(notice: "Spotify is playing something else. Press play to bring the radio back.")
+            // Spotify moved on to something radio did not pick. One odd poll
+            // is not enough to take the radio off the air.
+            mismatchCount += 1
+            if mismatchCount >= 2 {
+                mismatchCount = 0
+                goOffAir(notice: "Spotify is playing something else. Press play to bring the radio back.")
+            }
             return
         }
 
-        if !snapshot.isPlaying, !userPaused, queuedTrack == nil,
-           snapshot.progressMs == 0 || Double(snapshot.durationMs - snapshot.progressMs) / 1000 <= 2,
-           lastRemaining <= Self.queueLeadTime + 5 {
-            // The song ended with nothing queued: keep the music going.
-            if let id = pendingStationID ?? currentStationID { await startNow(id) }
+        if snapshot.isPlaying { awaitingRestart = false }
+        let atEnd = snapshot.progressMs == 0 || Double(snapshot.durationMs - snapshot.progressMs) / 1000 <= 2
+        if !snapshot.isPlaying, !userPaused, queuedTrack == nil, atEnd,
+           awaitingRestart || lastRemaining <= Self.queueLeadTime + 5 {
+            awaitingRestart = true
+            // The song ended with nothing queued: keep the music going, but
+            // back off after failures instead of retrying every poll.
+            guard now() >= nextAutoStart, let id = pendingStationID ?? currentStationID else { return }
+            if await startNow(id) {
+                autoStartFailures = 0
+            } else if session == generation {
+                autoStartFailures += 1
+                nextAutoStart = now().addingTimeInterval(Self.retryDelay(afterFailures: autoStartFailures))
+            }
             return
         }
         await queueNextIfNeeded()
+    }
+
+    /// 5 s, 10 s, 20 s … capped at 5 minutes.
+    static func retryDelay(afterFailures failures: Int) -> TimeInterval {
+        min(300, 5 * pow(2, Double(max(0, failures - 1))))
     }
 
     /// Queues the next pick when the current song has 20 s or less left.
@@ -696,25 +855,34 @@ final class RadioController {
         let remaining = duration - position(at: now())
         guard duration > 0, remaining <= Self.queueLeadTime else { return }
         guard let stationID = pendingStationID ?? currentStationID ?? personalStation?.id else { return }
+        let session = generation
         queueInFlight = true
-        defer { queueInFlight = false }
+        defer { if session == generation { queueInFlight = false } }
         do {
             let response = try await backend.playRadio(stationID: stationID, mode: .queue, deviceID: deviceID, recentTrackIDs: recentTrackIDs)
+            guard session == generation else { return }
             queuedTrack = response.track
             queuedStationID = stationID
             queueFailures = 0
-            remember(response.track.spotifyId)
+            remember(response.track, station: stationID)
         } catch is CancellationError {
         } catch {
+            guard session == generation else { return }
             queueFailures += 1
             issue = RadioIssue.from(error, stationName: station(stationID)?.name ?? "This station")
         }
     }
 
     private func startQueued(_ queued: Radio.Track, naturally: Bool) {
-        if naturally, let previous = track {
+        if let previous = track {
             let previousStation = currentStationID
-            Task { await self.post(.complete, track: previous, stationID: previousStation, positionMs: previous.durationMs) }
+            // `complete` only for a natural finish; the skip paths post their own event.
+            if naturally {
+                Task { await self.post(.complete, track: previous, stationID: previousStation, positionMs: previous.durationMs) }
+            } else if !currentTrackSkipped {
+                let at = milliseconds(position(at: now()))
+                Task { await self.post(.skip, track: previous, stationID: previousStation, positionMs: at) }
+            }
         }
         if let stationID = queuedStationID {
             currentStationID = stationID
@@ -736,7 +904,7 @@ final class RadioController {
         isPutAway = false
         userPaused = false
         setTrack(adopted)
-        remember(adopted.spotifyId)
+        remember(adopted, station: currentStationID)
         apply(snapshot)
     }
 
@@ -794,10 +962,13 @@ final class RadioController {
 
     private func milliseconds(_ seconds: TimeInterval) -> Int { Int((max(0, seconds) * 1000).rounded()) }
 
-    private func remember(_ trackID: String) {
+    private func remember(_ picked: Radio.Track, station stationID: Radio.ID?) {
+        let trackID = picked.spotifyId
         recentTrackIDs.removeAll { $0 == trackID }
         recentTrackIDs.append(trackID)
         if recentTrackIDs.count > 50 { recentTrackIDs.removeFirst(recentTrackIDs.count - 50) }
+        knownPicks[trackID] = (picked, stationID)
+        preferences.recentRadioTrackIDs = Array(recentTrackIDs.suffix(10))
     }
 
     private func rememberCustom(_ reaction: String) {

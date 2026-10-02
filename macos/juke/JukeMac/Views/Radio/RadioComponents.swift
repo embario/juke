@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// A button with a separate press-and-hold action (the reference's `press`):
@@ -56,27 +57,59 @@ private struct HoldDetectingStyle: ButtonStyle {
     }
 }
 
-/// Square or round album art with a theme-coloured placeholder.
+/// Square or round album art with a theme-coloured placeholder. Images are
+/// kept in a small in-memory cache, so dial thumbnails do not reload while
+/// the dial moves.
 struct RadioArtwork: View {
     @Environment(\.jukeTheme) private var theme
     let url: URL?
     var cornerRadius: CGFloat = JukeRadius.sleeve
+    @State private var image: NSImage?
 
     var body: some View {
         ZStack {
             Rectangle().fill(theme.base.color)
-            if let url {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image { image.resizable().scaledToFill() } else { Color.clear }
-                }
-            } else {
+            if let image {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else if url == nil {
                 Image(systemName: "music.note")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.75))
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .task(id: url) {
+            image = nil
+            guard let url else { return }
+            image = await RadioImageCache.shared.image(for: url)
+        }
         .accessibilityHidden(true)
+    }
+}
+
+/// In-memory artwork cache shared by the radio card.
+@MainActor
+final class RadioImageCache {
+    static let shared = RadioImageCache()
+    private let cache = NSCache<NSURL, NSImage>()
+    private var inFlight: [URL: Task<NSImage?, Never>] = [:]
+
+    init() { cache.countLimit = 120 }
+
+    func image(for url: URL) async -> NSImage? {
+        if let cached = cache.object(forKey: url as NSURL) { return cached }
+        if let running = inFlight[url] { return await running.value }
+        let task = Task<NSImage?, Never> {
+            guard let (data, response) = try? await URLSession.shared.data(from: url),
+                  (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+                  data.count < 8_000_000 else { return nil }
+            return NSImage(data: data)
+        }
+        inFlight[url] = task
+        let image = await task.value
+        inFlight[url] = nil
+        if let image { cache.setObject(image, forKey: url as NSURL) }
+        return image
     }
 }
 

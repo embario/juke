@@ -89,7 +89,7 @@ struct RadioStatusLine: View {
                 Text("Juke can tune there after this song.").font(JukeFont.body(14)).foregroundStyle(theme.sub.color)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Tune in next") { radio.acceptSuggestion() }
+            Button("Tune in next") { Task { await radio.acceptSuggestion() } }
                 .buttonStyle(PaneButtonStyle(fill: theme.card.color, text: theme.ink.color))
             Button("Stay") { radio.dismissSuggestion() }
                 .buttonStyle(PaneButtonStyle(fill: .clear, text: theme.ink.color))

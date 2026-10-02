@@ -37,10 +37,28 @@ struct RadioPlaybackSnapshot: Equatable, Sendable {
     var isPlaying: Bool
     var deviceID: String?
     var deviceName: String?
+    /// `spotify:track:…`, or an episode/other URI. `nil` when unknown.
+    var uri: String?
+    /// The backend's state, passed on to the recognition helper so the app
+    /// polls Spotify only once while radio is on. Not part of equality.
+    var raw: JukePlaybackState?
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.trackID == rhs.trackID && lhs.title == rhs.title && lhs.artist == rhs.artist && lhs.artistID == rhs.artistID
+            && lhs.album == rhs.album && lhs.albumID == rhs.albumID && lhs.artworkURL == rhs.artworkURL
+            && lhs.durationMs == rhs.durationMs && lhs.progressMs == rhs.progressMs && lhs.isPlaying == rhs.isPlaying
+            && lhs.deviceID == rhs.deviceID && lhs.deviceName == rhs.deviceName && lhs.uri == rhs.uri
+    }
+
+    /// A song (not a podcast episode or ad).
+    var isTrack: Bool {
+        guard let trackID, !trackID.isEmpty else { return false }
+        return uri.map { $0.hasPrefix("spotify:track:") } ?? true
+    }
 
     init(trackID: String?, title: String? = nil, artist: String? = nil, artistID: String? = nil, album: String? = nil,
          albumID: String? = nil, artworkURL: URL? = nil, durationMs: Int, progressMs: Int, isPlaying: Bool,
-         deviceID: String? = nil, deviceName: String? = nil) {
+         deviceID: String? = nil, deviceName: String? = nil, uri: String? = nil) {
         self.trackID = trackID
         self.title = title
         self.artist = artist
@@ -53,6 +71,7 @@ struct RadioPlaybackSnapshot: Equatable, Sendable {
         self.isPlaying = isPlaying
         self.deviceID = deviceID
         self.deviceName = deviceName
+        self.uri = uri
     }
 
     init(_ state: JukePlaybackState) {
@@ -69,8 +88,10 @@ struct RadioPlaybackSnapshot: Equatable, Sendable {
             progressMs: state.progressMs,
             isPlaying: state.isPlaying,
             deviceID: state.device?.id,
-            deviceName: state.device?.name
+            deviceName: state.device?.name,
+            uri: track?.uri
         )
+        raw = state
     }
 
     /// Decodes the `state` object a `POST radio/play` response carries.
@@ -84,7 +105,7 @@ struct RadioPlaybackSnapshot: Equatable, Sendable {
     /// The playing song as a radio `Track`, for adopting whatever Spotify
     /// is already playing when radio resumes on launch.
     var radioTrack: Radio.Track? {
-        guard let trackID, !trackID.isEmpty else { return nil }
+        guard isTrack, let trackID else { return nil }
         return Radio.Track(
             spotifyId: trackID, uri: "spotify:track:\(trackID)", title: title ?? "Unknown song",
             artist: artist ?? "", artistId: artistID, album: album, albumId: albumID,
@@ -135,36 +156,49 @@ struct SpotifyRadioPlayback: RadioPlaybackControlling {
 /// Small radio preferences kept in `UserDefaults`.
 struct RadioPreferences {
     private let defaults: UserDefaults
-    private enum Key {
-        static let hasTunedIn = "juke.radio.hasTunedIn"
-        static let wasPlaying = "juke.radio.wasPlaying"
-        static let lastStation = "juke.radio.lastStationID"
-        static let customReactions = "juke.radio.customReactions"
+    /// Per-account keys: radio state belongs to the signed-in listener.
+    let accountID: String?
+
+    init(defaults: UserDefaults = .standard, accountID: String? = nil) {
+        self.defaults = defaults
+        self.accountID = accountID
     }
 
-    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    /// The same store, scoped to another account.
+    func scoped(to accountID: String?) -> RadioPreferences { RadioPreferences(defaults: defaults, accountID: accountID) }
+
+    private func key(_ name: String) -> String {
+        "juke.radio.\(name)" + (accountID.map { ".\($0)" } ?? "")
+    }
 
     /// Set after the first successful "Tune in"; afterwards the card skips the first-run screen.
     var hasTunedIn: Bool {
-        get { defaults.bool(forKey: Key.hasTunedIn) }
-        nonmutating set { defaults.set(newValue, forKey: Key.hasTunedIn) }
+        get { defaults.bool(forKey: key("hasTunedIn")) }
+        nonmutating set { defaults.set(newValue, forKey: key("hasTunedIn")) }
     }
 
     /// Whether radio was on the air when the app last ran (resume on launch).
     var wasPlaying: Bool {
-        get { defaults.bool(forKey: Key.wasPlaying) }
-        nonmutating set { defaults.set(newValue, forKey: Key.wasPlaying) }
+        get { defaults.bool(forKey: key("wasPlaying")) }
+        nonmutating set { defaults.set(newValue, forKey: key("wasPlaying")) }
     }
 
     var lastStationID: Radio.ID? {
-        get { defaults.string(forKey: Key.lastStation).map { Radio.ID($0) } }
-        nonmutating set { defaults.set(newValue?.rawValue, forKey: Key.lastStation) }
+        get { defaults.string(forKey: key("lastStationID")).map { Radio.ID($0) } }
+        nonmutating set { defaults.set(newValue?.rawValue, forKey: key("lastStationID")) }
+    }
+
+    /// The last few songs radio picked, so a relaunch can tell a radio song
+    /// still playing in Spotify from anything else.
+    var recentRadioTrackIDs: [String] {
+        get { defaults.stringArray(forKey: key("recentTrackIDs")) ?? [] }
+        nonmutating set { defaults.set(Array(newValue.suffix(10)), forKey: key("recentTrackIDs")) }
     }
 
     /// The listener's own emoji and words, offered again on later songs.
     var customReactions: [String] {
-        get { defaults.stringArray(forKey: Key.customReactions) ?? [] }
-        nonmutating set { defaults.set(Array(newValue.suffix(24)), forKey: Key.customReactions) }
+        get { defaults.stringArray(forKey: key("customReactions")) ?? [] }
+        nonmutating set { defaults.set(Array(newValue.suffix(24)), forKey: key("customReactions")) }
     }
 }
 

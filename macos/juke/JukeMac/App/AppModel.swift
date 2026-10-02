@@ -77,10 +77,15 @@ final class AppModel {
         if isRadioFixture {
             // UI tests get a fresh, in-memory radio: first run only when asked for.
             let defaults = UserDefaults(suiteName: "juke.radio.uitests.\(UUID().uuidString)") ?? .standard
-            let preferences = RadioPreferences(defaults: defaults)
-            preferences.hasTunedIn = !arguments.contains("--uitesting-radio-first-run")
-            preferences.wasPlaying = preferences.hasTunedIn
-            radioPreferences = preferences
+            radioPreferences = RadioPreferences(defaults: defaults)
+            let accounts = [JukeAccount.localPreview.id, ProcessInfo.processInfo.environment["VIBE_MEMORY_E2E_ACCOUNT_ID"]].compactMap { $0 }
+            for account in accounts {
+                let preferences = radioPreferences.scoped(to: account)
+                preferences.hasTunedIn = !arguments.contains("--uitesting-radio-first-run")
+                preferences.wasPlaying = preferences.hasTunedIn
+                // The fixture Spotify is mid-way through a radio song.
+                preferences.recentRadioTrackIDs = [RadioFixturePlayback.initialTrackID]
+            }
             let playback = RadioFixturePlayback()
             radio = RadioController(backend: RadioFixtureBackend(playback: playback), playback: playback,
                                     preferences: radioPreferences, coordinator: coordinator)
@@ -135,6 +140,11 @@ final class AppModel {
         }
         settings.onBackendURLChange = { [weak self] _ in self?.backendChanged() }
         radio.onTrackChange = { [weak self] _ in self?.syncArtwork() }
+        // One Spotify poller while radio is on the air: radio's snapshots feed the recognition helper.
+        detection.suspendsSpotifyPolling = { [weak radio] in radio?.isOnAir ?? false }
+        radio.onSnapshot = { [weak detection] snapshot in
+            if let state = snapshot.raw { detection?.apply(state) }
+        }
     }
 
     /// A token belongs to the server that issued it, so changing the backend

@@ -168,10 +168,10 @@ struct RadioCard: View {
                     currentStationID: radio.currentStationID,
                     tunedStationID: radio.tunedStation?.id,
                     showsCue: !radio.isPutAway && (radio.pendingStationID != nil || source == .local),
-                    onTune: { radio.tune(to: $0) },
+                    onTune: { id in Task { await radio.tune(to: id) } },
                     onNewStation: { model.coordinator.openNewStation() },
                     onSwitchNow: { Task { await radio.switchNow() } },
-                    onMove: { id, frequency in await radio.moveStation(id, to: frequency) },
+                    onMove: { id, frequency, direction in await radio.moveStation(id, to: frequency, preferring: direction) },
                     activity: $dialActivity
                 )
                 RadioStatusLine(activity: dialActivity, source: source)

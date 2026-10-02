@@ -83,7 +83,9 @@ struct RadioHero: View {
 
     private var vinyl: some View {
         TimelineView(.animation(paused: !spinning)) { context in
+            // Equatable + rasterized: each frame only rotates a layer.
             VinylRecord(artworkURL: model.artworkURL, hole: theme.card.color)
+                .equatable()
                 .rotationEffect(.degrees(rotation(at: context.date)))
         }
         .frame(width: Self.vinylSize, height: Self.vinylSize)
@@ -285,7 +287,7 @@ private struct SleeveFlip<Front: View, Back: View>: @MainActor Animatable, View 
 }
 
 /// The 184 pt record: grooves, the artwork label and the spindle hole.
-struct VinylRecord: View {
+struct VinylRecord: View, Equatable {
     let artworkURL: URL?
     let hole: Color
 

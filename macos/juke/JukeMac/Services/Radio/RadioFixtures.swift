@@ -98,6 +98,7 @@ actor RadioFixtureBackend: RadioBackend {
 
 /// Simulated Spotify for UI tests: starts on "Blue in Green", follows play/pause/seek/next.
 actor RadioFixturePlayback: RadioPlaybackControlling {
+    static let initialTrackID = "0aWMVrwxPNYkKmFthzmpRi"
     private var current: Radio.Track? = Radio.Track(spotifyId: "0aWMVrwxPNYkKmFthzmpRi", uri: "spotify:track:0aWMVrwxPNYkKmFthzmpRi",
                                                     title: "Blue in Green", artist: "Miles Davis", artistId: "fixture-miles",
                                                     album: "Kind of Blue", albumId: "fixture-kob", artworkUrl: nil, durationMs: 327_000)

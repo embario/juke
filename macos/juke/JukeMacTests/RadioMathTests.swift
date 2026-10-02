@@ -147,5 +147,7 @@ final class FMDialMathTests: XCTestCase {
         XCTAssertEqual(FMDial.freeSlot(near: 97.5, others: [97.1]), 99.3, "searches up first, then down")
         XCTAssertEqual(FMDial.freeSlot(near: 96.9, others: [97.1]), 94.9)
         XCTAssertEqual(FMDial.freeSlot(near: 89.1, others: [88.7]), 90.9)
+        XCTAssertEqual(FMDial.freeSlot(near: 96.9, others: [97.1], preferring: -1), 94.9)
+        XCTAssertEqual(FMDial.freeSlot(near: 97.5, others: [97.1], preferring: -1), 94.9, "moving down never jumps up past a neighbour")
     }
 }

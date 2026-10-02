@@ -24,7 +24,8 @@ struct FMDialView: View {
     let onTune: (Radio.ID) -> Void
     let onNewStation: () -> Void
     let onSwitchNow: () -> Void
-    let onMove: (Radio.ID, Double) async -> Double?
+    /// Station, target frequency, and which way to look for a free slot first.
+    let onMove: (Radio.ID, Double, Int) async -> Double?
     @Binding var activity: DialActivity
 
     @State private var center: Double = FMDial.lowest
@@ -38,6 +39,10 @@ struct FMDialView: View {
     @State private var wheel = WheelMonitor()
     @State private var width: CGFloat = 480
     @State private var didSync = false
+    /// Latest inputs, read by the wheel monitor and delayed tasks (which hold
+    /// an older copy of this view).
+    @State private var liveTuned: Double = FMDial.lowest
+    @State private var liveStations: [Radio.Station] = []
 
     private struct Press {
         var startX: CGFloat
@@ -64,14 +69,20 @@ struct FMDialView: View {
         }
         .onAppear {
             if !didSync { center = tunedFrequency; didSync = true }
+            liveTuned = tunedFrequency
+            liveStations = stations
             wheel.install { delta in step(delta) }
         }
         .onDisappear { wheel.remove(); holdTask?.cancel(); edgeTask?.cancel() }
         .onChange(of: tunedFrequency) { _, value in
+            liveTuned = value
             guard press == nil, hold == nil, !newSelected else { return }
             withAnimation(reduceMotion ? nil : JukeMotion.easeOutSoft(FMDial.tuneDuration(distance: abs(value - center)))) { center = value }
         }
-        .onChange(of: stations) { _, _ in overrides = [:] }
+        .onChange(of: stations) { _, value in
+            overrides = [:]
+            liveStations = value
+        }
     }
 
     private func arrow(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -148,8 +159,8 @@ struct FMDialView: View {
                 Button("Tune to \(station.name)") { tune(to: .station(station.id), frequency: station.frequency) }
             }
             if let id = tunedStationID, let station = stations.first(where: { $0.id == id }) {
-                Button("Move \(station.name) up the dial") { Task { _ = await onMove(id, station.frequency + FMDial.minimumSpacing) } }
-                Button("Move \(station.name) down the dial") { Task { _ = await onMove(id, station.frequency - FMDial.minimumSpacing) } }
+                Button("Move \(station.name) up the dial") { Task { _ = await onMove(id, station.frequency + FMDial.minimumSpacing, 1) } }
+                Button("Move \(station.name) down the dial") { Task { _ = await onMove(id, station.frequency - FMDial.minimumSpacing, -1) } }
             }
             if showsCue { Button("Play the tuned station now", action: onSwitchNow) }
             Button("New station", action: onNewStation)
@@ -331,14 +342,14 @@ struct FMDialView: View {
                 onNewStation()
                 newSelected = false
                 activity.openingNewStation = false
-                center = tunedFrequency
+                center = liveTuned
             }
         }
     }
 
     private func step(_ direction: Int) {
-        let slots = FMDial.slots(stations)
-        guard let slot = FMDial.step(from: newSelected ? FMDial.newSlot : tunedFrequency, direction: direction, in: slots) else { return }
+        let slots = FMDial.slots(liveStations)
+        guard let slot = FMDial.step(from: newSelected ? FMDial.newSlot : liveTuned, direction: direction, in: slots) else { return }
         tune(to: slot.mark, frequency: slot.frequency)
     }
 
@@ -381,7 +392,9 @@ struct FMDialView: View {
         edgeTask?.cancel()
         guard let held = hold else { return }
         let others = stations.filter { $0.id != held.id }.map(\.frequency)
-        let proposal = FMDial.freeSlot(near: held.frequency, others: others)
+        let original = stations.first { $0.id == held.id }?.frequency ?? held.frequency
+        let direction = held.frequency >= original ? 1 : -1
+        let proposal = FMDial.freeSlot(near: held.frequency, others: others, preferring: direction)
         overrides[held.id] = proposal
         withAnimation(reduceMotion ? nil : JukeMotion.easeOutSoft(0.52)) {
             hold = nil
@@ -390,7 +403,7 @@ struct FMDialView: View {
         activity.holdingName = nil
         activity.holdingFrequency = nil
         Task { @MainActor in
-            let final = await onMove(held.id, proposal)
+            let final = await onMove(held.id, proposal, direction)
             if let final { overrides[held.id] = final } else { overrides[held.id] = nil }
         }
     }

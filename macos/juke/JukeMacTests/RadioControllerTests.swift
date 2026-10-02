@@ -8,6 +8,8 @@ private actor FakeBackend: RadioBackend {
 
     var stationList: [Radio.Station]
     var plays: [PlayCall] = []
+    var playAttempts = 0
+    var playDelay: Duration?
     var events: [Radio.EventRequest] = []
     var updates: [(Radio.ID, Radio.UpdateStationRequest)] = []
     var playError: Error?
@@ -22,6 +24,7 @@ private actor FakeBackend: RadioBackend {
     }
 
     func setPlayError(_ error: Error?) { playError = error }
+    func setPlayDelay(_ delay: Duration?) { playDelay = delay }
     func setSuggestion(_ suggestion: Radio.StationSuggestion?) { reactionSuggestion = suggestion }
     func setSnapped(_ value: Double?) { snappedFrequency = value }
 
@@ -54,6 +57,8 @@ private actor FakeBackend: RadioBackend {
     }
 
     func playRadio(stationID: Radio.ID, mode: Radio.PlayMode, deviceID: String?, recentTrackIDs: [String]) async throws -> Radio.PlayResponse {
+        playAttempts += 1
+        if let playDelay { try? await Task.sleep(for: playDelay) }
         if let playError { throw playError }
         plays.append(PlayCall(stationID: stationID, mode: mode))
         let track = nextTracks.isEmpty ? makeTrack("fallback") : nextTracks.removeFirst()
@@ -70,16 +75,21 @@ private actor FakeBackend: RadioBackend {
 private actor FakePlayback: RadioPlaybackControlling {
     var snapshot: RadioPlaybackSnapshot?
     var error: Error?
+    var pauseError: Error?
     var calls: [String] = []
 
     func set(_ snapshot: RadioPlaybackSnapshot?) { self.snapshot = snapshot }
+    func setPauseError(_ error: Error?) { pauseError = error }
     func setError(_ error: Error?) { self.error = error }
 
     func state() async throws -> RadioPlaybackSnapshot? {
         if let error { throw error }
         return snapshot
     }
-    func pause(deviceID: String?) async throws { calls.append("pause") }
+    func pause(deviceID: String?) async throws {
+        if let pauseError { throw pauseError }
+        calls.append("pause")
+    }
     func resume(deviceID: String?) async throws { calls.append("resume") }
     func next(deviceID: String?) async throws { calls.append("next") }
     func seek(to position: TimeInterval, deviceID: String?) async throws { calls.append("seek:\(Int(position))") }
@@ -206,7 +216,7 @@ final class RadioControllerTests: XCTestCase {
 
     func testTuningNeverInterruptsAndThePendingStationTakesOverAfterTheSong() async {
         let radio = await onAir()
-        radio.tune(to: night.id)
+        await radio.tune(to: night.id)
         XCTAssertEqual(radio.pendingStationID, night.id)
         XCTAssertEqual(radio.tunedStation?.id, night.id)
         var plays = await backend.plays
@@ -236,14 +246,14 @@ final class RadioControllerTests: XCTestCase {
 
     func testTuningBackToTheCurrentStationIsUndo() async {
         let radio = await onAir()
-        radio.tune(to: night.id)
-        radio.tune(to: mine.id)
+        await radio.tune(to: night.id)
+        await radio.tune(to: mine.id)
         XCTAssertNil(radio.pendingStationID)
     }
 
     func testPlayCueSwitchesNow() async {
         let radio = await onAir()
-        radio.tune(to: night.id)
+        await radio.tune(to: night.id)
         await radio.switchNow()
         let plays = await backend.plays
         XCTAssertEqual(plays.last, .init(stationID: night.id, mode: .now))
@@ -357,6 +367,9 @@ final class RadioControllerTests: XCTestCase {
         clock.advance(10)
         await playback.set(playing(makeTrack("elsewhere"), at: 3))
         await radio.refresh()
+        XCTAssertTrue(radio.isOnAir, "one odd poll is not enough")
+        clock.advance(2)
+        await radio.refresh()
         XCTAssertFalse(radio.isOnAir)
         XCTAssertFalse(RadioPreferences(defaults: defaults).wasPlaying)
     }
@@ -375,6 +388,7 @@ final class RadioControllerTests: XCTestCase {
         let prefs = RadioPreferences(defaults: defaults)
         prefs.hasTunedIn = true
         prefs.wasPlaying = true
+        prefs.recentRadioTrackIDs = [first.spotifyId]
         await playback.set(playing(first, at: 42))
         let radio = makeController()
         await radio.start()
@@ -446,7 +460,7 @@ final class RadioControllerTests: XCTestCase {
         await radio.toggleReaction("🌙")
         XCTAssertEqual(radio.currentReactions, ["🌙"])
         XCTAssertEqual(radio.suggestion?.stationId, night.id)
-        radio.acceptSuggestion()
+        await radio.acceptSuggestion()
         XCTAssertEqual(radio.pendingStationID, night.id)
         XCTAssertNil(radio.suggestion)
     }
@@ -523,5 +537,227 @@ final class RadioControllerTests: XCTestCase {
         await radio.tuneIn()
         await radio.skip()
         XCTAssertEqual(seen, ["t1", "t2"])
+    }
+
+    // MARK: Review fixes
+
+    func testSwitchingNowWithAQueuedPickSkipsTheStalePickAndStaysOnAir() async {
+        let radio = await onAir()
+        clock.advance(185)
+        await playback.set(playing(first, at: 185))
+        await radio.refresh()
+        XCTAssertEqual(radio.queuedTrack, second)
+        await radio.startNow(night.id)
+        XCTAssertEqual(radio.track, third)
+        XCTAssertNil(radio.queuedTrack)
+
+        // Near the end of the new song, the next pick is queued from Night Drive.
+        clock.advance(185)
+        await playback.set(playing(third, at: 185))
+        await radio.refresh()
+        XCTAssertEqual(radio.queuedTrack?.spotifyId, "fallback")
+
+        // Spotify still plays the stale pick first: radio moves past it.
+        clock.advance(16)
+        await playback.set(playing(second, at: 0))
+        await radio.refresh()
+        XCTAssertTrue(radio.isOnAir)
+        XCTAssertEqual(radio.track, third)
+        var calls = await playback.calls
+        XCTAssertEqual(calls, ["next"])
+
+        await playback.set(playing(makeTrack("fallback"), at: 1))
+        await radio.refresh()
+        XCTAssertEqual(radio.track?.spotifyId, "fallback")
+        XCTAssertEqual(radio.currentStationID, night.id)
+        calls = await playback.calls
+        XCTAssertEqual(calls, ["next"])
+    }
+
+    func testTuningAfterThePickIsQueuedRequeuesFromTheTunedStation() async {
+        let radio = await onAir()
+        clock.advance(185)
+        await playback.set(playing(first, at: 185))
+        await radio.refresh()
+        await radio.tune(to: night.id)
+        var plays = await backend.plays
+        XCTAssertEqual(plays.last, .init(stationID: night.id, mode: .queue))
+        XCTAssertEqual(radio.queuedTrack, third)
+
+        clock.advance(16)
+        await playback.set(playing(second, at: 0))
+        await radio.refresh()
+        let calls = await playback.calls
+        XCTAssertEqual(calls, ["next"], "the stale pick from My Station is skipped")
+        await playback.set(playing(third, at: 1))
+        await radio.refresh()
+        XCTAssertEqual(radio.track, third)
+        XCTAssertEqual(radio.currentStationID, night.id)
+        XCTAssertNil(radio.pendingStationID)
+        plays = await backend.plays
+        XCTAssertEqual(plays.count, 3)
+    }
+
+    func testAKnownRadioPickIsAdoptedInsteadOfGoingOffAir() async {
+        let radio = await onAir()
+        clock.advance(185)
+        await playback.set(playing(first, at: 185))
+        await radio.refresh()
+        await radio.skip()
+        // Spotify reports the earlier radio pick again (for example after a
+        // manual "previous" in Spotify).
+        clock.advance(10)
+        await playback.set(playing(first, at: 3))
+        await radio.refresh()
+        await radio.refresh()
+        XCTAssertTrue(radio.isOnAir)
+        XCTAssertEqual(radio.track, first)
+    }
+
+    func testSnapshotsWithoutASongAreIgnored() async {
+        let radio = await onAir()
+        clock.advance(10)
+        await playback.set(RadioPlaybackSnapshot(trackID: nil, durationMs: 0, progressMs: 0, isPlaying: true))
+        await radio.refresh()
+        await radio.refresh()
+        await radio.refresh()
+        XCTAssertTrue(radio.isOnAir)
+    }
+
+    func testAfterSongRequestForTheCurrentStationShowsNoNotice() async {
+        let radio = await onAir()
+        await radio.handle(.init(stationID: mine.id, timing: .afterCurrentSong))
+        XCTAssertNil(radio.notice)
+        XCTAssertNil(radio.pendingStationID)
+    }
+
+    func testSignOutResetsStateAndDropsLateResponses() async {
+        let radio = makeController()
+        await radio.start(accountID: "listener-a")
+        await backend.setPlayDelay(.milliseconds(150))
+        let inFlight = Task { await radio.startNow(night.id) }
+        try? await Task.sleep(for: .milliseconds(20))
+        radio.stop()
+        _ = await inFlight.value
+        XCTAssertFalse(radio.isOnAir)
+        XCTAssertNil(radio.track)
+        XCTAssertFalse(radio.isBusy)
+        XCTAssertFalse(radio.hasTunedIn)
+    }
+
+    func testPreferencesArePerAccount() async {
+        let a = makeController()
+        await a.start(accountID: "listener-a")
+        await a.tuneIn()
+        XCTAssertTrue(a.hasTunedIn)
+        a.stop()
+
+        let b = makeController()
+        await b.start(accountID: "listener-b")
+        XCTAssertFalse(b.hasTunedIn, "another listener on this Mac starts fresh")
+        let plays = await backend.plays
+        XCTAssertEqual(plays.count, 1)
+
+        let again = makeController()
+        await again.start(accountID: "listener-a")
+        XCTAssertTrue(again.hasTunedIn)
+    }
+
+    func testRestartAfterTheSongEndsBacksOff() async {
+        let radio = await onAir()
+        clock.advance(199)
+        await backend.setPlayError(JukeAPIError.server(status: 502, code: "playback_provider_failure", detail: nil))
+        await playback.set(playing(first, at: 0, isPlaying: false))
+        await radio.refresh()
+        var attempts = await backend.playAttempts
+        XCTAssertEqual(attempts, 2, "tune in + one restart")
+        XCTAssertEqual(radio.issue, .spotifyFailed)
+
+        clock.advance(4)
+        await radio.refresh()
+        attempts = await backend.playAttempts
+        XCTAssertEqual(attempts, 2, "waits 5 s before the next try")
+
+        clock.advance(2)
+        await radio.refresh()
+        attempts = await backend.playAttempts
+        XCTAssertEqual(attempts, 3)
+
+        clock.advance(6)
+        await radio.refresh()
+        attempts = await backend.playAttempts
+        XCTAssertEqual(attempts, 3, "then 10 s")
+
+        await backend.setPlayError(nil)
+        clock.advance(5)
+        await radio.refresh()
+        XCTAssertEqual(radio.track, second)
+        XCTAssertNil(radio.issue)
+        XCTAssertEqual(RadioController.retryDelay(afterFailures: 1), 5)
+        XCTAssertEqual(RadioController.retryDelay(afterFailures: 3), 20)
+        XCTAssertEqual(RadioController.retryDelay(afterFailures: 20), 300)
+    }
+
+    func testPutAwayStaysOutWhenSpotifyWillNotPause() async {
+        let radio = await onAir()
+        await playback.setPauseError(PlaybackClientError.unavailable(502))
+        await radio.putAway()
+        XCTAssertFalse(radio.isPutAway)
+        XCTAssertTrue(radio.isOnAir)
+        XCTAssertEqual(radio.issue, .spotifyFailed)
+    }
+
+    func testSnapshotsAreSharedWithTheRecognitionHelper() async {
+        let radio = await onAir()
+        var seen: [String?] = []
+        radio.onSnapshot = { seen.append($0.trackID) }
+        await radio.refresh()
+        XCTAssertEqual(seen, [first.spotifyId])
+    }
+
+    func testAStartRequestedWhileBusyRunsAfterwards() async {
+        let radio = makeController()
+        await radio.start()
+        await backend.setPlayDelay(.milliseconds(80))
+        let firstStart = Task { await radio.startNow(mine.id) }
+        try? await Task.sleep(for: .milliseconds(20))
+        let deferred = await radio.startNow(night.id)
+        XCTAssertFalse(deferred)
+        _ = await firstStart.value
+        let plays = await backend.plays
+        XCTAssertEqual(plays.map(\.stationID), [mine.id, night.id])
+        XCTAssertEqual(radio.currentStationID, night.id)
+    }
+
+    func testAQueuedSongStartingEarlyIsASkipNotAComplete() async {
+        let radio = await onAir()
+        clock.advance(185)
+        await playback.set(playing(first, at: 185))
+        await radio.refresh()
+        clock.advance(1)
+        await playback.set(playing(second, at: 0))
+        await radio.refresh()
+        try? await Task.sleep(for: .milliseconds(50))
+        let events = await backend.events
+        XCTAssertEqual(events.map(\.event), [.skip, .play])
+    }
+
+    func testLaunchLeavesNonRadioPlaybackAlone() async {
+        let prefs = RadioPreferences(defaults: defaults)
+        prefs.hasTunedIn = true
+        prefs.wasPlaying = true
+        prefs.recentRadioTrackIDs = ["episode1"]
+        await playback.set(RadioPlaybackSnapshot(trackID: "episode1", durationMs: 1_800_000, progressMs: 60_000, isPlaying: true,
+                                                 uri: "spotify:episode:episode1"))
+        let radio = makeController()
+        await radio.start()
+        XCTAssertFalse(radio.isOnAir, "a podcast is not a radio song")
+        let plays = await backend.plays
+        XCTAssertTrue(plays.isEmpty, "and is never interrupted")
+
+        await playback.set(playing(makeTrack("someone-elses-playlist"), at: 30))
+        let other = makeController()
+        await other.start()
+        XCTAssertFalse(other.isOnAir)
     }
 }

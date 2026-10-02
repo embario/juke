@@ -243,12 +243,15 @@ enum FMDial {
     /// The nearest frequency at least `minimumSpacing` from every other
     /// station, searching outward from `frequency` (the reference's
     /// `commitHold`). The server makes the final decision.
-    static func freeSlot(near frequency: Double, others: [Double]) -> Double {
+    /// `direction` says which way to look first (1: up, -1: down), so a
+    /// station moved down never jumps up past a blocking neighbour.
+    static func freeSlot(near frequency: Double, others: [Double], preferring direction: Int = 1) -> Double {
         func isFree(_ value: Double) -> Bool { others.allSatisfy { abs($0 - value) >= minimumSpacing - 0.001 } }
         let start = snap(frequency)
         if isFree(start) { return start }
+        let first: Double = direction < 0 ? -1 : 1
         for k in 0..<100 {
-            let offset = Double((k + 2) / 2) * 0.2 * (k % 2 == 1 ? -1 : 1)
+            let offset = Double((k + 2) / 2) * 0.2 * (k % 2 == 1 ? -first : first)
             let candidate = snap(start + offset)
             if isFree(candidate) { return candidate }
         }

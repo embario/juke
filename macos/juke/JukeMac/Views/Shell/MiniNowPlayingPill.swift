@@ -31,7 +31,9 @@ struct MiniNowPlayingPill: View {
             }
             if model.detection.track != nil, model.detection.canControlPlayback {
                 Button {
-                    Task { await model.detection.togglePlayback() }
+                    Task {
+                        if model.radio.isOnAir { await model.radio.togglePlayPause() } else { await model.detection.togglePlayback() }
+                    }
                 } label: {
                     Image(systemName: model.detection.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 16, weight: .semibold))
