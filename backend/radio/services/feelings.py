@@ -28,6 +28,10 @@ FEELING_KEYWORDS = {
 class Profile:
     genres: Tuple[str, ...]
     years: Optional[str] = None  # Spotify ``year:`` filter, e.g. "1974-1983"
+    max_minutes: int = 12  # longer results are usually not songs (mixes, audiobooks)
+
+
+LONG_FORM_MINUTES = 40  # ambient/drone/classical pieces run long
 
 
 _LATE_NIGHT = Profile(('chillwave', 'downtempo', 'trip hop', 'neo soul', 'ambient', 'lo-fi'))
@@ -37,8 +41,8 @@ _DANCE = Profile(('house', 'nu disco', 'dance pop', 'funk', 'disco'))
 _HYPE = Profile(('hip hop', 'trap', 'edm', 'electro house'))
 _WORKOUT = Profile(('edm', 'drum and bass', 'hip hop', 'electro house'))
 _CHILL = Profile(('chillhop', 'lo-fi', 'chillwave', 'downtempo', 'indie pop'))
-_CALM = Profile(('ambient', 'new age', 'neo-classical', 'drone'))
-_FOCUS = Profile(('lo-fi', 'ambient', 'post-rock', 'neo-classical', 'minimal techno'))
+_CALM = Profile(('ambient', 'new age', 'neo-classical', 'drone'), max_minutes=LONG_FORM_MINUTES)
+_FOCUS = Profile(('lo-fi', 'ambient', 'post-rock', 'neo-classical', 'minimal techno'), max_minutes=LONG_FORM_MINUTES)
 _LOVE = Profile(('r&b', 'neo soul', 'soul', 'quiet storm'))
 _SAD = Profile(('sadcore', 'singer-songwriter', 'indie folk', 'slowcore'))
 _HAPPY = Profile(('funk', 'soul', 'indie pop', 'motown', 'reggae'))
@@ -53,7 +57,7 @@ PROFILES: Dict[str, Profile] = {
     'disco': Profile(('disco', 'funk', 'nu disco'), years='1974-1983'),
     'hype': _HYPE, 'energy': _HYPE, 'running': _WORKOUT, 'workout': _WORKOUT,
     'road trip': Profile(('classic rock', 'indie rock', 'heartland rock', 'country rock')),
-    'chill': _CHILL, 'calm': _CALM, 'sleep': Profile(('ambient', 'sleep', 'drone', 'neo-classical')),
+    'chill': _CHILL, 'calm': _CALM, 'sleep': Profile(('ambient', 'sleep', 'drone', 'neo-classical'), max_minutes=LONG_FORM_MINUTES),
     'focus': _FOCUS, 'study': _FOCUS, 'love': _LOVE, 'romantic': _LOVE,
     'heartbreak': _SAD, 'sad': _SAD, 'bittersweet': Profile(('indie folk', 'dream pop', 'slowcore')),
     'happy': _HAPPY, 'feel good': _HAPPY, 'sunny': _HAPPY, 'summer': Profile(('indie pop', 'reggae', 'funk', 'surf rock')),
@@ -61,9 +65,9 @@ PROFILES: Dict[str, Profile] = {
     'tropical': Profile(('tropical house', 'reggae', 'dancehall', 'bossa nova')),
     'rock': Profile(('rock', 'alternative rock', 'hard rock', 'classic rock')),
     'guitar': Profile(('blues rock', 'indie rock', 'fingerstyle', 'surf rock')),
-    'piano': Profile(('neo-classical', 'jazz piano', 'classical piano')),
+    'piano': Profile(('neo-classical', 'jazz piano', 'classical piano'), max_minutes=LONG_FORM_MINUTES),
     'jazz': Profile(('jazz', 'cool jazz', 'bebop', 'nu jazz')),
-    'strings': Profile(('classical', 'chamber pop', 'neo-classical')),
+    'strings': Profile(('classical', 'chamber pop', 'neo-classical'), max_minutes=LONG_FORM_MINUTES),
     'winter': _COZY, 'autumn': _COZY, 'cozy': _COZY, 'spring': Profile(('indie pop', 'folk', 'acoustic')),
     'ocean': Profile(('ambient', 'dream pop', 'surf rock')), 'dreamy': _DREAMY,
     'dinner': Profile(('jazz', 'bossa nova', 'soul', 'lounge')), 'holiday': Profile(('christmas',)),
@@ -71,7 +75,11 @@ PROFILES: Dict[str, Profile] = {
 }
 DEFAULT_FEELINGS = ('chill',)
 _WORD = re.compile(r'[\w&\'-]+', re.UNICODE)
-_AUDIOBOOK = re.compile(r'^(chapter|kapitel|chapitre|capítulo|part)\s+\d+|\bchapter\s+\d+', re.IGNORECASE)
+# Audiobook-style titles ("Chapter 85 - …", "Kapitel 3", "Capítulo 2"). "Part 2"/"Teil 2" are
+# common song titles, so those only count together with a long duration (see looks_like_music).
+_AUDIOBOOK = re.compile(r'^(chapter|kapitel|chapitre|capítulo|capitolo|hoofdstuk)\s+\d+|\bchapter\s+\d+', re.IGNORECASE)
+_LONG_PART = re.compile(r'^(part|teil|partie|parte)\s+\d+', re.IGNORECASE)
+LONG_PART_MS = 8 * 60_000
 MIN_DURATION_MS = 60_000
 MAX_DURATION_MS = 12 * 60_000
 
@@ -91,6 +99,9 @@ def profile_for(feeling: str) -> Optional[Profile]:
     if phrase in PROFILES:
         return PROFILES[phrase]
     # "rainy sunday" → rainy; longest known phrase contained in the text wins.
+    # Free text containing a known phrase as whole words ("rainy sunday" → rainy, "late night
+    # drive" → late night) borrows that profile; the longest known phrase wins so "late night"
+    # beats "night". Substrings inside other words don't count ("drainy" ≠ "rainy").
     for known in sorted(PROFILES, key=len, reverse=True):
         if re.search(rf'\b{re.escape(known)}\b', phrase):
             return PROFILES[known]
@@ -159,9 +170,18 @@ def literal_title_match(track: Dict, feelings: Sequence[str]) -> bool:
     return any(re.search(rf'\b{re.escape(word)}\b', title) for word in feeling_words(feelings))
 
 
-def looks_like_music(track: Dict) -> bool:
+def max_duration_ms(feelings: Sequence[str]) -> int:
+    """Longest acceptable result for these feelings (calm/sleep/focus allow long pieces)."""
+    minutes = [profile.max_minutes for profile in (profile_for(feeling) for feeling in feelings) if profile]
+    return max(minutes, default=MAX_DURATION_MS // 60_000) * 60_000
+
+
+def looks_like_music(track: Dict, *, max_duration_ms: int = MAX_DURATION_MS) -> bool:
     """Drop audiobook chapters and other non-song results genre search sometimes returns."""
     duration = int(track.get('durationMs') or 0)
-    if duration and not MIN_DURATION_MS <= duration <= MAX_DURATION_MS:
+    if duration and not MIN_DURATION_MS <= duration <= max_duration_ms:
         return False
-    return not _AUDIOBOOK.search(track.get('title') or '')
+    title = track.get('title') or ''
+    if _LONG_PART.search(title) and duration > LONG_PART_MS:
+        return False
+    return not _AUDIOBOOK.search(title)

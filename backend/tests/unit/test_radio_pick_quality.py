@@ -149,10 +149,11 @@ class FeelingOnlyStationTests(PickTestCase):
         self.assertEqual(self.sources(result), ['search:text', 'search:text'])
 
     def test_second_page_when_first_page_is_spent(self):
-        self.fake.search_results['genre:chillhop'] = [sp_track('page-1', artist_id='a1')]
+        # A full first page (all one artist) leaves the batch short, so page 2 is fetched.
+        self.fake.search_results['genre:chillhop'] = [sp_track(f'page-1-{idx}', artist_id='a1') for idx in range(10)]
         self.fake.search_results[('genre:chillhop', 'track', 10)] = [sp_track('page-2', artist_id='a2')]
         result = recommend.next_tracks(self.user, self.station(seeds=(), feelings=['😌']), count=2)
-        self.assertEqual(self.ids(result), ['page-1', 'page-2'])
+        self.assertEqual(self.ids(result), ['page-1-0', 'page-2'])
 
     def test_no_feelings_or_seeds_defaults_to_chill(self):
         self.fake.search_results['genre:chillhop'] = [sp_track('c1', artist_id='a1')]
@@ -191,3 +192,126 @@ class FeelingRuleTests(SimpleTestCase):
         self.assertEqual(recommend.majority_source(batch('mlcore', 'search:genre', 'search:text')), 'search')
         self.assertEqual(recommend.majority_source(batch('artist:seed', 'mlcore', 'mlcore:hop2', 'artist:cooccur')), 'artist')
         self.assertEqual(recommend.majority_source([]), 'search')
+
+
+class ReviewFollowUpTests(PickTestCase):
+    def test_seeds_never_outrank_discoveries(self):
+        items = [canonical_with_alias(name) for name in ('p0', 'p1')]
+        self.fake.add(sp_track('seed-1', artist_id='seed-artist'), sp_track('p0', artist_id='a0'), sp_track('p1', artist_id='a1'))
+        self.fake.genres = {'seed-artist': ['chillwave', 'ambient']}  # the seed fits 🌙 best
+        with mock.patch(ENGINE, side_effect=self.engine_by_seed({'seed-1': engine_response(*items)})):
+            result = recommend.next_tracks(self.user, self.station(feelings=['🌙']), count=2)
+        self.assertEqual((self.ids(result), result.source), (['p0', 'p1'], 'mlcore'))
+
+    def test_seed_fill_ranks_last_even_with_best_affinity(self):
+        self.fake.add(sp_track('seed-1', artist_id='seed-artist'), sp_track('p0', artist_id='a0'))
+        self.fake.genres = {'seed-artist': ['chillwave']}
+        with mock.patch(ENGINE, side_effect=self.engine_by_seed({'seed-1': engine_response(canonical_with_alias('p0'))})):
+            result = recommend.next_tracks(self.user, self.station(feelings=['🌙']), count=2)
+        self.assertEqual((self.ids(result), self.sources(result)), (['p0', 'seed-1'], ['mlcore', 'seed']))
+
+    def test_seeded_station_without_genres_searches_seed_artist_by_name(self):
+        self.fake.add(sp_track('seed-1', artist_id='toto', artist_name='Gerald Toto'))
+        self.fake.search_results['artist:"Gerald Toto"'] = [
+            sp_track('mention', artist_id='someone', artist_name='Someone', name='Gerald Toto'),
+            sp_track('toto-2', artist_id='toto', artist_name='Gerald Toto')]
+        with mock.patch(ENGINE, side_effect=ConnectionError('engine down')):
+            result = recommend.next_tracks(self.user, self.station(), count=1, recent_ids=['seed-1'])
+        self.assertEqual((self.ids(result), self.sources(result)), (['toto-2'], ['search:artist']))
+
+    def test_seeded_station_falls_back_to_default_profile(self):
+        self.fake.add(sp_track('seed-1', artist_id='toto', artist_name='Gerald Toto'))
+        self.fake.search_results['genre:chillhop'] = [sp_track('chill-1', artist_id='chiller')]
+        with mock.patch(ENGINE, side_effect=ConnectionError('engine down')):
+            result = recommend.next_tracks(self.user, self.station(), count=1, recent_ids=['seed-1'])
+        self.assertEqual(self.ids(result), ['chill-1'])  # never an empty batch → no 409 on /play
+
+    def test_personal_station_with_seeds_uses_memory_tags_fallback(self):
+        personal = Station.objects.create(user=self.user, name='Mine', kind='personal', frequency=88.7, learning=False,
+                                          seeds=[{'kind': 'track', 'spotifyId': 'seed-1', 'title': 'Seed'}])
+        self.fake.search_results['genre:"indie pop"'] = [sp_track('summer-1', artist_id='sunny')]
+        memory = [{'songs': [], 'tags': ['summer']}]
+        with mock.patch(ENGINE, side_effect=ConnectionError('down')), \
+                mock.patch('vibe.memory_services.memory_recommendation_context', return_value=memory):
+            result = recommend.next_tracks(self.user, personal, count=1, recent_ids=['seed-1'])
+        self.assertEqual(self.ids(result), ['summer-1'])
+        self.assertNotIn(('search', 'genre:chillhop', 'track'), self.fake.calls)
+
+    def test_hop_two_keeps_user_exclusions_when_truncating(self):
+        from radio.models import Exclusion
+
+        Exclusion.objects.create(user=self.user, scope='everywhere', kind='track', value='never-this')
+        items = [canonical_with_alias(f'p{idx}') for idx in range(3)]
+        self.fake.add(*[sp_track(f'p{idx}', artist_id=f'a{idx}') for idx in range(3)])
+        with mock.patch(ENGINE, side_effect=self.engine_by_seed({'seed-1': engine_response(*items)})) as engine, \
+                mock.patch.object(recommend, 'MAX_IDENTITY_ITEMS', 2):
+            recommend.next_tracks(self.user, self.station(), count=5, recent_ids=[f'r{idx}' for idx in range(10)])
+        hop = [call for call in engine.call_args_list if call.args[1]['seed_items'][0]['source_id'] == 'p0'][0]
+        self.assertEqual([item['source_id'] for item in hop.args[1]['exclude_items']][:1], ['never-this'])
+
+    def test_crate_picks_keep_the_whole_budget(self):
+        with mock.patch('radio.services.spotify.time.monotonic', return_value=0.0), \
+                mock.patch(ENGINE, return_value={'items': []}) as engine:
+            recommend.crate_track_picks(self.user, ['seed-1'], 10)
+            with recommend.spotify.budget(recommend.NEXT_BUDGET_SECONDS):
+                recommend.mlcore_track_ids('cooccurrence', ['seed-1'], [], 10)
+        self.assertEqual(engine.call_args_list[0].kwargs['timeout'], recommend.NEXT_BUDGET_SECONDS)
+        self.assertEqual(engine.call_args_list[1].kwargs['timeout'],
+                         recommend.NEXT_BUDGET_SECONDS - recommend.MLCORE_RESERVE_SECONDS)
+
+
+class SearchCostTests(PickTestCase):
+    def test_second_page_only_for_full_first_pages(self):
+        self.fake.search_results['genre:chillwave'] = [sp_track(f'cw-{idx}', artist_id='same') for idx in range(10)]
+        self.fake.search_results['genre:downtempo'] = [sp_track('dt-1', artist_id='other')]
+        recommend.next_tracks(self.user, self.station(seeds=(), feelings=['🌙']), count=5)
+        second_page = [call for call in self.fake.calls if call[0] == 'search_page2']
+        self.assertEqual([call[1] for call in second_page], ['genre:chillwave'])
+
+    def test_many_searches_stay_within_budget(self):
+        clock = [0.0]
+        real_search = self.fake.search
+
+        def slow_search(*args, **kwargs):
+            clock[0] += 0.5
+            return real_search(*args, **kwargs)
+
+        self.fake.search = slow_search
+        for genre in ('chillwave', 'house', 'acoustic', 'downtempo', 'nu disco', 'indie folk', '"trip hop"', '"dance pop"'):
+            self.fake.search_results[f'genre:{genre}'] = [sp_track(f'{genre}-{idx}', artist_id='same') for idx in range(10)]
+        with mock.patch('radio.services.spotify.time.monotonic', side_effect=lambda: clock[0]):
+            recommend.next_tracks(self.user, self.station(seeds=(), feelings=['🌙', '💃', '☕']), count=10)
+        searches = len(self.fake.called('search')) + len([call for call in self.fake.calls if call[0] == 'search_page2'])
+        self.assertLessEqual(searches, recommend.MAX_SEARCH_QUERIES)
+        self.assertLessEqual(clock[0], recommend.NEXT_BUDGET_SECONDS + 0.5)
+
+
+class ArtistGenreFailureTests(PickTestCase):
+    def test_refused_endpoint_is_remembered(self):
+        from spotipy.exceptions import SpotifyException
+
+        self.fake.artists = mock.Mock(side_effect=SpotifyException(403, -1, 'forbidden'))
+        self.assertEqual(recommend.spotify.artist_genres(['a1']), {})
+        self.assertEqual(recommend.spotify.artist_genres(['a2', 'a3']), {})
+        self.assertEqual(self.fake.artists.call_count, 1)
+        self.assertFalse(recommend.spotify.breaker_open())
+
+    def test_failed_ids_are_negative_cached(self):
+        from spotipy.exceptions import SpotifyException
+
+        self.fake.artists = mock.Mock(side_effect=SpotifyException(404, -1, 'missing'))
+        recommend.spotify.artist_genres(['a1'])
+        self.assertEqual(recommend.spotify.artist_genres(['a1']), {'a1': []})
+        self.assertEqual(self.fake.artists.call_count, 1)
+
+
+class MusicFilterTests(SimpleTestCase):
+    def test_part_titles_are_songs_unless_long(self):
+        self.assertTrue(feelings.looks_like_music({'title': 'Part 2', 'durationMs': 240000}))
+        self.assertFalse(feelings.looks_like_music({'title': 'Teil 3 - Der Roman', 'durationMs': 9 * 60000}))
+        self.assertFalse(feelings.looks_like_music({'title': 'Kapitel 12', 'durationMs': 200000}))
+
+    def test_long_pieces_allowed_for_calm_profiles(self):
+        long_piece = {'title': 'Music for Airports 1/1', 'durationMs': 17 * 60000}
+        self.assertTrue(feelings.looks_like_music(long_piece, max_duration_ms=feelings.max_duration_ms(['😴'])))
+        self.assertFalse(feelings.looks_like_music(long_piece, max_duration_ms=feelings.max_duration_ms(['💃'])))

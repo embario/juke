@@ -263,23 +263,47 @@ def artist_name(artist_id: str) -> str:
 ARTIST_BATCH = 50
 
 
+ARTISTS_REFUSED_KEY = f'{_CACHE_PREFIX}:artists-refused'
+ARTISTS_REFUSED_SECONDS = 3600
+ARTIST_GENRES_NEGATIVE_SECONDS = 600
+
+
 def artist_genres(artist_ids: Iterable[str]) -> Dict[str, List[str]]:
-    """artist id → Spotify genres via ``GET /v1/artists?ids=`` batches (cached, budget-bound)."""
+    """artist id → Spotify genres via ``GET /v1/artists?ids=`` batches (cached, budget-bound).
+
+    Failures are cheap to repeat-avoid: a 403 marks the endpoint refused for an hour, and ids
+    from any failed batch are negative-cached (as "no genres") for ten minutes. Transport
+    errors, 5xx and 429 also trip the shared circuit breaker in ``_call``.
+    """
     ids = [artist_id for artist_id in dict.fromkeys(artist_ids) if artist_id]
     keys = {artist_id: f'{_CACHE_PREFIX}:artist-genres:{artist_id}' for artist_id in ids}
     found = cache.get_many(list(keys.values()))
     result = {artist_id: found[key] for artist_id, key in keys.items() if key in found}
     missing = [artist_id for artist_id in ids if artist_id not in result]
-    fresh = {}
+    if not missing or cache.get(ARTISTS_REFUSED_KEY):
+        return result
+    fresh: Dict[str, List[str]] = {}
+    failed: List[str] = []
     for start in range(0, len(missing), ARTIST_BATCH):
         batch = missing[start:start + ARTIST_BATCH]
-        payload = _call('artists batch', lambda client, batch=batch: client.artists(batch))
-        for item in (payload or {}).get('artists') or []:
+        failures: list = []
+        payload = _call('artists batch', lambda client, batch=batch: client.artists(batch), failures=failures)
+        if payload is None:
+            if failures:
+                failed += batch
+                if http_status(failures[0]) == 403:
+                    cache.set(ARTISTS_REFUSED_KEY, True, ARTISTS_REFUSED_SECONDS)
+                    logger.info('Spotify refused the artists endpoint; skipping genre lookups for %ss', ARTISTS_REFUSED_SECONDS)
+                    break
+            continue
+        for item in payload.get('artists') or []:
             if isinstance(item, dict) and item.get('id'):
                 fresh[item['id']] = [genre for genre in item.get('genres') or [] if isinstance(genre, str)]
     if fresh:
         cache.set_many({keys[artist_id]: genres for artist_id, genres in fresh.items() if artist_id in keys}, TRACK_CACHE_TTL)
         result.update(fresh)
+    if failed:
+        cache.set_many({keys[artist_id]: [] for artist_id in failed}, ARTIST_GENRES_NEGATIVE_SECONDS)
     return result
 
 

@@ -53,6 +53,7 @@ MLCORE_RESERVE_SECONDS = float(getattr(settings, 'RADIO_MLCORE_RESERVE_SECONDS',
 MAX_ARTIST_EXPANSION = 4
 MAX_SEARCH_QUERIES = 8
 POOL_FACTOR = 2  # seeded + feelings: gather 2× candidates, then re-rank by feeling affinity
+LAST_RESORT_TIERS = {'search': 1, 'seed': 2}
 
 # Public source names (the ``source`` enum of the API contract).
 SOURCES = ('mlcore', 'metadata', 'artist', 'search', 'seed')
@@ -71,6 +72,7 @@ class _Context:
     seed_artist_ids: List[str]
     feelings: List[str]
     flt: signals.ExclusionFilter
+    fallback_feelings: List[str] = field(default_factory=list)  # personal: memory tags
 
     @property
     def has_seeds(self) -> bool:
@@ -109,14 +111,16 @@ def build_context(user, station: Station, recent_ids: Iterable[str] = ()) -> _Co
         if station.learning:
             seed_tracks += signals.learned_track_ids(user, station=station)
     station_feelings = [feeling for feeling in station.feelings or [] if feeling.strip()]
-    if not station_feelings and station.is_personal and not seed_tracks and not seed_artists:
-        station_feelings = signals.memory_tags(user, limit=3)
+    memory_feelings = signals.memory_tags(user, limit=3) if station.is_personal and not station_feelings else []
+    if not station_feelings and not seed_tracks and not seed_artists:
+        station_feelings = memory_feelings
     return _Context(
         station=station,
         seed_track_ids=list(dict.fromkeys(seed_tracks))[:MAX_SEEDS],
         seed_artist_ids=list(dict.fromkeys(seed_artists)),
         feelings=list(dict.fromkeys(station_feelings)),
         flt=flt,
+        fallback_feelings=memory_feelings,
     )
 
 
@@ -171,8 +175,12 @@ def mlcore_seed_sample(seed_ids: Sequence[str]) -> List[str]:
     return seed_ids[:1] + random.sample(seed_ids[1:], MLCORE_SEED_LIMIT - 1)
 
 
-def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence[str], limit: int) -> List[tuple[str, Dict]]:
-    """Ranked (spotifyId, evidence) pairs from an MLCore identity ranker; [] on any failure."""
+def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence[str], limit: int, *,
+                     reserve: float = MLCORE_RESERVE_SECONDS) -> List[tuple[str, Dict]]:
+    """Ranked (spotifyId, evidence) pairs from an MLCore identity ranker; [] on any failure.
+
+    ``reserve`` seconds of the current budget are left for the callers' Spotify fallbacks.
+    """
     from recommender.services import client
 
     if not seed_ids:
@@ -180,7 +188,7 @@ def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence
     timeout = MLCORE_TIMEOUT_SECONDS
     left = spotify.remaining()
     if left is not None:
-        left -= MLCORE_RESERVE_SECONDS
+        left -= reserve
         if left < MIN_ENGINE_SECONDS:
             return []
         timeout = min(timeout, left)
@@ -317,31 +325,51 @@ def _feeling_ranker(feelings: Sequence[str], sources: Dict[str, List[str]]) -> O
                         for artist_id in (track.get('artistIds') or [])[:2]), default=0)
 
         def tier(track):
-            # Seed-related picks always outrank sound-search fill; feelings only reorder within a tier.
-            return 1 if sources[track['spotifyId']][0].startswith('search') else 0
+            # Discoveries near the seeds first, sound-search fill next, the seeds themselves last;
+            # feelings only reorder within a tier.
+            source = sources[track['spotifyId']][0]
+            return LAST_RESORT_TIERS.get(coarse(source), 0)
 
         # Stable: within equal tier and affinity the source order (seed closeness) is kept.
         return sorted(pool, key=lambda track: (tier(track), -affinity(track)))
     return rank
 
 
-def _sound_search(picker: _Picker, feelings: Sequence[str], extra_genres: Sequence[str] = ()) -> None:
-    """Search Spotify by sound (genre filters), round-robin across queries for variety."""
-    queries = feeling_rules.search_queries(feelings, extra_genres=extra_genres)[:MAX_SEARCH_QUERIES]
+def _sound_search(picker: _Picker, feelings: Sequence[str], extra_genres: Sequence[str] = (),
+                  extra_queries: Sequence[Tuple[str, str]] = ()) -> None:
+    """Search Spotify by sound (genre filters), round-robin across queries for variety.
+
+    ``extra_queries`` are tried first, e.g. ``('artist:"Name"', 'artist')`` for seed artists.
+    Page 2 is only fetched for queries whose first page was full, which bounds the worst case.
+    """
+    queries = list(dict.fromkeys(list(extra_queries) + feeling_rules.search_queries(feelings, extra_genres=extra_genres)))
+    queries = queries[:MAX_SEARCH_QUERIES]
     if not queries:
         return
     wanted = feeling_rules.feeling_genres(feelings) | {genre.casefold() for genre in extra_genres}
+    max_duration = feeling_rules.max_duration_ms(feelings)
+    artist_names = {query: query.split(':', 1)[1].strip('"').casefold() for query, kind in queries if kind == 'artist'}
     for offset in (0, spotify.SEARCH_LIMIT):
-        if picker.done or spotify.out_of_time():
+        if picker.done or spotify.out_of_time() or not queries:
             return
         columns = []
+        full_pages = []
         for query, kind in queries:
             if spotify.out_of_time():
                 break
-            columns.append([(f'search:{kind}', track) for track in spotify.search_tracks(query, offset=offset)])
-        text_ids = [artist_id for column in columns for source, track in column if source == 'search:text'
-                    for artist_id in (track.get('artistIds') or [])[:1]]
-        text_genres = spotify.artist_genres(text_ids) if text_ids else {}
+            results = spotify.search_tracks(query, offset=offset)
+            if len(results) >= spotify.SEARCH_LIMIT:
+                full_pages.append((query, kind))
+            if kind == 'artist':
+                # An artist filter can still surface songs that merely mention the name.
+                name = artist_names[query]
+                results = [track for track in results
+                           if name in {artist.casefold() for artist in track.get('artistNames') or []}]
+            columns.append([(f'search:{kind}', track) for track in results])
+        queries = full_pages
+        literal = [track for column in columns for source, track in column
+                   if source == 'search:text' and feeling_rules.literal_title_match(track, feelings)]
+        literal_genres = spotify.artist_genres([(track.get('artistIds') or [''])[0] for track in literal]) if literal else {}
         seen_titles = set()
         pairs = []
         for row in range(max((len(column) for column in columns), default=0)):
@@ -349,19 +377,30 @@ def _sound_search(picker: _Picker, feelings: Sequence[str], extra_genres: Sequen
                 if row >= len(column):
                     continue
                 source, track = column[row]
-                if not feeling_rules.looks_like_music(track):
+                if not feeling_rules.looks_like_music(track, max_duration_ms=max_duration):
                     continue
                 title_key = ((track.get('title') or '').casefold(), picker.artist_key(track))
                 if title_key in seen_titles:
                     continue
                 seen_titles.add(title_key)
-                if feeling_rules.literal_title_match(track, feelings):
+                if source == 'search:text' and feeling_rules.literal_title_match(track, feelings):
                     # "Late Night" by anyone is not late-night music; keep it only if the artist fits.
-                    artist_genres = text_genres.get((track.get('artistIds') or [''])[0], [])
-                    if source != 'search:genre' and feeling_rules.genre_affinity(artist_genres, wanted) == 0:
+                    artist_genres = literal_genres.get((track.get('artistIds') or [''])[0], [])
+                    if feeling_rules.genre_affinity(artist_genres, wanted) == 0:
                         continue
                 pairs.append((source, track))
         picker.offer_pairs(pairs)
+
+
+def _seed_artist_names(ctx: _Context, seed_artists: Sequence[str]) -> List[str]:
+    """Names of the seed artists from cached track payloads and the station's artist seeds."""
+    names: List[str] = []
+    for track in spotify.cached_tracks(ctx.seed_track_ids[:10]).values():
+        for artist_id, name in zip(track.get('artistIds') or [], track.get('artistNames') or []):
+            if artist_id in seed_artists and name:
+                names.append(name)
+    names += [seed.get('title') or '' for seed in ctx.station.seeds or [] if seed.get('kind') == 'artist']
+    return [name for name in dict.fromkeys(names) if name and '"' not in name]
 
 
 def next_tracks(user, station: Station, count: int = 3, recent_ids: Iterable[str] = ()) -> Recommendation:
@@ -395,7 +434,9 @@ def _next_tracks(user, station: Station, count: int, recent_ids: Iterable[str]) 
         good = [track['spotifyId'] for track in picker.picked_from('mlcore')] or [track_id for track_id, _ in cooccurrence]
         hop_seeds = [track_id for track_id in good if track_id not in ctx.seed_track_ids][:MLCORE_SEED_LIMIT]
         if hop_seeds:
-            hop_exclude = list(dict.fromkeys(ctx.seed_track_ids + list(picker.seen) + exclude))[:MAX_IDENTITY_ITEMS]
+            # User exclusions first so truncation only ever drops the least important ids.
+            hop_exclude = list(dict.fromkeys(ctx.flt.excluded_track_ids + ctx.seed_track_ids + exclude
+                                             + list(picker.seen)))[:MAX_IDENTITY_ITEMS]
             picker.offer_ids('mlcore:hop2', mlcore_track_ids('cooccurrence', hop_seeds, hop_exclude, want))
 
     if engine_time():
@@ -422,14 +463,19 @@ def _next_tracks(user, station: Station, count: int, recent_ids: Iterable[str]) 
     # Sound search only fills a real shortfall (fewer seed-related tracks than requested),
     # never the extra re-ranking pool.
     if len(picker.tracks) < count and not spotify.out_of_time():
-        seed_genres: List[str] = []
-        if not ctx.feelings and seed_artists:
-            genres = spotify.artist_genres(seed_artists[:MAX_ARTIST_EXPANSION])
+        if ctx.feelings:
+            _sound_search(picker, ctx.feelings)
+        else:
+            genres = spotify.artist_genres(seed_artists[:MAX_ARTIST_EXPANSION]) if seed_artists else {}
             seed_genres = list(dict.fromkeys(genre for artist_id in seed_artists for genre in genres.get(artist_id, [])))[:3]
-        if ctx.feelings or seed_genres:
-            _sound_search(picker, ctx.feelings, seed_genres)
+            # Spotify often has no genres for an artist (or refuses the lookup): then search the seed
+            # artists by name, and fall back to memory tags (personal) or the default profile.
+            artist_queries = [(f'artist:"{name}"', 'artist') for name in _seed_artist_names(ctx, seed_artists)[:3]]
+            fallback = ctx.fallback_feelings or ([] if seed_genres else list(feeling_rules.DEFAULT_FEELINGS))
+            _sound_search(picker, fallback, seed_genres, extra_queries=[] if seed_genres else artist_queries)
 
-    if not picker.done and ctx.seed_track_ids:
+    # The seeds themselves only fill a real shortfall and rank last.
+    if len(picker.tracks) < count and ctx.seed_track_ids:
         hydrated = spotify.get_tracks(ctx.seed_track_ids)  # cache-only once the budget is spent
         picker.offer('seed', [hydrated[track_id] for track_id in ctx.seed_track_ids if track_id in hydrated])
 
@@ -439,6 +485,7 @@ def _next_tracks(user, station: Station, count: int, recent_ids: Iterable[str]) 
 def crate_track_picks(user, seed_ids: Sequence[str], limit: int) -> List[Dict]:
     """MLCore co-occurrence picks for the crate, hydrated, without exclusions/recency rules."""
     with spotify.budget(NEXT_BUDGET_SECONDS):
-        pairs = mlcore_track_ids('cooccurrence', list(seed_ids)[:MAX_SEEDS], [], limit)
+        # The crate has no Spotify fallbacks after MLCore, so it keeps the whole budget.
+        pairs = mlcore_track_ids('cooccurrence', list(seed_ids)[:MAX_SEEDS], [], limit, reserve=0)
         hydrated = spotify.get_tracks([track_id for track_id, _ in pairs])
     return [hydrated.get(track_id) or _evidence_track(track_id, evidence) for track_id, evidence in pairs]

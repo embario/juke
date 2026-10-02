@@ -67,7 +67,7 @@ class FakeSpotify:
         return {'items': [{'id': track_id} for track_id in self.albums.get(album_id, [])]}
 
     def search(self, q, limit=10, type='track', market=None, offset=0):
-        self.calls.append(('search', q, type))
+        self.calls.append(('search_page2', q, type) if offset else ('search', q, type))
         if offset:
             return {f'{type}s': {'items': self.search_results.get((q, type, offset), [])}}
         return {f'{type}s': {'items': self.search_results.get((q, type), self.search_results.get(q, []))}}
