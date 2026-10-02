@@ -494,8 +494,13 @@ final class MusicDetectionController {
         }
     }
 
+    /// Set by the app: while Juke radio is on the air it reads Spotify's
+    /// state itself and forwards it through `apply(_:)`, so this controller
+    /// skips its own Spotify polling (one poller, not two).
+    @ObservationIgnored var suspendsSpotifyPolling: @MainActor () -> Bool = { false }
+
     private func refreshSpotifyState() async {
-        guard !forceSpectatorModeForUITests else { return }
+        guard !forceSpectatorModeForUITests, !suspendsSpotifyPolling() else { return }
         guard mode == .playerMetadata, spotifyServerAvailable, let accessToken else { return }
         do {
             let state = try await playbackClient.fetchSpotifyState(token: accessToken)
