@@ -139,6 +139,131 @@ final class BackgroundRecognizerTests: XCTestCase {
         XCTAssertEqual(box.events.map(\.spotifyTrackId), ["second"])
     }
 
+    func testShazamNeedsASecondFreshMatchWithinTheDwell() async {
+        let box = Box()
+        let gate = Gate()
+        let recognizer = BackgroundRecognizer(
+            isEnabled: { true }, resolveCatalog: { _ in "pink-moon" },
+            post: { box.events.append($0) }, now: { box.now }, sleep: { _ in try await gate.wait() }
+        )
+        // One stale match (the song stopped long ago, the track never cleared): nothing.
+        recognizer.observe(shazam(offset: 10), isAudible: true)
+        await gate.openAll()
+        await recognizer.pending?.value
+        XCTAssertTrue(box.events.isEmpty)
+
+        // A second match within the dwell: posted once.
+        recognizer.cancelPending()
+        recognizer.observe(shazam(offset: 40), isAudible: true)
+        box.now = box.now.addingTimeInterval(12)
+        recognizer.observe(shazam(offset: 52), isAudible: true)
+        await gate.openAll()
+        await recognizer.pending?.value
+        XCTAssertEqual(box.events.map(\.source), ["shazam"])
+    }
+
+    func testShazamMatchMustBeRecent() async {
+        let box = Box()
+        let gate = Gate()
+        let recognizer = BackgroundRecognizer(
+            isEnabled: { true }, resolveCatalog: { _ in "pink-moon" },
+            post: { box.events.append($0) }, now: { box.now }, sleep: { _ in try await gate.wait() }
+        )
+        recognizer.observe(shazam(offset: 1), isAudible: true)
+        recognizer.observe(shazam(offset: 5), isAudible: true)
+        box.now = box.now.addingTimeInterval(recognizer.shazamFreshness + 1)
+        await gate.openAll()
+        await recognizer.pending?.value
+        XCTAssertTrue(box.events.isEmpty)
+    }
+
+    func testShortSilenceKeepsTheDwellRunning() async {
+        let box = Box()
+        let gate = Gate()
+        let recognizer = BackgroundRecognizer(
+            isEnabled: { true }, resolveCatalog: { _ in nil },
+            post: { box.events.append($0) }, now: { box.now }, sleep: { _ in try await gate.wait() }
+        )
+        let song = track(namespace: "spotify", id: "sp1")
+        recognizer.observe(song, isAudible: true)
+        let dwell = recognizer.pending
+        recognizer.observe(song, isAudible: false)   // quiet passage: grace timer, dwell kept
+        recognizer.observe(song, isAudible: true)    // back before the grace ends
+        XCTAssertEqual(recognizer.pending, dwell, "the dwell keeps running; no new one starts")
+        await gate.openAll()
+        await dwell?.value
+        XCTAssertEqual(box.events.map(\.spotifyTrackId), ["sp1"])
+    }
+
+    func testRadioSongsAndMemoryReplaysAreNotRecognized() async {
+        let box = Box()
+        let recognizer = makeRecognizer(box)
+        recognizer.noteRadioTrack("radio-song")
+        let played = await recognizer.commit(track(namespace: "spotify", id: "radio-song"))
+        XCTAssertFalse(played)
+
+        recognizer.isRadioTrack = { $0 == "queued-song" }
+        let queued = await recognizer.commit(track(namespace: "spotify", id: "queued-song"))
+        XCTAssertFalse(queued)
+
+        let mark = MemoryPlaybackMark(providerID: nil, title: "Blue in Green", artist: "Miles Davis", startedAt: box.now)
+        recognizer.memoryPlayback = { mark }
+        let memory = await recognizer.commit(track(namespace: "spotify", id: "memory-song"))
+        XCTAssertFalse(memory)
+        // Long after the memory was played, the same song counts again.
+        box.now = box.now.addingTimeInterval(MemoryPlaybackMark.window + 1)
+        let later = await recognizer.commit(track(namespace: "spotify", id: "memory-song"))
+        XCTAssertTrue(later)
+        XCTAssertEqual(box.events.map(\.spotifyTrackId), ["memory-song"])
+    }
+
+    func testCatalogFailuresAreRetriedButNoMatchIsCached() async {
+        let box = Box()
+        var attempts = 0
+        let recognizer = BackgroundRecognizer(
+            isEnabled: { true },
+            resolveCatalog: { _ in
+                attempts += 1
+                if attempts == 1 { throw URLError(.timedOut) }
+                return attempts == 2 ? nil : "late"
+            },
+            post: { box.events.append($0) }, now: { box.now }, sleep: { _ in }
+        )
+        let song = track(namespace: "apple_music", id: "AM1")
+        let failed = await recognizer.commit(song)
+        let noMatch = await recognizer.commit(song)
+        let cached = await recognizer.commit(song)
+        XCTAssertFalse(failed); XCTAssertFalse(noMatch); XCTAssertFalse(cached)
+        XCTAssertEqual(attempts, 2, "a failure is retried; a real no-match is remembered")
+    }
+
+    func testResetForgetsAccountState() async {
+        let box = Box()
+        let recognizer = makeRecognizer(box)
+        let song = track(namespace: "spotify", id: "sp1")
+        let first = await recognizer.commit(song)
+        XCTAssertTrue(first)
+        recognizer.noteRadioTrack("radio-song")
+        recognizer.reset()
+        XCTAssertNil(recognizer.lastPosted)
+        let again = await recognizer.commit(song)
+        XCTAssertTrue(again, "a new account starts with a fresh repeat window")
+        let radioSong = await recognizer.commit(track(namespace: "spotify", id: "radio-song"))
+        XCTAssertTrue(radioSong)
+    }
+
+    func testTurningTheSettingOnLooksAtTheCurrentSong() async {
+        let box = Box()
+        box.enabled = false
+        let recognizer = makeRecognizer(box)
+        recognizer.observe(track(namespace: "spotify", id: "sp1"), isAudible: true)
+        XCTAssertNil(recognizer.pending)
+        box.enabled = true
+        recognizer.reevaluate()
+        await recognizer.pending?.value
+        XCTAssertEqual(box.events.map(\.spotifyTrackId), ["sp1"])
+    }
+
     func testPostsThroughTheRadioEventsEndpoint() async throws {
         let api = JukeAPI(baseURL: URL(string: "https://recognition-tests.example/")!, session: RecognitionURLProtocol.session(), token: { "tkn" })
         RecognitionURLProtocol.reset()
@@ -151,6 +276,26 @@ final class BackgroundRecognizerTests: XCTestCase {
         XCTAssertEqual(request.authorization, "Token tkn")
         XCTAssertEqual(request.body, #"{"event":"recognized","source":"metadata","spotifyTrackId":"0aWMVrwxPNYkKmFthzmpRi"}"#)
     }
+}
+
+@MainActor
+private final class Gate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func wait() async throws {
+        await withCheckedContinuation { waiters.append($0) }
+        try Task.checkCancellation()
+    }
+    func openAll() async {
+        for _ in 0..<20 where waiters.isEmpty { await Task.yield() }
+        let current = waiters
+        waiters = []
+        current.forEach { $0.resume() }
+        await Task.yield()
+    }
+}
+
+private func shazam(offset: TimeInterval) -> RecognizedTrack {
+    RecognizedTrack(title: "Pink Moon", artist: "Nick Drake", album: nil, isrc: nil, artworkURL: nil, appleMusicURL: nil, shazamID: "99", matchOffset: offset)
 }
 
 private func track(title: String = "Blue in Green", artist: String = "Miles Davis", namespace: String? = nil, id: String? = nil, shazamID: String? = nil) -> RecognizedTrack {

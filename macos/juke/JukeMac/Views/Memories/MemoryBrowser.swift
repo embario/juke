@@ -26,10 +26,13 @@ struct MemoryBrowser: Equatable, Sendable {
     mutating func update(ids newIDs: [UUID]) {
         let previousIndex = index
         ids = newIDs
-        if let pendingID, newIDs.contains(pendingID) {
-            currentID = pendingID
+        if let pendingID {
+            // A pending selection gets one chance: the next list either holds it or it is dropped.
             self.pendingID = nil
-            return
+            if newIDs.contains(pendingID) {
+                currentID = pendingID
+                return
+            }
         }
         if let currentID, newIDs.contains(currentID) { return }
         guard !newIDs.isEmpty else { currentID = nil; return }

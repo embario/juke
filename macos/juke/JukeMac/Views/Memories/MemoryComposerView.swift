@@ -138,7 +138,7 @@ struct MemoryComposerView: View {
                         .id(detail ?? String(step.rawValue))
                         .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: reduceMotion ? 0 : 18)), removal: .opacity))
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if let error { Text(error).font(JukeFont.body(13)).foregroundStyle(theme.accent.color).accessibilityIdentifier("memory.error") }
+                    if let error { Label(error, systemImage: "exclamationmark.triangle.fill").font(JukeFont.body(13, weight: .medium)).foregroundStyle(theme.ink.color).accessibilityIdentifier("memory.error") }
                 }.padding(.horizontal, 36).padding(.bottom, 12).frame(maxWidth: 1040).frame(maxWidth: .infinity)
             }
             footer

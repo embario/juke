@@ -35,7 +35,12 @@ struct SettingsView: View {
             Section("Listening") {
                 Toggle("Recognize music in the background", isOn: $settings.backgroundRecognitionEnabled)
                     .accessibilityIdentifier("settings.backgroundRecognition")
-                Text("Juke notices what you play elsewhere to learn your taste. It reads Spotify and Apple Music, and uses Shazam only when you choose This Mac or Around Me; it never turns on the microphone by itself.")
+                Picker("Listen with", selection: detectionMode) {
+                    ForEach(MusicDetectionController.Mode.allCases) { mode in Text(mode.title).tag(mode) }
+                }
+                .disabled(model.session == nil)
+                .accessibilityIdentifier("settings.detectionMode")
+                Text("Juke notices what you play elsewhere to learn your taste. It reads Spotify and Apple Music; This Mac's Audio and Around Me use Shazam and ask for permission the first time. Juke never turns on the microphone unless you choose Around Me.")
                     .font(.caption).foregroundStyle(theme.sub.color)
             }
 
@@ -104,6 +109,19 @@ struct SettingsView: View {
         .onAppear { backendText = model.settings.backendURL.absoluteString }
         .accessibilityIdentifier("settings.view")
         .navigationTitle("Juke Settings")
+    }
+
+    /// Switching the source is an explicit choice, so it applies at once;
+    /// capture (and its permission prompt) starts only for This Mac or Around Me.
+    private var detectionMode: Binding<MusicDetectionController.Mode> {
+        Binding(
+            get: { model.detection.mode },
+            set: { mode in
+                guard mode != model.detection.mode else { return }
+                model.detection.mode = mode
+                Task { await model.detection.start(token: model.session?.accessToken) }
+            }
+        )
     }
 
     private func applyBackend() {

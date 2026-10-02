@@ -23,9 +23,25 @@ struct MemoriesView: View {
     @State private var oldestFirst = false
     @State private var showingIndex = false
     @State private var mediaMemory: MusicMemory?
+    @State private var showingOnThisDay = false
+    /// The memories the card flips through, recomputed only when the
+    /// memories, search, thread or order change.
+    @State private var filtered: [MusicMemory] = []
     @FocusState private var cardFocused: Bool
+    @FocusState private var searchFocused: Bool
 
-    private var filtered: [MusicMemory] {
+    private struct FilterKey: Equatable {
+        let memories: [MusicMemory]
+        let search: String
+        let connection: String?
+        let oldestFirst: Bool
+    }
+
+    private var filterKey: FilterKey {
+        FilterKey(memories: store.memories, search: search, connection: connection?.id, oldestFirst: oldestFirst)
+    }
+
+    private func computeFiltered() -> [MusicMemory] {
         store.memories.filter { memory in
             (connection == nil || connection!.memoryIDs.contains(memory.id)) &&
             (search.isEmpty || ([memory.title, memory.text, memory.place] + memory.tags + memory.people + memory.songs.map { "\($0.title) \($0.artist)" }).joined(separator: " ").localizedCaseInsensitiveContains(search))
@@ -69,8 +85,12 @@ struct MemoriesView: View {
             app.memoryJourneyActive = composing
             syncArtwork()
         }
-        .onChange(of: filtered.map(\.id), initial: true) { _, ids in browser.update(ids: ids) }
+        .onChange(of: filterKey, initial: true) { _, _ in
+            filtered = computeFiltered()
+            browser.update(ids: filtered.map(\.id))
+        }
         .onChange(of: current?.songs.first?.artworkURL, initial: true) { _, _ in syncArtwork() }
+        .onChange(of: app.lock.isLocked) { _, _ in syncArtwork() }
         .onDisappear {
             app.memoryJourneyActive = false
             app.artworkOverride = nil
@@ -78,9 +98,10 @@ struct MemoriesView: View {
         .sheet(item: $mediaMemory) { memory in MemoryMediaSheet(memory: memory) }
     }
 
-    /// The card follows the shown memory's song; the composer keeps its own accent.
+    /// The card follows the shown memory's song; the composer keeps its own
+    /// accent, and nothing of a memory shows through the lock screen.
     private func syncArtwork() {
-        app.artworkOverride = isComposing ? nil : current?.songs.first?.artworkURL
+        app.artworkOverride = isComposing || app.lock.isLocked ? nil : current?.songs.first?.artworkURL
     }
 
     // MARK: Browsing card
@@ -110,8 +131,15 @@ struct MemoriesView: View {
         .focusable()
         .focused($cardFocused)
         .focusEffectDisabled()
-        .onKeyPress(.leftArrow) { flip(forward: false); return .handled }
-        .onKeyPress(.rightArrow) { flip(forward: true); return .handled }
+        .overlay {
+            // The card's own focus ring: ← and → flip while it is focused.
+            RoundedRectangle(cornerRadius: JukeRadius.card - 8, style: .continuous)
+                .strokeBorder(theme.accent.color.opacity(cardFocused ? 0.7 : 0), lineWidth: 2)
+                .padding(-10)
+                .allowsHitTesting(false)
+        }
+        .onKeyPress(.leftArrow) { arrowFlip(forward: false) }
+        .onKeyPress(.rightArrow) { arrowFlip(forward: true) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("memory.catalog")
     }
@@ -146,13 +174,14 @@ struct MemoriesView: View {
                     .accessibilityLabel("Threads through your memories")
             }
             if !onThisDay.isEmpty {
-                Button { if let first = onThisDay.first { search = ""; connection = nil; browser.select(first.id) } } label: {
+                Button { showingOnThisDay.toggle() } label: {
                     Image(systemName: "clock.arrow.circlepath")
                 }
                 .buttonStyle(.plain).frame(width: 32, height: 32)
                 .help("On this day")
                 .accessibilityLabel("On this day")
                 .accessibilityIdentifier("memory.onThisDay")
+                .popover(isPresented: $showingOnThisDay, arrowEdge: .bottom) { onThisDayList }
             }
             Button { showingIndex.toggle() } label: { Image(systemName: "list.bullet") }
                 .buttonStyle(.plain).frame(width: 32, height: 32)
@@ -176,6 +205,7 @@ struct MemoriesView: View {
             Image(systemName: "magnifyingglass").foregroundStyle(theme.sub.color)
             TextField("Song, person, place, tag", text: $search)
                 .textFieldStyle(.plain)
+                .focused($searchFocused)
                 .accessibilityIdentifier("memory.search")
             if !search.isEmpty {
                 Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(theme.sub.color) }
@@ -228,6 +258,8 @@ struct MemoriesView: View {
         HStack(spacing: 6) {
             Button { flip(forward: false) } label: { Image(systemName: "chevron.left") }
                 .buttonStyle(MemoryRoundButtonStyle())
+                .keyboardShortcut("[", modifiers: .command)
+                .help("Previous memory (⌘[)")
                 .disabled(!browser.canFlip)
                 .accessibilityLabel("Previous memory")
                 .accessibilityIdentifier("memory.previous")
@@ -238,10 +270,19 @@ struct MemoriesView: View {
                 .accessibilityIdentifier("memory.position")
             Button { flip(forward: true) } label: { Image(systemName: "chevron.right") }
                 .buttonStyle(MemoryRoundButtonStyle())
+                .keyboardShortcut("]", modifiers: .command)
+                .help("Next memory (⌘])")
                 .disabled(!browser.canFlip)
                 .accessibilityLabel("Next memory")
                 .accessibilityIdentifier("memory.following")
         }
+    }
+
+    /// Arrow keys flip only when the card itself has focus, never while typing a search.
+    private func arrowFlip(forward: Bool) -> KeyPress.Result {
+        guard cardFocused, !searchFocused, current != nil else { return .ignored }
+        flip(forward: forward)
+        return .handled
     }
 
     private func flip(forward: Bool) {
@@ -337,6 +378,31 @@ struct MemoriesView: View {
         store.memories.filter { anniversaryYears($0) != nil }.sorted { $0.occurredAt > $1.occurredAt }
     }
 
+    /// Every memory from this week in earlier years.
+    private var onThisDayList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("On this day").font(JukeFont.body(13, weight: .semibold))
+            ForEach(onThisDay) { memory in
+                Button {
+                    search = ""; connection = nil
+                    withAnimation(reduceMotion ? nil : JukeMotion.easeOutSoft(0.52)) { browser.select(memory.id) }
+                    showingOnThisDay = false
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(anniversaryLabel(memory) ?? "").foregroundStyle(theme.sub.color)
+                        Text(memory.displayTitle).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .font(JukeFont.body(14)).padding(.vertical, 4).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("memory.onThisDay.\(memory.id)")
+            }
+        }
+        .padding(16)
+        .frame(width: 360)
+    }
+
     private func anniversaryYears(_ memory: MusicMemory) -> Int? {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
@@ -372,39 +438,47 @@ private struct MemoryPrint: View {
     let onOpen: (() -> Void)?
 
     var body: some View {
-        let media = memory?.media.first
-        Button { onOpen?() } label: {
-            VStack(spacing: 0) {
-                Group {
-                    if let media { MemoryMediaView(media: media, compact: true) }
-                    else { placeholder }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 2))
-                HStack {
-                    if let memory, !memory.place.isEmpty {
-                        Text(memory.place).lineLimit(1)
-                    }
-                    Spacer()
-                    if let count = memory?.media.count, count > 1 { Text("+\(count - 1)") }
-                }
-                .font(JukeFont.body(12, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.45))
-                .frame(height: 32)
-                .padding(.horizontal, 2)
-            }
-            .padding(EdgeInsets(top: 12, leading: 12, bottom: 0, trailing: 12))
-            .padding(.bottom, 6)
-            .background(theme.print.color, in: RoundedRectangle(cornerRadius: 4))
-            .shadow(color: .black.opacity(0.22), radius: 20, y: 16)
-            .rotationEffect(.degrees(-1.5))
-            .contentShape(Rectangle())
+        if memory?.media.isEmpty == false, let onOpen {
+            Button(action: onOpen) { paper }
+                .buttonStyle(.plain)
+                .help("See every photo and video")
+                .accessibilityLabel(memory.map { "Photos for \($0.displayTitle)" } ?? "Photos")
+                .accessibilityIdentifier("memory.print")
+        } else {
+            paper
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(memory.map { "Photo print for \($0.displayTitle), no photos" } ?? "Empty photo print")
+                .accessibilityIdentifier("memory.print")
         }
-        .buttonStyle(.plain)
-        .disabled(media == nil || onOpen == nil)
-        .help(media == nil ? "" : "See every photo and video")
-        .accessibilityLabel(memory.map { media == nil ? "No photo for \($0.displayTitle)" : "Photos for \($0.displayTitle)" } ?? "Photo print")
-        .accessibilityIdentifier("memory.print")
+    }
+
+    private var paper: some View {
+        let media = memory?.media.first
+        return VStack(spacing: 0) {
+            Group {
+                if let media { MemoryMediaView(media: media, compact: true) }
+                else { placeholder }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 2))
+            HStack {
+                if let memory, !memory.place.isEmpty {
+                    Text(memory.place).lineLimit(1)
+                }
+                Spacer()
+                if let count = memory?.media.count, count > 1 { Text("+\(count - 1)") }
+            }
+            .font(JukeFont.body(12, weight: .semibold))
+            .foregroundStyle(Color.black.opacity(0.45))
+            .frame(height: 32)
+            .padding(.horizontal, 2)
+        }
+        .padding(EdgeInsets(top: 12, leading: 12, bottom: 0, trailing: 12))
+        .padding(.bottom, 6)
+        .background(theme.print.color, in: RoundedRectangle(cornerRadius: 4))
+        .shadow(color: .black.opacity(0.22), radius: 20, y: 16)
+        .rotationEffect(.degrees(-1.5))
+        .contentShape(Rectangle())
     }
 
     /// No photo: a soft field in the song's colour, so the print still feels like a print.

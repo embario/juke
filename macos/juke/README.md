@@ -73,13 +73,27 @@ background recognition, and the backend URL (default
   "metadata"|"shazam"}` (same track at most once per 30 min, 40 per hour).
   Spotify metadata carries the track ID; Apple Music and Shazam songs are
   resolved through catalog search and skipped unless title and artist match.
-  It only reads `MusicDetectionController` and never starts audio capture;
-  Radio sets `backgroundRecognition.isRadioPlaying`.
+  It only reads `MusicDetectionController` and never starts audio capture.
+  Nothing is posted while radio is playing, for songs radio played or queued,
+  or for songs replayed from Memories. Shazam songs need two matches, the
+  last within 60 s. Settings > Listening also picks the source (Spotify &
+  Apple Music, This Mac's Audio, Around Me); only an explicit choice starts
+  capture, with macOS's usual permission prompt.
 - `JukeMac/Services/API`: `JukeServer`, `JukeAPI` (typed requests, token auth,
   error mapping), `RadioModels.swift` (`Radio.Track`, `Radio.Station`, ...),
   `JukeAPI+Radio.swift` (every `/api/v1/radio/` endpoint).
 - `JukeMac/Views/Shell`: root window, header, `SectionStage` transitions, mini player.
+- `JukeMac/Services/Radio`: `RadioController` (stations, tuned/pending station,
+  Spotify state polling, queues the next pick 20 s before a song ends, listening
+  events, first-run and resume-on-launch flags in `RadioPreferences`),
+  `RadioMath` (vinyl seek: 14 s per turn; FM dial: 56 pt per MHz, snapping,
+  fling, hold-to-move), the `RadioBackend`/`RadioPlaybackControlling` seams and
+  in-memory fixtures used by `--uitesting` (`--uitesting-radio-first-run` shows
+  the Tune in card).
 - `JukeMac/Views/Radio`, `Library`, `Memories`, `Chat`: one folder per section.
+  Radio: `RadioScreen` (Tune in card, record card, New Station route),
+  `RadioHero` (sleeve flip, vinyl gestures), `FMDialView`, `RadioPanels`
+  (status line, station sheet, lyrics).
   Memories is one card per memory (`MemoryBrowser` holds the ‹ n of N ›
   state); Chat is one card with the song on top and the composer as a well.
 - `JukeMac/Views/Settings`, `Views/Shared`.

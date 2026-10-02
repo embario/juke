@@ -81,38 +81,81 @@ enum SpotifyTrackMatcher {
     }
 }
 
+/// A song the user started from Memories ("Play the moment", the composer's
+/// "Hear it"). Replaying your own memory is not listening elsewhere, so
+/// background recognition ignores that song for a while.
+struct MemoryPlaybackMark: Equatable, Sendable {
+    static let window: TimeInterval = 15 * 60
+
+    let providerID: String?
+    let title: String
+    let artist: String
+    let startedAt: Date
+
+    func matches(_ track: RecognizedTrack, at date: Date) -> Bool {
+        guard date.timeIntervalSince(startedAt) < Self.window else { return false }
+        if let providerID, !providerID.isEmpty, let other = track.providerTrackID,
+           providerID.caseInsensitiveCompare(other) == .orderedSame { return true }
+        return SpotifyTrackMatcher.normalizedTitle(title) == SpotifyTrackMatcher.normalizedTitle(track.title)
+            && !SpotifyTrackMatcher.artistNames(artist).isDisjoint(with: SpotifyTrackMatcher.artistNames(track.artist))
+    }
+}
+
 /// Background recognition: while Settings > "Recognize music in the
 /// background" is on and Juke radio is not playing, songs the user plays
 /// elsewhere become `recognized` taste events (`POST radio/events/`).
 ///
 /// It only listens to what `MusicDetectionController` already knows (player
 /// metadata, Spotify playback state, and Shazam matches when the user picked
-/// This Mac or Around Me). It never starts audio capture itself, so the
-/// microphone and system-audio permission prompts stay exactly as they are.
-/// It has no UI.
+/// This Mac or Around Me in Settings). It never starts audio capture or polls
+/// Spotify itself, so the microphone and system-audio permission prompts stay
+/// exactly as they are. It has no UI.
+///
+/// Rules: a song must stay on for `policy.dwell` (short silences of up to
+/// `silenceGrace` don't reset it); a Shazam song must be matched at least
+/// twice, the last time within `shazamFreshness`; songs Juke radio played or
+/// queued and songs started from Memories are never posted.
 @MainActor
 @Observable
 final class BackgroundRecognizer {
-    typealias Resolver = @MainActor (RecognizedTrack) async -> String?
+    /// Returns the Spotify ID, `nil` when the catalog has no confident match
+    /// (cached), or throws when the search failed (not cached, retried later).
+    typealias Resolver = @MainActor (RecognizedTrack) async throws -> String?
     typealias Poster = @MainActor (Radio.EventRequest) async throws -> Void
 
     /// Whether background recognition may post right now (setting on, signed in).
     @ObservationIgnored var isEnabled: @MainActor () -> Bool
-    /// Whether Juke radio is playing. Radio posts its own `play` events, so
-    /// its songs are not recognized again. Radio sets this when it starts.
+    /// Whether Juke radio is on the air and playing. Radio posts its own
+    /// `play` events, so nothing is recognized meanwhile.
     @ObservationIgnored var isRadioPlaying: @MainActor () -> Bool = { false }
+    /// Whether radio has this Spotify track playing or queued right now.
+    @ObservationIgnored var isRadioTrack: @MainActor (String) -> Bool = { _ in false }
+    /// The song last started from Memories, if any.
+    @ObservationIgnored var memoryPlayback: @MainActor () -> MemoryPlaybackMark? = { nil }
+    @ObservationIgnored var silenceGrace: TimeInterval = 10
+    @ObservationIgnored var shazamFreshness: TimeInterval = 60
 
     private(set) var policy: RecognitionEventPolicy
     /// The last event that went out, for diagnostics and tests.
     private(set) var lastPosted: Radio.EventRequest?
+
+    private struct Candidate {
+        let key: String
+        var track: RecognizedTrack
+        var sightings: Int
+        var lastSeen: Date
+    }
 
     @ObservationIgnored private let resolveCatalog: Resolver
     @ObservationIgnored private let post: Poster
     @ObservationIgnored private let now: @MainActor () -> Date
     @ObservationIgnored private let sleep: @MainActor (TimeInterval) async throws -> Void
     @ObservationIgnored private var resolved: [String: String?] = [:]
-    @ObservationIgnored private var candidateKey: String?
+    @ObservationIgnored private var radioTrackIDs = Set<String>()
+    @ObservationIgnored private var candidate: Candidate?
+    @ObservationIgnored private var latest: (track: RecognizedTrack?, isAudible: Bool) = (nil, false)
     @ObservationIgnored private(set) var pending: Task<Void, Never>?
+    @ObservationIgnored private var silence: Task<Void, Never>?
     @ObservationIgnored private var observation: Task<Void, Never>?
 
     init(
@@ -131,12 +174,17 @@ final class BackgroundRecognizer {
         self.sleep = sleep
     }
 
-    /// Follows the detection controller's current song for the app's lifetime.
+    /// Follows the detection controller's current song (and the setting) for
+    /// the app's lifetime.
     func follow(_ detection: MusicDetectionController) {
         observation?.cancel()
         observation = Task { [weak self, weak detection] in
-            let changes = Observations { @MainActor [weak detection] in
-                Snapshot(track: detection?.track, isAudible: (detection?.isPlaying ?? false) || (detection?.isAudioPresent ?? false))
+            let changes = Observations { @MainActor [weak self, weak detection] in
+                Snapshot(
+                    track: detection?.track,
+                    isAudible: (detection?.isPlaying ?? false) || (detection?.isAudioPresent ?? false),
+                    enabled: self?.isEnabled() ?? false
+                )
             }
             for await snapshot in changes {
                 guard let self, detection != nil else { return }
@@ -148,42 +196,94 @@ final class BackgroundRecognizer {
     private struct Snapshot: Sendable, Equatable {
         let track: RecognizedTrack?
         let isAudible: Bool
+        let enabled: Bool
     }
 
-    /// Call when the current song or its playing state changes. A song becomes
-    /// a candidate when it starts playing and is posted once it has stayed
-    /// on for the policy's dwell time.
+    /// Call when the current song or its playing state changes.
     func observe(_ track: RecognizedTrack?, isAudible: Bool) {
-        guard let track, isAudible, isEnabled(), !isRadioPlaying() else {
+        latest = (track, isAudible)
+        guard let track, isEnabled(), !isRadioPlaying() else {
             cancelPending()
             return
         }
         let key = track.identityKey
-        guard key != candidateKey else { return }
-        cancelPending()
-        candidateKey = key
+        guard isAudible else {
+            // A quiet passage or a short pause keeps the candidate for a moment.
+            guard candidate != nil, silence == nil else { return }
+            let grace = silenceGrace
+            silence = Task { [weak self] in
+                do { try await self?.sleep(grace) } catch { return }
+                guard !Task.isCancelled else { return }
+                self?.cancelPending()
+            }
+            return
+        }
+        silence?.cancel()
+        silence = nil
+        if var current = candidate, current.key == key {
+            if current.track != track {
+                // A new Shazam match (or fresher metadata) for the same song.
+                current.track = track
+                current.sightings += 1
+                current.lastSeen = now()
+                candidate = current
+            }
+            if pending != nil { return }
+        } else {
+            cancelPending()
+            candidate = Candidate(key: key, track: track, sightings: 1, lastSeen: now())
+        }
         let dwell = policy.dwell
         pending = Task { [weak self] in
             do { try await self?.sleep(dwell) } catch { return }
-            guard !Task.isCancelled else { return }
-            await self?.commit(track, key: key)
+            guard !Task.isCancelled, let self, let latest = self.candidate, latest.key == key else { return }
+            await self.commit(latest.track, key: key)
+            if self.candidate?.key == key { self.pending = nil }
         }
+    }
+
+    /// Looks at the current song again, for example after sign-in or when
+    /// the setting is turned on.
+    func reevaluate() {
+        observe(latest.track, isAudible: latest.isAudible)
     }
 
     func cancelPending() {
         pending?.cancel()
         pending = nil
-        candidateKey = nil
+        silence?.cancel()
+        silence = nil
+        candidate = nil
+    }
+
+    /// Forgets everything tied to an account or server (sign-out, server change).
+    func reset() {
+        cancelPending()
+        resolved = [:]
+        radioTrackIDs = []
+        lastPosted = nil
+        policy = RecognitionEventPolicy(dwell: policy.dwell, repeatWindow: policy.repeatWindow, maxPerHour: policy.maxPerHour)
+    }
+
+    /// Records a song Juke radio played or queued this session.
+    func noteRadioTrack(_ spotifyID: String?) {
+        guard let spotifyID, !spotifyID.isEmpty else { return }
+        radioTrackIDs.insert(spotifyID)
     }
 
     /// Resolves the song's Spotify ID and posts it when the rules allow.
-    /// Returns whether an event went out.
+    /// `key` is set when the song came through `observe` (Shazam freshness
+    /// applies). Returns whether an event went out.
     @discardableResult
     func commit(_ track: RecognizedTrack, key: String? = nil) async -> Bool {
-        guard isEnabled(), !isRadioPlaying() else { return false }
+        guard allowed(track) else { return false }
+        if key != nil, RecognitionSource(track: track) == .shazam {
+            guard let current = candidate, current.key == key, current.sightings >= 2,
+                  now().timeIntervalSince(current.lastSeen) <= shazamFreshness else { return false }
+        }
         guard let spotifyID = await spotifyID(for: track), !Task.isCancelled else { return false }
-        // Settings or radio may have changed while the catalog was searched.
-        guard isEnabled(), !isRadioPlaying() else { return false }
+        // Settings, radio or memory playback may have changed while the catalog was searched.
+        guard allowed(track), !radioTrackIDs.contains(spotifyID), !isRadioTrack(spotifyID) else { return false }
         let date = now()
         guard policy.shouldPost(spotifyID: spotifyID, at: date) else { return false }
         let event = Radio.EventRequest(
@@ -205,14 +305,24 @@ final class BackgroundRecognizer {
         }
     }
 
+    private func allowed(_ track: RecognizedTrack) -> Bool {
+        guard isEnabled(), !isRadioPlaying() else { return false }
+        if let mark = memoryPlayback(), mark.matches(track, at: now()) { return false }
+        return true
+    }
+
     private func spotifyID(for track: RecognizedTrack) async -> String? {
         if let id = SpotifyTrackMatcher.spotifyID(for: track) { return id }
         let key = track.identityKey
         if let cached = resolved[key] { return cached }
-        let id = await resolveCatalog(track)
-        if resolved.count > 500 { resolved.removeAll() }
-        resolved[key] = id
-        return id
+        do {
+            let id = try await resolveCatalog(track)
+            if resolved.count > 500 { resolved.removeAll() }
+            resolved[key] = id
+            return id
+        } catch {
+            return nil
+        }
     }
 }
 
@@ -224,9 +334,9 @@ extension BackgroundRecognizer {
         return BackgroundRecognizer(
             isEnabled: { allowed() && settings.backgroundRecognitionEnabled && token() != nil },
             resolveCatalog: { track in
-                guard let token = token() else { return nil }
-                let results = try? await catalog.search(SpotifyTrackMatcher.searchQuery(for: track), kind: "tracks", token: token)
-                return results.flatMap { SpotifyTrackMatcher.bestMatch(for: track, in: $0) }
+                guard let token = token() else { throw CancellationError() }
+                let results = try await catalog.search(SpotifyTrackMatcher.searchQuery(for: track), kind: "tracks", token: token)
+                return SpotifyTrackMatcher.bestMatch(for: track, in: results)
             },
             post: { event in try await api.postEvent(event) }
         )

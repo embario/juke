@@ -314,6 +314,10 @@ final class MusicDetectionController {
         }
     }
 
+    /// The song last started from Memories, so background recognition does
+    /// not count replaying a memory as listening elsewhere.
+    @ObservationIgnored private(set) var lastMemoryPlayback: MemoryPlaybackMark?
+
     /// Plays a deliberately saved song; no catalog search or inferred match is performed.
     func playMemorySong(
         provider: String,
@@ -327,6 +331,7 @@ final class MusicDetectionController {
         cancelMemorySegment()
         guard !isPlaybackBusy else { return }
         errorMessage = nil
+        lastMemoryPlayback = MemoryPlaybackMark(providerID: providerID, title: title, artist: artist, startedAt: .now)
         let operationID = UUID()
         memoryPlaybackID = operationID
         isPlaybackBusy = true
@@ -494,8 +499,13 @@ final class MusicDetectionController {
         }
     }
 
+    /// Set by the app: while Juke radio is on the air it reads Spotify's
+    /// state itself and forwards it through `apply(_:)`, so this controller
+    /// skips its own Spotify polling (one poller, not two).
+    @ObservationIgnored var suspendsSpotifyPolling: @MainActor () -> Bool = { false }
+
     private func refreshSpotifyState() async {
-        guard !forceSpectatorModeForUITests else { return }
+        guard !forceSpectatorModeForUITests, !suspendsSpotifyPolling() else { return }
         guard mode == .playerMetadata, spotifyServerAvailable, let accessToken else { return }
         do {
             let state = try await playbackClient.fetchSpotifyState(token: accessToken)

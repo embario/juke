@@ -67,11 +67,22 @@ final class MemoryBrowserTests: XCTestCase {
         let saved = UUID()
         browser.select(saved)
         XCTAssertEqual(browser.pendingID, saved)
-        browser.update(ids: ids)          // search still hides it
-        XCTAssertNotNil(browser.currentID)
-        browser.update(ids: [saved] + ids) // search cleared
+        browser.update(ids: [saved] + ids) // the list now holds it
         XCTAssertEqual(browser.currentID, saved)
         XCTAssertNil(browser.pendingID)
         XCTAssertEqual(browser.positionLabel, "1 of 4")
+    }
+
+    func testStalePendingSelectionIsDropped() {
+        var browser = MemoryBrowser()
+        browser.update(ids: ids)
+        browser.select(UUID())
+        browser.update(ids: ids)
+        XCTAssertNil(browser.pendingID)
+        XCTAssertEqual(browser.currentID, ids[0])
+        // It does not resurface later.
+        browser.next()
+        browser.update(ids: ids)
+        XCTAssertEqual(browser.currentID, ids[1])
     }
 }
