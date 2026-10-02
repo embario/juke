@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from radio.services.recommend import feeling_keyword
+from radio.services.feelings import feeling_keyword
 
 
 def _norm(value: str) -> str:
