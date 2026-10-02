@@ -93,3 +93,4 @@ celerybeat-schedule-wal
 # CLI project-local config (machine-specific backend_url; not for version control)
 cli/config.toml
 cli/dist/
+.build/

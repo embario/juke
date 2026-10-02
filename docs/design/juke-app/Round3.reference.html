@@ -1,0 +1,1290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Juke · Radio</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1200px; height: 800px; box-sizing: border-box; display: flex; flex-direction: column; position: relative; overflow: hidden; background: {{c.bg}}; color: {{c.ink}}; font-family: 'Bricolage Grotesque', system-ui, sans-serif; transition: background-color 1100ms ease, color 400ms ease">
+
+<header style="display: flex; align-items: center; justify-content: space-between; padding: 20px 40px">
+<div style="width: 220px; font-size: 26px; font-weight: 700; letter-spacing: -0.5px">juke</div>
+<nav aria-label="Sections" style="display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: {{c.well}}; transition: background-color 900ms ease">
+<sc-for list="{{tabs}}" as="tab" hint-placeholder-count="3">
+<button type="button" onClick="{{tab.go}}" aria-current="{{tab.current}}" style="min-height: 44px; padding: 0 22px; border: 0; border-radius: 999px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; background: {{tab.bg}}; color: {{tab.fg}}; box-shadow: {{tab.shadow}}; transition: background-color 300ms ease, color 300ms ease">{{tab.label}}</button>
+</sc-for>
+</nav>
+<div style="width: 220px; display: flex; justify-content: flex-end">
+<div role="group" aria-label="Appearance" style="display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: {{c.well}}; transition: background-color 900ms ease">
+<sc-for list="{{themes}}" as="th" hint-placeholder-count="3">
+<button type="button" onClick="{{th.pick}}" aria-label="{{th.label}}" aria-pressed="{{th.pressed}}" title="{{th.label}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; cursor: pointer; background: {{th.bg}}; color: {{th.fg}}; transition: background-color 300ms ease">
+<sc-if value="{{th.isAuto}}" hint-placeholder-val="{{false}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"></path></svg></sc-if>
+<sc-if value="{{th.isLight}}" hint-placeholder-val="{{false}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"></path></svg></sc-if>
+<sc-if value="{{th.isDark}}" hint-placeholder-val="{{false}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"></path></svg></sc-if>
+</button>
+</sc-for>
+</div>
+</div>
+</header>
+
+<main ref="{{setStage}}" style="flex-grow: 1; display: flex; align-items: center; justify-content: center; padding: 0 40px {{mainPadBottom}}px">
+
+<sc-if value="{{showRadio}}" hint-placeholder-val="{{true}}">
+<section aria-label="Now playing" style="position: relative; overflow: hidden; width: 640px; box-sizing: border-box; padding: 22px 32px 14px; display: flex; flex-direction: column; gap: 12px; background: {{c.card}}; border-radius: 28px; box-shadow: {{c.shadow}}; transition: background-color 900ms ease">
+
+<div style="position: relative; width: 576px; height: 196px">
+<div ref="{{setVinyl}}" onPointerDown="{{vinylDown}}" title="Spin the edge to seek. Grab the label to slide it in or out of the sleeve." style="position: absolute; left: {{vinylLeft}}px; top: 6px; width: 184px; height: 184px; border-radius: 50%; background: repeating-radial-gradient(circle at 50% 50%, #141414 0px, #141414 3px, #232323 4px, #141414 5px); box-shadow: 0 12px 30px rgba(0,0,0,0.28); display: flex; align-items: center; justify-content: center; cursor: {{vinylCursor}}; touch-action: none; user-select: none; transition: {{vinylTransition}}">
+<div style="width: 70px; height: 70px; border-radius: 50%; background: {{art}}; display: flex; align-items: center; justify-content: center">
+<div style="width: 8px; height: 8px; border-radius: 50%; background: {{c.card}}"></div>
+</div>
+</div>
+<sc-if value="{{seekShow}}" hint-placeholder-val="{{false}}">
+<div role="status" style="position: absolute; left: {{seekLeft}}px; top: 82px; padding: 6px 12px; border-radius: 999px; background: {{c.ink}}; color: {{c.card}}; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; font-weight: 600; white-space: nowrap; pointer-events: none; z-index: 10">{{seekText}}</div>
+</sc-if>
+<div style="position: absolute; left: 40px; top: 0; width: 196px; height: 196px; perspective: 1000px; z-index: {{sleeveZ}}">
+<div style="position: relative; width: 196px; height: 196px; transform-style: preserve-3d; transform: {{sleeveTransform}}; transition: transform 700ms cubic-bezier(.2,.8,.2,1)">
+<button type="button" onClick="{{toggleSleeve}}" aria-expanded="{{sleeveOpenStr}}" aria-label="Sleeve for {{track.t}}: more options" style="position: absolute; inset: 0; padding: 0; border: 0; border-radius: 10px; background: {{art}}; box-shadow: 0 14px 34px rgba(0,0,0,0.22); backface-visibility: hidden; cursor: pointer"></button>
+<div style="position: absolute; inset: 0; box-sizing: border-box; padding: 10px 8px 8px; display: flex; flex-direction: column; gap: 2px; border-radius: 10px; background: {{c.sleeveBack}}; box-shadow: 0 14px 34px rgba(0,0,0,0.22); backface-visibility: hidden; transform: rotateY(180deg)">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px 4px">
+<span style="font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: {{c.sub}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{albumName}}</span>
+<button type="button" onClick="{{toggleSleeve}}" aria-label="Close sleeve" style="width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: {{c.sub}}; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</div>
+<sc-for list="{{sleeveOptions}}" as="so" hint-placeholder-count="4">
+<button type="button" onClick="{{so.run}}" style="min-height: 34px; padding: 0 8px; display: flex; flex-direction: column; justify-content: center; text-align: left; border: 0; border-radius: 8px; background: transparent; color: {{c.ink}}; font: inherit; cursor: pointer">
+<span style="font-size: 13px; font-weight: 700; line-height: 1.1">{{so.label}}</span>
+<span style="font-size: 10px; color: {{c.sub}}; line-height: 1.2">{{so.sub}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</div>
+</div>
+
+<div ref="{{setTitle}}" style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<button type="button" onClick="{{openStation}}" aria-label="{{stationBtnLabel}}" style="align-self: flex-start; min-height: 28px; padding: 0; display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: {{c.ink}}; font: inherit; font-size: 12px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; cursor: pointer">{{stationEyebrow}}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+<h1 style="margin: 0; font-size: 28px; line-height: 1.1; letter-spacing: -0.6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{track.t}}</h1>
+<p style="margin: 0; font-size: 16px; color: {{c.sub}}">{{track.a}}</p>
+</div>
+
+<div role="group" aria-label="How does this song feel? Pick any." style="display: flex; align-items: center; gap: 6px; min-height: 38px">
+<sc-for list="{{chips}}" as="ch" hint-placeholder-count="5">
+<button type="button" onClick="{{ch.toggle}}" aria-label="{{ch.label}}" aria-pressed="{{ch.pressed}}" title="{{ch.label}}" style="height: 36px; min-width: 36px; max-width: 180px; box-sizing: border-box; padding: {{ch.pad}}; display: flex; align-items: center; justify-content: center; border: 1.5px solid {{ch.border}}; border-radius: 999px; background: {{ch.bg}}; color: {{c.ink}}; font: inherit; font-size: {{ch.size}}px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transform: scale({{ch.scale}}); transition: transform 300ms cubic-bezier(.2,.8,.2,1), background-color 250ms ease, border-color 250ms ease">{{ch.text}}</button>
+</sc-for>
+<button type="button" onPointerDown="{{plus.down}}" onPointerUp="{{plus.up}}" onPointerLeave="{{plus.leave}}" onClick="{{plus.key}}" onContextMenu="{{noMenu}}" aria-label="Add a reaction. Hold to describe it in words." title="Click: emoji. Hold: in your words." aria-expanded="{{plusOpenStr}}" style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border: 1.5px dashed {{plusBorder}}; border-radius: 50%; background: transparent; color: {{c.sub}}; cursor: pointer; transition: border-color 250ms ease"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<span style="margin-left: auto; font-size: 12px; color: {{c.sub}}">{{stripCaption}}</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 5px">
+<div style="height: 4px; border-radius: 2px; background: {{c.well}}; overflow: hidden; transition: background-color 900ms ease"><div style="height: 4px; width: {{pct}}%; background: {{c.ink}}; transition: {{pctTransition}}"></div></div>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: {{c.sub}}; font-variant-numeric: tabular-nums"><span>{{posText}}</span><span>{{lenText}}</span></div>
+</div>
+
+<div style="display: flex; align-items: center; justify-content: center; gap: 18px">
+<div style="width: 44px"></div>
+<button type="button" onClick="{{togglePlay}}" aria-label="{{playLabel}}" style="width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: {{c.accent}}; color: {{c.onAccent}}; cursor: pointer">
+<sc-if value="{{playing}}" hint-placeholder-val="{{true}}"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor"></path></svg></sc-if>
+<sc-if value="{{paused}}" hint-placeholder-val="{{false}}"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"></path></svg></sc-if>
+</button>
+<button type="button" onPointerDown="{{skipPress.down}}" onPointerUp="{{skipPress.up}}" onPointerLeave="{{skipPress.leave}}" onClick="{{skipPress.key}}" onContextMenu="{{noMenu}}" aria-label="Skip. Hold for station options." title="Click: skip. Hold: keep this out." aria-expanded="{{skipMenuStr}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: {{c.well}}; color: {{c.ink}}; cursor: pointer; transition: background-color 900ms ease"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5l9 7-9 7z"></path><path d="M18 5v14"></path></svg></button>
+<button type="button" onClick="{{saveMoment}}" aria-label="Save this moment to Memories" title="Save to Memories" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: {{c.sub}}; cursor: pointer"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20z"></path></svg></button>
+</div>
+
+<div style="display: flex; align-items: center; gap: 4px">
+<button type="button" onClick="{{tunePrev}}" aria-label="Previous station" style="width: 36px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: transparent; color: {{c.sub}}; cursor: pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></button>
+<div ref="{{setDial}}" onPointerDown="{{dialDown}}" onWheel="{{dialWheel}}" onContextMenu="{{noMenu}}" title="Drag to tune. Press and hold a station to move it." style="position: relative; flex-grow: 1; height: 88px; overflow: hidden; border-radius: 16px; background: {{c.well}}; cursor: {{dialCursor}}; user-select: none; touch-action: none; transition: background-color 900ms ease">
+<div style="position: absolute; left: 50%; top: 0; height: 88px; width: {{bandWidth}}px; transform: translateX({{dialX}}px); transition: {{dialTransition}}">
+<div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: {{bandWidth}}px; height: 11px; background-image: repeating-linear-gradient(90deg, {{c.tick}} 0px, {{c.tick}} 1px, transparent 1px, transparent 11.2px)"></div>
+<sc-for list="{{bandLabels}}" as="bl" hint-placeholder-count="11">
+<span aria-hidden="true" style="position: absolute; left: {{bl.x}}px; top: 11px; width: 30px; margin-left: -15px; text-align: center; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9px; color: {{c.sub}}">{{bl.label}}</span>
+</sc-for>
+<sc-for list="{{dialItems}}" as="it" hint-placeholder-count="6">
+<button type="button" data-st="{{it.id}}" onClick="{{it.pick}}" aria-pressed="{{it.pressed}}" aria-label="{{it.label}}" style="position: absolute; left: {{it.left}}px; top: 24px; width: 124px; min-height: 58px; box-sizing: border-box; padding: 4px 0; display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; border-radius: 12px; background: {{it.bg}}; color: {{it.fg}}; font: inherit; cursor: inherit; transform: translateY({{it.lift}}px) scale({{it.scale}}); box-shadow: {{it.shadow}}; z-index: {{it.z}}; transition: {{it.transition}}">
+<span style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.5px; color: {{it.freqColor}}">{{it.freq}}</span>
+<span style="font-size: 13px; font-weight: {{it.weight}}; white-space: nowrap">{{it.name}}</span>
+<span aria-hidden="true" style="display: flex; gap: 3px; min-height: 14px">
+<sc-for list="{{it.thumbs}}" as="tb" hint-placeholder-count="3">
+<span style="width: 14px; height: 14px; border-radius: 3px; background: {{tb.art}}"></span>
+</sc-for>
+</span>
+</button>
+</sc-for>
+</div>
+<div aria-hidden="true" style="position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: {{c.accent}}"></div>
+<sc-if value="{{showCue}}" hint-placeholder-val="{{false}}">
+<button type="button" onPointerDown="{{stopProp}}" onClick="{{switchNow}}" aria-label="Play {{pendingName}} now" title="Play now" style="position: absolute; left: 50%; top: 36px; margin-left: 68px; z-index: 30; width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: {{c.accent}}; color: {{c.onAccent}}; box-shadow: 0 6px 16px rgba(0,0,0,0.25); cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"></path></svg></button>
+</sc-if>
+</div>
+<button type="button" onClick="{{tuneNext}}" aria-label="Next station" style="width: 36px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: transparent; color: {{c.sub}}; cursor: pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg></button>
+</div>
+
+<div style="min-height: 50px; display: flex; align-items: center">
+<sc-if value="{{statusAway}}" hint-placeholder-val="{{false}}">
+<div role="status" style="flex-grow: 1; display: flex; align-items: center; gap: 8px; padding: 3px 3px 3px 14px; border-radius: 14px; background: {{c.well}}">
+<span style="flex-grow: 1; font-size: 14px; line-height: 1.35"><strong>{{awayTitle}}</strong><br><span style="color: {{c.sub}}">{{awaySub}}</span></span>
+<button type="button" onClick="{{saveSession}}" style="min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: {{c.card}}; color: {{c.ink}}; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap">Save as a memory</button>
+<button type="button" onClick="{{resume}}" style="min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: {{c.accent}}; color: {{c.onAccent}}; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap">{{resumeLabel}}</button>
+</div>
+</sc-if>
+<sc-if value="{{statusPending}}" hint-placeholder-val="{{false}}">
+<p role="status" style="margin: 0; flex-grow: 1; text-align: center; font-size: 13px; color: {{c.sub}}"><strong style="color: {{c.ink}}">{{pendingName}}</strong> starts when this song ends, or press play on the dial.</p>
+</sc-if>
+<sc-if value="{{statusSuggest}}" hint-placeholder-val="{{false}}">
+<div role="status" style="flex-grow: 1; display: flex; align-items: center; gap: 8px; padding: 3px 3px 3px 14px; border-radius: 14px; background: {{c.accentSoft}}">
+<span style="flex-grow: 1; font-size: 14px; line-height: 1.35"><strong>{{suggestEmoji}} fits {{suggestName}}</strong><br><span style="color: {{c.sub}}">Juke can tune there after this song.</span></span>
+<button type="button" onClick="{{acceptSuggest}}" style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: {{c.card}}; color: {{c.ink}}; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Tune in next</button>
+<button type="button" onClick="{{dismissSuggest}}" style="min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: {{c.ink}}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Stay</button>
+</div>
+</sc-if>
+<sc-if value="{{statusText}}" hint-placeholder-val="{{true}}">
+<p role="status" style="margin: 0; flex-grow: 1; text-align: center; font-size: 13px; color: {{c.sub}}">{{statusLine}}</p>
+</sc-if>
+</div>
+
+<sc-if value="{{pickerOpen}}" hint-placeholder-val="{{false}}">
+<div role="dialog" aria-label="Pick emoji" style="position: absolute; left: 24px; top: 352px; z-index: 25; width: 380px; box-sizing: border-box; padding: 14px; display: flex; flex-direction: column; gap: 10px; border-radius: 18px; background: {{c.card}}; box-shadow: 0 0 0 1px {{c.line}}, 0 20px 50px rgba(0,0,0,0.25)">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<span style="font-size: 13px; font-weight: 700">How does it feel? Pick any.</span>
+<button type="button" onClick="{{closePopovers}}" style="min-height: 32px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; color: {{c.ink}}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Done</button>
+</div>
+<div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px">
+<sc-for list="{{pickerItems}}" as="pe" hint-placeholder-count="24">
+<button type="button" onClick="{{pe.toggle}}" aria-label="{{pe.label}}" aria-pressed="{{pe.pressed}}" style="height: 40px; padding: 0; border: 1.5px solid {{pe.border}}; border-radius: 10px; background: {{pe.bg}}; font-size: 19px; line-height: 1; cursor: pointer; transition: background-color 250ms ease, border-color 250ms ease">{{pe.text}}</button>
+</sc-for>
+</div>
+<span style="font-size: 12px; color: {{c.sub}}">Want words instead? Press and hold the + button.</span>
+</div>
+</sc-if>
+
+<sc-if value="{{wordsOpen}}" hint-placeholder-val="{{false}}">
+<div role="dialog" aria-label="In your words" style="position: absolute; left: 24px; top: 352px; z-index: 25; width: 420px; box-sizing: border-box; padding: 14px; display: flex; flex-direction: column; gap: 10px; border-radius: 18px; background: {{c.card}}; box-shadow: 0 0 0 1px {{c.line}}, 0 20px 50px rgba(0,0,0,0.25)">
+<label for="words-in" style="font-size: 13px; font-weight: 700">In your words, how does this song feel?</label>
+<div style="display: flex; gap: 6px">
+<input id="words-in" value="{{wordsDraft}}" onChange="{{setWordsDraft}}" onKeyDown="{{wordsKey}}" placeholder="first cold morning of fall" maxlength="40" style="flex-grow: 1; height: 44px; box-sizing: border-box; padding: 0 14px; border: 1.5px solid {{c.accent}}; border-radius: 12px; background: transparent; color: {{c.ink}}; font: inherit; font-size: 15px">
+<button type="button" onClick="{{saveWords}}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 12px; background: {{c.accent}}; color: {{c.onAccent}}; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Save</button>
+</div>
+<span style="font-size: 12px; color: {{c.sub}}">Saved like any emoji. Juke reads it to steer this station.</span>
+</div>
+</sc-if>
+
+<sc-if value="{{skipMenuOpen}}" hint-placeholder-val="{{false}}">
+<div role="menu" aria-label="Skip options" style="position: absolute; left: 352px; top: 236px; z-index: 25; width: 264px; box-sizing: border-box; padding: 6px; display: flex; flex-direction: column; border-radius: 16px; background: {{c.card}}; box-shadow: 0 0 0 1px {{c.line}}, 0 20px 50px rgba(0,0,0,0.25)">
+<sc-for list="{{skipOptions}}" as="sk" hint-placeholder-count="4">
+<button type="button" role="menuitem" onClick="{{sk.run}}" style="min-height: 44px; padding: 4px 12px; display: flex; flex-direction: column; justify-content: center; text-align: left; border: 0; border-radius: 10px; background: transparent; color: {{c.ink}}; font: inherit; cursor: pointer">
+<span style="font-size: 14px; font-weight: 700">{{sk.label}}</span>
+<span style="font-size: 12px; color: {{c.sub}}">{{sk.sub}}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<div aria-hidden="{{panelHidden}}" style="position: absolute; inset: 0; z-index: 40; box-sizing: border-box; padding: 22px 28px; display: flex; flex-direction: column; gap: 14px; background: {{c.card}}; transform: translateY({{panelY}}%); visibility: {{panelVis}}; transition: transform 520ms cubic-bezier(.2,.8,.2,1), visibility 0s linear {{panelVisDelay}}, background-color 900ms ease">
+<sc-if value="{{panelLyrics}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; align-items: center; gap: 12px">
+<span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 6px; background: {{art}}"></span>
+<div style="flex-grow: 1; display: flex; flex-direction: column"><span style="font-size: 16px; font-weight: 700">{{track.t}}</span><span style="font-size: 13px; color: {{c.sub}}">{{track.a}} · {{posText}}</span></div>
+<button type="button" onClick="{{closePanel}}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: {{c.well}}; color: {{c.ink}}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Back to the record</button>
+</div>
+<div style="position: relative; flex-grow: 1; overflow: hidden">
+<div style="display: flex; flex-direction: column; gap: 18px; padding-top: 150px; transform: translateY({{lyricY}}px); transition: transform 700ms cubic-bezier(.2,.8,.2,1)">
+<sc-for list="{{lyricLines}}" as="ly" hint-placeholder-count="12">
+<span aria-hidden="true" style="display: block; height: 16px; width: {{ly.w}}px; border-radius: 8px; background: {{ly.color}}; opacity: {{ly.opacity}}; transition: opacity 500ms ease, background-color 500ms ease"></span>
+</sc-for>
+</div>
+</div>
+<span style="font-size: 12px; color: {{c.sub}}">[Licensed lyrics from [LYRICS PROVIDER] appear here, line by line, following playback.]</span>
+</sc-if>
+
+<sc-if value="{{panelStation}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; align-items: center; gap: 12px">
+<div aria-hidden="true" style="display: flex; gap: 3px">
+<sc-for list="{{sheetThumbs}}" as="st" hint-placeholder-count="3"><span style="width: 30px; height: 30px; border-radius: 5px; background: {{st.art}}"></span></sc-for>
+</div>
+<div style="flex-grow: 1; display: flex; flex-direction: column">
+<span style="font-size: 22px; font-weight: 700; letter-spacing: -0.4px">{{station.name}}</span>
+<span style="font-size: 13px; color: {{c.sub}}"><span style="font-family: 'JetBrains Mono', ui-monospace, monospace">{{stationFreq}} FM</span> · {{station.kind}}</span>
+</div>
+<button type="button" onClick="{{closePanel}}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: {{c.well}}; color: {{c.ink}}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Done</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 12px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: {{c.sub}}">Built from</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{sheetSeeds}}" as="sd" hint-placeholder-count="3">
+<button type="button" onClick="{{sd.remove}}" aria-label="Remove {{sd.title}} from this station" style="min-height: 40px; padding: 0 12px 0 4px; display: flex; align-items: center; gap: 8px; border: 1px solid {{c.line}}; border-radius: 999px; background: transparent; color: {{c.ink}}; font: inherit; font-size: 13px; cursor: pointer"><span aria-hidden="true" style="width: 30px; height: 30px; border-radius: 50%; background: {{sd.art}}"></span>{{sd.title}}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</sc-for>
+<button type="button" onClick="{{pullMore}}" style="min-height: 40px; padding: 0 14px; display: flex; align-items: center; gap: 6px; border: 1.5px dashed {{c.line}}; border-radius: 999px; background: transparent; color: {{c.ink}}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Pull more records</button>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 12px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: {{c.sub}}">Feels like</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{sheetFeels}}" as="sf" hint-placeholder-count="4">
+<button type="button" onClick="{{sf.remove}}" aria-label="Remove {{sf.text}}" style="min-height: 36px; padding: 0 12px; display: flex; align-items: center; gap: 6px; border: 1.5px solid {{c.accent}}; border-radius: 999px; background: {{c.accentSoft}}; color: {{c.ink}}; font: inherit; font-size: 14px; cursor: pointer">{{sf.text}}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 12px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: {{c.sub}}">Keep out</span>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{sheetOut}}" as="so2" hint-placeholder-count="2">
+<button type="button" onClick="{{so2.restore}}" aria-label="Let {{so2.label}} back in" title="Let it back in" style="min-height: 36px; padding: 0 12px; display: flex; align-items: center; gap: 6px; border: 1px solid {{c.line}}; border-radius: 999px; background: {{c.well}}; color: {{c.ink}}; font: inherit; font-size: 13px; cursor: pointer"><span style="text-decoration: line-through">{{so2.label}}</span><span style="font-size: 11px; color: {{c.sub}}">{{so2.kind}}</span></button>
+</sc-for>
+</div>
+<div style="display: flex; gap: 6px">
+<label for="keep-out" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Keep out an artist, song or genre</label>
+<input id="keep-out" value="{{outDraft}}" onChange="{{setOutDraft}}" onKeyDown="{{outKey}}" placeholder="Keep out an artist, song or genre" style="flex-grow: 1; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid {{c.line}}; border-radius: 10px; background: transparent; color: {{c.ink}}; font: inherit; font-size: 14px">
+<button type="button" onClick="{{addOut}}" style="min-height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: {{c.well}}; color: {{c.ink}}; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Keep out</button>
+</div>
+</div>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid {{c.line}}">
+<span style="font-size: 13px; color: {{c.sub}}">Tip: press and hold a station on the dial to move it to a new frequency.</span>
+<button type="button" role="switch" aria-checked="{{learningStr}}" onClick="{{toggleLearning}}" style="min-height: 40px; padding: 0 6px 0 12px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 999px; background: transparent; color: {{c.ink}}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap">Keeps learning<span aria-hidden="true" style="width: 40px; height: 24px; box-sizing: border-box; padding: 3px; border-radius: 999px; background: {{switchBg}}; display: flex; justify-content: {{switchAlign}}; transition: background-color 250ms ease"><span style="width: 18px; height: 18px; border-radius: 50%; background: #FFFFFF"></span></span></button>
+</div>
+</sc-if>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{showCrateCard}}" hint-placeholder-val="{{false}}">
+<section aria-label="{{crateTitle}}" style="width: {{crateCardW}}px; box-sizing: border-box; padding: 18px 32px 20px; display: flex; flex-direction: column; gap: 12px; background: {{c.card}}; border-radius: 28px; box-shadow: {{c.shadow}}; transition: width 550ms cubic-bezier(.2,.8,.2,1), background-color 900ms ease">
+<div style="display: flex; align-items: center; gap: 12px">
+<sc-if value="{{isCreate}}" hint-placeholder-val="{{true}}">
+<button type="button" onClick="{{goRadio}}" aria-label="Back to Radio" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: {{c.well}}; color: {{c.ink}}; cursor: pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></button>
+</sc-if>
+<div style="display: flex; flex-direction: column">
+<h1 style="margin: 0; font-size: 24px; letter-spacing: -0.5px">{{crateTitle}}</h1>
+<span style="font-size: 14px; color: {{c.sub}}">{{stepLine}}</span>
+</div>
+<div style="flex-grow: 1"></div>
+<sc-if value="{{isCreate}}" hint-placeholder-val="{{true}}">
+<div role="group" aria-label="Start with" style="display: flex; align-items: center; gap: 2px">
+<span style="font-size: 13px; color: {{c.sub}}; margin-right: 6px">Start with</span>
+<sc-for list="{{pathTabs}}" as="pt" hint-placeholder-count="2">
+<button type="button" onClick="{{pt.pick}}" aria-pressed="{{pt.pressed}}" style="min-height: 44px; padding: 0 12px; border: 0; border-bottom: 2px solid {{pt.line}}; background: transparent; color: {{pt.fg}}; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; transition: color 250ms ease, border-color 250ms ease">{{pt.label}}</button>
+</sc-for>
+</div>
+</sc-if>
+</div>
+
+<sc-if value="{{stepRecords}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; align-items: center; gap: 8px">
+<div role="group" aria-label="Show" style="display: flex; gap: 2px">
+<sc-for list="{{kinds}}" as="k" hint-placeholder-count="3">
+<button type="button" onClick="{{k.pick}}" aria-pressed="{{k.pressed}}" style="min-height: 40px; padding: 0 12px; border: 0; border-radius: 999px; background: {{k.bg}}; color: {{k.fg}}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color 250ms ease, color 250ms ease">{{k.label}}</button>
+</sc-for>
+</div>
+<div style="position: relative; margin-left: 8px">
+<label for="crate-q" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Dig for</label>
+<span aria-hidden="true" style="position: absolute; left: 2px; top: 11px; color: {{c.sub}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg></span>
+<input id="crate-q" type="search" value="{{query}}" onChange="{{setQuery}}" placeholder="Dig for anything" style="width: {{searchW}}px; transition: width 550ms ease; height: 40px; box-sizing: border-box; padding: 0 4px 0 28px; border: 0; border-bottom: 1px solid {{c.line}}; background: transparent; color: {{c.ink}}; font: inherit; font-size: 15px">
+</div>
+<div style="flex-grow: 1"></div>
+<div role="group" aria-label="How records flip" style="display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: {{c.well}}">
+<sc-for list="{{orientItems}}" as="or" hint-placeholder-count="2">
+<button type="button" onClick="{{or.pick}}" aria-label="{{or.label}}" aria-pressed="{{or.pressed}}" title="{{or.label}}" style="width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; background: {{or.bg}}; color: {{or.fg}}; cursor: pointer; transition: background-color 250ms ease">
+<sc-if value="{{or.isRow}}" hint-placeholder-val="{{true}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h6v12H9z"></path><path d="M3 8l4 1v6l-4 1zM21 8l-4 1v6l4 1z"></path></svg></sc-if>
+<sc-if value="{{or.isBin}}" hint-placeholder-val="{{false}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M7 10h10v10H7z"></path><path d="M8.5 7h7M10 4h4"></path></svg></sc-if>
+</button>
+</sc-for>
+</div>
+</div>
+
+<div onPointerDown="{{crateDown}}" onWheel="{{crateWheel}}" style="position: relative; height: 256px; overflow: hidden; perspective: 1100px; cursor: {{crateCursor}}; user-select: none; touch-action: none; border-radius: 16px; background: {{c.well}}; transition: background-color 900ms ease">
+<sc-for list="{{crateItems}}" as="cr" hint-placeholder-count="7">
+<button type="button" onClick="{{cr.tap}}" aria-label="{{cr.label}}" aria-pressed="{{cr.pressed}}" style="position: absolute; left: 50%; top: {{crateTop}}px; width: {{sleeve}}px; height: {{sleeve}}px; margin-left: {{sleeveOffset}}px; padding: 0; border: 0; border-radius: 6px; background: {{cr.art}}; box-shadow: 0 18px 36px rgba(0,0,0,0.28); transform: {{cr.transform}}; transform-origin: {{crateOrigin}}; z-index: {{cr.z}}; opacity: {{cr.opacity}}; filter: brightness({{cr.bright}}); transition: {{crateTransition}}; cursor: inherit">
+<sc-if value="{{cr.isSeed}}" hint-placeholder-val="{{false}}"><span aria-hidden="true" style="position: absolute; right: 10px; top: 10px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: {{c.accent}}; color: {{c.onAccent}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span></sc-if>
+</button>
+</sc-for>
+<sc-if value="{{crateEmpty}}" hint-placeholder-val="{{false}}">
+<p style="position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; font-size: 15px; color: {{c.sub}}">Nothing in this crate for “{{query}}”.</p>
+</sc-if>
+</div>
+
+<div style="display: flex; align-items: center; justify-content: center; gap: 14px; min-height: 46px">
+<div style="display: flex; flex-direction: column; align-items: center; text-align: center">
+<span style="font-size: 18px; font-weight: 700">{{focusTitle}}</span>
+<span style="font-size: 14px; color: {{c.sub}}">{{focusSub}}</span>
+</div>
+<sc-if value="{{isCreate}}" hint-placeholder-val="{{true}}">
+<button type="button" onClick="{{togglePull}}" aria-pressed="{{focusSeedStr}}" style="min-height: 40px; padding: 0 14px; border: 1.5px solid {{focusSeedBorder}}; border-radius: 999px; background: transparent; color: {{c.ink}}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: border-color 250ms ease">{{pullLabel}}</button>
+</sc-if>
+<sc-if value="{{isBrowse}}" hint-placeholder-val="{{false}}">
+<button type="button" onClick="{{startFromFocus}}" style="min-height: 44px; padding: 0 18px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 999px; background: {{c.accent}}; color: {{c.onAccent}}; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Start radio</button>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{stepFeelings}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 6px 0">
+<h2 style="margin: 0; font-size: 28px; letter-spacing: -0.6px">{{feelHeading}}</h2>
+<div role="group" aria-label="Feelings" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 640px">
+<sc-for list="{{feelItems}}" as="fi" hint-placeholder-count="12">
+<button type="button" onClick="{{fi.toggle}}" aria-label="{{fi.label}}" aria-pressed="{{fi.pressed}}" style="height: 48px; min-width: 48px; box-sizing: border-box; padding: {{fi.pad}}; display: flex; align-items: center; justify-content: center; border: 1.5px solid {{fi.border}}; border-radius: 999px; background: {{fi.bg}}; color: {{c.ink}}; font: inherit; font-size: {{fi.size}}px; line-height: 1; cursor: pointer; transform: scale({{fi.scale}}); transition: transform 300ms cubic-bezier(.2,.8,.2,1), background-color 250ms ease, border-color 250ms ease">{{fi.text}}</button>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<label for="feel-words" style="font-size: 13px; color: {{c.sub}}">Or in your words</label>
+<input id="feel-words" value="{{feelDraft}}" onChange="{{setFeelDraft}}" onKeyDown="{{feelKey}}" placeholder="rainy train ride home" maxlength="40" style="width: 260px; height: 44px; box-sizing: border-box; padding: 0 14px; border: 1px solid {{c.line}}; border-radius: 999px; background: transparent; color: {{c.ink}}; font: inherit; font-size: 15px">
+<button type="button" onClick="{{addFeelWords}}" style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: {{c.well}}; color: {{c.ink}}; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Add</button>
+</div>
+<div aria-hidden="true" style="display: flex; padding: 8px 0 4px">
+<sc-for list="{{previewTiles}}" as="pv" hint-placeholder-count="7">
+<span style="width: 72px; height: 72px; margin-left: -12px; border-radius: 6px; background: {{pv.art}}; box-shadow: 0 6px 16px rgba(0,0,0,0.2); transform: rotate({{pv.rot}}deg); transition: background 500ms ease, transform 500ms cubic-bezier(.2,.8,.2,1)"></span>
+</sc-for>
+</div>
+<span style="font-size: 13px; color: {{c.sub}}">{{previewCaption}}</span>
+</div>
+</sc-if>
+
+<sc-if value="{{isCreate}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; align-items: center; gap: 12px; padding-top: 12px; border-top: 1px solid {{c.line}}">
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 14px">
+<span style="font-weight: 700; margin-right: 2px">Your station:</span>
+<sc-if value="{{nothingPicked}}" hint-placeholder-val="{{false}}"><span style="color: {{c.sub}}">nothing yet. Click a record twice, or choose Pull.</span></sc-if>
+<sc-for list="{{pickedList}}" as="pk" hint-placeholder-count="3">
+<span style="display: inline-flex; align-items: center; border-radius: 999px; background: {{c.well}}">
+<button type="button" onClick="{{pk.focus}}" style="min-height: 32px; padding: 0 4px 0 12px; border: 0; background: transparent; color: {{c.ink}}; font: inherit; font-size: 14px; cursor: pointer">{{pk.text}}</button>
+<button type="button" onClick="{{pk.remove}}" aria-label="Remove {{pk.text}}" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: {{c.sub}}; cursor: pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+</span>
+</sc-for>
+</div>
+<button type="button" onClick="{{nextStep}}" style="min-height: 44px; padding: 0 12px; border: 0; background: transparent; color: {{c.ink}}; font: inherit; font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; white-space: nowrap">{{nextLabel}}</button>
+<button type="button" onClick="{{startStation}}" aria-disabled="{{cantStartStr}}" style="min-height: 48px; padding: 0 22px; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; background: {{startBg}}; color: {{startFg}}; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: background-color 300ms ease"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"></path></svg>{{startLabel}}</button>
+</div>
+</sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{showMemories}}" hint-placeholder-val="{{false}}">
+<section aria-label="Memories" style="width: 880px; box-sizing: border-box; padding: 32px; display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 36px; background: {{c.card}}; border-radius: 28px; box-shadow: {{c.shadow}}; transition: background-color 900ms ease">
+<div ref="{{setMemPhoto}}" role="img" aria-label="Photo placeholder for {{mem.title}}" style="height: 400px; box-sizing: border-box; padding: 12px 12px 44px; border-radius: 4px; background: {{c.print}}; box-shadow: 0 16px 40px rgba(0,0,0,0.22); transform: rotate(-1.5deg); display: flex; flex-direction: column">
+<div style="flex-grow: 1; border-radius: 2px; background: {{mem.photo}}; display: flex; align-items: flex-end; padding: 10px; color: #FFFFFF; font-size: 12px; font-weight: 700; letter-spacing: 1px">[PHOTO]</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px; min-width: 0">
+<span style="font-size: 14px; color: {{c.sub}}">{{mem.date}} · {{mem.place}}</span>
+<h1 style="margin: 0; font-size: 34px; line-height: 1.1; letter-spacing: -0.8px">{{mem.title}}</h1>
+<p style="margin: 0; font-size: 17px; line-height: 1.55">{{mem.story}}</p>
+<div style="display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 16px; background: {{c.well}}">
+<span aria-hidden="true" style="width: 48px; height: 48px; flex-shrink: 0; border-radius: 8px; background: {{mem.art}}"></span>
+<span style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0"><span style="font-size: 15px; font-weight: 700">{{mem.song}}</span><span style="font-size: 13px; color: {{c.sub}}">{{mem.artist}} · the moment {{mem.segment}}</span></span>
+<button type="button" onClick="{{playMoment}}" aria-label="Play the moment" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: {{c.accent}}; color: {{c.onAccent}}; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Play</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{mem.chips}}" as="chip" hint-placeholder-count="3">
+<span style="padding: 6px 12px; border-radius: 999px; border: 1px solid {{c.line}}; font-size: 13px">{{chip}}</span>
+</sc-for>
+</div>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; align-items: center; gap: 6px">
+<button type="button" onClick="{{memPrev}}" aria-label="Previous memory" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 1px solid {{c.line}}; border-radius: 50%; background: transparent; color: {{c.ink}}; cursor: pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></button>
+<span style="min-width: 64px; text-align: center; font-size: 14px; color: {{c.sub}}">{{memPos}}</span>
+<button type="button" onClick="{{memNext}}" aria-label="Next memory" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 1px solid {{c.line}}; border-radius: 50%; background: transparent; color: {{c.ink}}; cursor: pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg></button>
+</div>
+</div>
+</section>
+</sc-if>
+
+</main>
+
+<sc-if value="{{showMini}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 8px; border-radius: 999px; background: {{c.card}}; box-shadow: {{c.shadow}}; white-space: nowrap; transition: background-color 900ms ease">
+<div ref="{{setVinyl}}" style="width: 40px; height: 40px; border-radius: 50%; background: repeating-radial-gradient(circle at 50% 50%, #141414 0px, #141414 3px, #232323 4px, #141414 5px); display: flex; align-items: center; justify-content: center">
+<div style="width: 16px; height: 16px; border-radius: 50%; background: {{art}}"></div>
+</div>
+<span style="font-size: 14px"><strong>{{track.t}}</strong> · {{track.a}}</span>
+<span style="font-size: 13px; color: {{c.sub}}">{{miniNote}}</span>
+<button type="button" onClick="{{togglePlay}}" aria-label="{{playLabel}}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: {{c.accent}}; color: {{c.onAccent}}; cursor: pointer">
+<sc-if value="{{playing}}" hint-placeholder-val="{{true}}"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor"></path></svg></sc-if>
+<sc-if value="{{paused}}" hint-placeholder-val="{{false}}"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"></path></svg></sc-if>
+</button>
+<button type="button" onClick="{{goRadio}}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: {{c.well}}; color: {{c.ink}}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Open Radio</button>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"screen":{"editor":"enum","options":["radio","create","browse","memories"],"default":"radio"},"theme":{"editor":"enum","options":["system","light","dark"],"default":"system"},"orient":{"editor":"enum","options":["row","bin"],"default":"row"},"stationId":{"editor":null,"default":null},"trackIdx":{"editor":null,"default":null},"pending":{"editor":null,"default":null},"reacted":{"editor":null,"default":null},"suggest":{"editor":null,"default":null},"popover":{"editor":null,"default":null},"skipMenu":{"editor":null,"default":null},"seekPreview":{"editor":null,"default":null},"putAway":{"editor":null,"default":null},"sleeveOpen":{"editor":null,"default":null},"panel":{"editor":null,"default":null},"hold":{"editor":null,"default":null},"holdFreq":{"editor":null,"default":null},"path":{"editor":null,"default":null},"step":{"editor":null,"default":null},"seeds":{"editor":null,"default":null},"feel":{"editor":null,"default":null},"focus":{"editor":null,"default":null},"kind":{"editor":null,"default":null},"$preview":{"width":1200,"height":800}}'>
+class Component extends DCLogic {
+  setVinyl = (el) => {
+    if (!el || el.__spin || !el.animate) return;
+    el.__spin = el.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 5200, iterations: Infinity });
+    this.anims = (this.anims || []).filter((a) => a.effect && a.effect.target && a.effect.target.isConnected);
+    this.anims.push(el.__spin);
+    this.syncSpin();
+  };
+  setStage = (el) => { this.stage = el; };
+  setTitle = (el) => { this.titleEl = el; };
+  setDial = (el) => { this.dialEl = el; };
+  setMemPhoto = (el) => { this.memEl = el; };
+
+  componentDidMount() {
+    if (window.matchMedia) {
+      this.mq = window.matchMedia('(prefers-color-scheme: dark)');
+      this.rm = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this.onMq = () => this.forceUpdate();
+      if (this.mq.addEventListener) this.mq.addEventListener('change', this.onMq);
+    }
+    this.prev = this.snapshot();
+    this.syncSpin();
+    this.ticker = setInterval(() => this.tick(), 1000);
+  }
+
+  componentWillUnmount() {
+    if (this.mq && this.mq.removeEventListener) this.mq.removeEventListener('change', this.onMq);
+    (this.anims || []).forEach((a) => a.cancel());
+    clearInterval(this.ticker);
+    clearTimeout(this.pressTimer);
+    clearTimeout(this.holdTimer);
+    cancelAnimationFrame(this.edgeRaf);
+    if (this.dragCleanup) this.dragCleanup();
+  }
+
+  componentDidUpdate() {
+    this.syncSpin();
+    const now = this.snapshot();
+    const prev = this.prev || now;
+    this.prev = now;
+    const moved = prev.screen !== now.screen || prev.step !== now.step;
+    if (this.outAnim) { this.outAnim.cancel(); this.outAnim = null; }
+    if (this.calm()) return;
+    const ease = 'cubic-bezier(.2,.8,.2,1)';
+    if (moved && this.stage && this.stage.animate) {
+      this.stage.animate([{ opacity: 0, transform: 'translateY(14px) scale(0.985)' }, { opacity: 1, transform: 'none' }], { duration: 480, easing: ease });
+    }
+    if (!moved && prev.track !== now.track && this.titleEl && this.titleEl.animate) {
+      this.titleEl.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 600, easing: ease });
+    }
+    if (!moved && prev.mem !== now.mem && this.memEl && this.memEl.animate) {
+      this.memEl.animate([{ opacity: 0, transform: 'rotate(-4deg) translateX(-16px)' }, { opacity: 1, transform: 'rotate(-1.5deg)' }], { duration: 520, easing: ease });
+    }
+  }
+
+  calm() { return !!(this.rm && this.rm.matches); }
+  flag(v) { return v === true || v === 'true'; }
+  list(v) { return v ? String(v).split(',').map((x) => x.trim()).filter(Boolean) : []; }
+  uniq(a) { return a.filter((x, i) => a.indexOf(x) === i); }
+  overlap(a, b) { return (a || []).filter((x) => (b || []).includes(x)).length; }
+  secs(t) { const [m, s] = String(t).split(':').map(Number); return m * 60 + s; }
+  clock(n) { const v = Math.max(0, Math.round(n)); return Math.floor(v / 60) + ':' + String(v % 60).padStart(2, '0'); }
+  mix(a, b, t) {
+    const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const A = p(a);
+    const B = p(b);
+    return '#' + A.map((v, i) => Math.round(v * (1 - t) + B[i] * t).toString(16).padStart(2, '0')).join('');
+  }
+  isEmoji(t) { return /\p{Extended_Pictographic}/u.test(t); }
+  firstEmoji(v) {
+    const t = String(v || '').trim();
+    if (!t) return null;
+    let g = t;
+    if (window.Intl && Intl.Segmenter) g = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(t)][0].segment;
+    return this.isEmoji(g) ? g : null;
+  }
+
+  view() {
+    const s = this.state || {};
+    const screen = s.screen ?? this.props.screen ?? 'radio';
+    const putAway = s.putAway ?? this.flag(this.props.putAway);
+    const playing = (s.playing ?? true) && !putAway;
+    const pendingId = s.pendingId !== undefined ? s.pendingId : (this.props.pending ?? null);
+    return { s, screen, playing, putAway, pendingId };
+  }
+
+  snapshot() {
+    const { s, screen } = this.view();
+    return { screen, step: s.step ?? this.props.step ?? '', track: (s.stationId ?? this.props.stationId ?? 'mine') + ':' + (s.trackIdx ?? Number(this.props.trackIdx ?? 0)), mem: s.mIdx ?? 0 };
+  }
+
+  syncSpin() {
+    const { playing } = this.view();
+    (this.anims || []).forEach((a) => {
+      if (this.spinDrag && a === this.spinDrag.anim) return;
+      if (playing && !this.calm()) a.play(); else a.pause();
+    });
+  }
+
+  tick() {
+    if (this.drag || this.spinDrag) return;
+    const m = this.ctx();
+    if (!m.playing || m.screen === 'create') return;
+    const next = m.pos + 1;
+    if (next >= m.len) this.advance();
+    else this.setState({ pos: next });
+  }
+
+  navigate(patch) {
+    const { screen, s } = this.view();
+    const same = (patch.screen === undefined || patch.screen === screen) && (patch.step === undefined || patch.step === (s.step ?? this.props.step ?? ''));
+    if (same || this.calm() || !this.stage || !this.stage.animate) { this.setState(patch); return; }
+    if (this.outAnim) this.outAnim.cancel();
+    this.outAnim = this.stage.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-8px) scale(0.995)' }], { duration: 200, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
+    this.outAnim.onfinish = () => this.setState(patch);
+  }
+
+  T(t, a, c1, c2, c3, len, at, v) { return { t, a, c1, c2, c3, len, at, v }; }
+
+  data() {
+    if (this._data) return this._data;
+    const T = this.T;
+    const tr = {
+      maria: T('Maria También', 'Khruangbin', '#D9481C', '#F2C14E', '#1F3A5F', '3:28', '1:12', ['😌', '☀️', '🚗', '✨']),
+      show: T('Show Me How', 'Men I Trust', '#8FB8A8', '#F4E7D3', '#C0543B', '3:35', '0:41', ['😌', '🌧️', '☕']),
+      sunday: T('Sunday Morning', 'The Velvet Underground', '#6C8EAD', '#E8DCC4', '#2B2D42', '2:56', '1:30', ['☕', '😌', '🌧️']),
+      pinkmoon: T('Pink Moon', 'Nick Drake', '#E7A4B4', '#2E2A4F', '#F6E7C8', '2:04', '0:58', ['🌧️', '🥹', '🌙']),
+      midnight: T('Midnight City', 'M83', '#3B2A8F', '#E04E8A', '#F5D547', '4:03', '2:10', ['🌙', '🚗', '✨', '🔥']),
+      nightcall: T('Nightcall', 'Kavinsky', '#1B1F3B', '#E8385D', '#F0F0F0', '4:18', '1:05', ['🌙', '🚗', '🔥']),
+      pinkwhite: T('Pink + White', 'Frank Ocean', '#F2A7B5', '#FFFFFF', '#3E7CB1', '3:04', '1:44', ['🥹', '☀️', '😌']),
+      denim: T('Japanese Denim', 'Daniel Caesar', '#2F4B7C', '#D9C5A0', '#A63D40', '4:30', '0:52', ['🥹', '🌙', '😌']),
+      journey: T('Journey in Satchidananda', 'Alice Coltrane', '#1F6F5C', '#D9B44A', '#7A2E1F', '6:39', '3:02', ['🧘', '✨', '🌙']),
+      creator: T('The Creator Has a Master Plan', 'Pharoah Sanders', '#B5532E', '#EAD7A1', '#22333B', '7:20', '2:15', ['🧘', '✨', '🔥']),
+      sun: T('Here Comes the Sun', 'The Beatles', '#F2B33D', '#6FB3C8', '#F7F3E3', '3:05', '0:20', ['☀️', '😌', '✨']),
+      lovely: T('Lovely Day', 'Bill Withers', '#E9724C', '#FFD9A8', '#335C67', '4:15', '0:30', ['☀️', '💃', '😌']),
+      redbone: T('Redbone', 'Childish Gambino', '#6B2D5C', '#F0B67F', '#1E1E24', '5:27', '1:00', ['🌙', '💃', '🔥']),
+      nights: T('Nights', 'Frank Ocean', '#4C5B61', '#C9B79C', '#0E1116', '5:07', '2:00', ['🌙', '🥹', '🚗']),
+      teardrop: T('Teardrop', 'Massive Attack', '#2E294E', '#9055A2', '#D4B483', '5:30', '1:40', ['🌙', '🌧️', '🧘']),
+      dreams: T('Dreams', 'Fleetwood Mac', '#C9A227', '#6E3B3B', '#F2E8CF', '4:17', '1:10', ['☀️', '🥹', '💃']),
+      harvest: T('Harvest Moon', 'Neil Young', '#A44A3F', '#F1DEDE', '#2D3047', '5:03', '2:30', ['🌙', '🥹', '☕']),
+      lucky: T('Get Lucky', 'Daft Punk', '#E4B363', '#1B1B1E', '#E8D5B7', '6:09', '1:20', ['💃', '🔥', '☀️']),
+      holocene: T('Holocene', 'Bon Iver', '#5C8001', '#EDF7D2', '#2B303A', '5:36', '2:40', ['🌧️', '🧘', '🥹']),
+      archangel: T('Archangel', 'Burial', '#1C2541', '#5BC0BE', '#0B132B', '3:58', '1:15', ['🌧️', '🌙', '🚗']),
+    };
+    const stations = [
+      { id: 'mine', name: 'My Station', freq: 88.7, kind: 'Personal · learns as you listen', vibes: ['😌', '☀️', '✨'], seeds: [tr.maria, tr.pinkwhite, tr.journey], tracks: [tr.maria, tr.show, tr.lovely], out: [{ label: 'Holiday music', kind: 'genre' }, { label: 'Live recordings', kind: 'type' }] },
+      { id: 'sunday', name: 'Sunday Slow', freq: 92.3, kind: 'Feels like ☕ 😌', vibes: ['☕', '😌', '🌧️'], seeds: [tr.sunday, tr.pinkmoon, tr.harvest], tracks: [tr.sunday, tr.pinkmoon, tr.harvest], out: [] },
+      { id: 'night', name: 'Night Drive', freq: 97.1, kind: 'Feels like 🌙 🚗', vibes: ['🌙', '🚗', '✨'], seeds: [tr.midnight, tr.nightcall, tr.nights], tracks: [tr.midnight, tr.nightcall, tr.archangel], out: [] },
+      { id: 'pink', name: 'Pink + White Radio', freq: 101.5, kind: 'From a song · Frank Ocean', vibes: ['🥹', '🌙', '😌'], seeds: [tr.pinkwhite, tr.denim, tr.nights], tracks: [tr.pinkwhite, tr.denim, tr.nights], out: [] },
+      { id: 'alice', name: 'Alice Coltrane Radio', freq: 105.9, kind: 'From an artist', vibes: ['🧘', '✨', '🌙'], seeds: [tr.journey, tr.creator, tr.holocene], tracks: [tr.journey, tr.creator, tr.holocene], out: [] },
+    ];
+    const S = (id, title, sub, top) => ({ id, title, sub, top });
+    const tracks = [
+      S('t1', 'Maria También', 'Khruangbin', tr.maria), S('t2', 'Pink + White', 'Frank Ocean', tr.pinkwhite), S('t3', 'Midnight City', 'M83', tr.midnight),
+      S('t4', 'Journey in Satchidananda', 'Alice Coltrane', tr.journey), S('t5', 'Redbone', 'Childish Gambino', tr.redbone), S('t6', 'Nights', 'Frank Ocean', tr.nights),
+      S('t7', 'Teardrop', 'Massive Attack', tr.teardrop), S('t8', 'Dreams', 'Fleetwood Mac', tr.dreams), S('t9', 'Harvest Moon', 'Neil Young', tr.harvest),
+      S('t10', 'Get Lucky', 'Daft Punk', tr.lucky), S('t11', 'Holocene', 'Bon Iver', tr.holocene), S('t12', 'Archangel', 'Burial', tr.archangel),
+      S('t13', 'Sunday Morning', 'The Velvet Underground', tr.sunday), S('t14', 'Nightcall', 'Kavinsky', tr.nightcall),
+    ];
+    const artists = [
+      S('a1', 'Khruangbin', 'Artist', tr.maria), S('a2', 'Frank Ocean', 'Artist', tr.nights), S('a3', 'Alice Coltrane', 'Artist', tr.journey),
+      S('a4', 'M83', 'Artist', tr.midnight), S('a5', 'Massive Attack', 'Artist', tr.teardrop), S('a6', 'Fleetwood Mac', 'Artist', tr.dreams),
+      S('a7', 'Bon Iver', 'Artist', tr.holocene), S('a8', 'Burial', 'Artist', tr.archangel), S('a9', 'Daft Punk', 'Artist', tr.lucky),
+      S('a10', 'Men I Trust', 'Artist', tr.show), S('a11', 'Bill Withers', 'Artist', tr.lovely),
+    ];
+    const albums = [
+      S('b1', 'Con Todo El Mundo', 'Khruangbin · 2018', tr.maria), S('b2', 'Blonde', 'Frank Ocean · 2016', tr.pinkwhite), S('b3', 'Journey in Satchidananda', 'Alice Coltrane · 1971', tr.journey),
+      S('b4', 'Hurry Up, We’re Dreaming', 'M83 · 2011', tr.midnight), S('b5', 'Mezzanine', 'Massive Attack · 1998', tr.teardrop), S('b6', 'Rumours', 'Fleetwood Mac · 1977', tr.dreams),
+      S('b7', 'Harvest Moon', 'Neil Young · 1992', tr.harvest), S('b8', 'Random Access Memories', 'Daft Punk · 2013', tr.lucky), S('b9', 'Untrue', 'Burial · 2007', tr.archangel),
+      S('b10', 'Bon Iver, Bon Iver', 'Bon Iver · 2011', tr.holocene), S('b11', 'Untourable Album', 'Men I Trust · 2021', tr.show), S('b12', 'Still Bill', 'Bill Withers · 1972', tr.lovely),
+    ];
+    const memories = [
+      { title: 'The ride home', date: 'Sep 15, 2026', place: 'Brooklyn', story: 'Windows down after the show. Everyone quiet for once, just this song and the bridge lights.', song: 'Maria También', artist: 'Khruangbin', segment: '0:48–1:20', art: tr.maria, photo: 'linear-gradient(180deg, #F2B880 0 46%, #3E5C76 46% 100%)', chips: ['Sam', 'Priya', '😌', '🚗'] },
+      { title: 'Lake house mornings', date: 'Aug 2, 2025', place: 'Lake George', story: 'First swim before anyone woke up. The record player was still on the porch from the night before.', song: 'Pink Moon', artist: 'Nick Drake', segment: '0:00–0:40', art: tr.pinkmoon, photo: 'linear-gradient(180deg, #CFE3E8 0 38%, #5E8C61 38% 62%, #2F5D73 62% 100%)', chips: ['Mom', '🥹'] },
+      { title: 'Last train', date: 'Jan 11, 2026', place: 'Chicago', story: 'Two in the morning, snow on the platform, headphones on. Felt like the city was mine.', song: 'Nightcall', artist: 'Kavinsky', segment: '1:10–1:52', art: tr.nightcall, photo: 'linear-gradient(180deg, #1B1F3B 0 58%, #E8385D 58% 62%, #3C4068 62% 100%)', chips: ['🌙', '“snow on the platform”'] },
+    ];
+    const vocab = ['😌', '🔥', '🌙', '☀️', '💃', '🥹', '🧘', '🚗', '🌧️', '✨', '☕', '🤘', '😭', '🥰', '😎', '🤯', '🫶', '🌊', '🍂', '❄️', '🌸', '🏃', '🛋️', '🎉'];
+    const names = { '😌': 'calm', '🔥': 'fire', '🌙': 'late night', '☀️': 'sunny', '💃': 'dancing', '🥹': 'tender', '🧘': 'centered', '🚗': 'driving', '🌧️': 'rainy', '✨': 'magic', '☕': 'slow morning', '🤘': 'loud' };
+    this._data = { tr, stations, tracks, artists, albums, memories, vocab, names };
+    return this._data;
+  }
+
+  art(t) {
+    return 'radial-gradient(circle at 72% 28%, ' + t.c3 + ' 0 17%, transparent 17.5%), linear-gradient(135deg, ' + t.c1 + ' 0 56%, ' + t.c2 + ' 56% 100%)';
+  }
+
+  palette(dark, base) {
+    if (dark) {
+      return {
+        bg: this.mix('#121110', base, 0.08), card: this.mix('#1B1A18', base, 0.18), well: this.mix('#1B1A18', base, 0.28), sleeveBack: this.mix('#1B1A18', base, 0.1),
+        ink: '#F3EFE8', sub: '#B8B1A7', line: 'rgba(243,239,232,0.16)', tick: 'rgba(243,239,232,0.32)',
+        accent: '#FB7A3C', onAccent: '#1A0D05', accentSoft: this.mix('#1B1A18', '#FB7A3C', 0.24), print: '#E9E5DD',
+        shadow: '0 0 0 1px rgba(255,255,255,0.06), 0 30px 70px rgba(0,0,0,0.55)', liftShadow: '0 14px 30px rgba(0,0,0,0.5)',
+      };
+    }
+    return {
+      bg: this.mix('#EFECE6', base, 0.07), card: this.mix('#FFFFFF', base, 0.15), well: this.mix('#FFFFFF', base, 0.27), sleeveBack: this.mix('#FFFFFF', base, 0.08),
+      ink: '#1C1A17', sub: '#4E4943', line: 'rgba(28,26,23,0.15)', tick: 'rgba(28,26,23,0.3)',
+      accent: '#C2410C', onAccent: '#FFFFFF', accentSoft: this.mix('#FFFFFF', '#C2410C', 0.14), print: '#FFFFFF',
+      shadow: '0 1px 2px rgba(30,20,10,0.06), 0 30px 70px rgba(30,20,10,0.12)', liftShadow: '0 14px 30px rgba(30,20,10,0.28)',
+    };
+  }
+
+  filter(list, q) {
+    const needle = (q || '').trim().toLowerCase();
+    if (!needle) return list;
+    return list.filter((x) => (x.title + ' ' + x.sub).toLowerCase().includes(needle));
+  }
+
+  ctx() {
+    const d = this.data();
+    const { s, screen, playing, putAway, pendingId } = this.view();
+    const freqs = s.freqs || {};
+    const stations = d.stations.concat(s.custom || []).map((st) => Object.assign({}, st, { freq: freqs[st.id] ?? st.freq }));
+    const curId = s.stationId ?? this.props.stationId ?? 'mine';
+    const station = stations.find((x) => x.id === curId) || stations[0];
+    const pending = pendingId ? (stations.find((x) => x.id === pendingId) || null) : null;
+    const trackIdx = s.trackIdx ?? Number(this.props.trackIdx ?? 0);
+    const track = station.tracks[trackIdx % station.tracks.length];
+    const len = this.secs(track.len);
+    const pos = Math.min(len, s.pos ?? this.secs(track.at));
+    const tunedFreq = s.dialNew ? 109.6 : (pending ? pending.freq : station.freq);
+    const key = station.id + ':' + track.t;
+    const reactions = s.reactions || {};
+    const reacted = reactions[key] ?? (curId === 'mine' && trackIdx === 0 && !s.stationId ? this.list(this.props.reacted) : []);
+    const kind = s.kind ?? this.props.kind ?? 'tracks';
+    const query = s.crateQuery ?? '';
+    const feel = s.feel ?? this.list(this.props.feel);
+    let pool = kind === 'artists' ? d.artists : kind === 'albums' ? d.albums : d.tracks;
+    pool = this.filter(pool, query);
+    const path = s.path ?? this.props.path ?? 'records';
+    const step = s.step ?? this.props.step ?? path;
+    if (feel.length && path === 'feelings') pool = pool.slice().sort((a, b) => this.overlap(b.top.v, feel) - this.overlap(a.top.v, feel));
+    const focus = Math.max(0, Math.min(pool.length - 1, s.focus ?? Number(this.props.focus ?? 3)));
+    const seeds = s.seeds ?? this.list(this.props.seeds);
+    const orient = s.orient ?? this.props.orient ?? 'row';
+    return { d, s, screen, playing, putAway, pendingId, stations, station, pending, track, trackIdx, len, pos, tunedFreq, key, reactions, reacted, kind, query, feel, pool, path, step, focus, seeds, orient, all: d.tracks.concat(d.artists, d.albums) };
+  }
+
+  /* ---------- drag plumbing ---------- */
+  track(e, onMove, onUp) {
+    const move = (ev) => onMove(ev);
+    const up = (ev) => { cleanup(); onUp(ev); };
+    const cleanup = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      this.dragCleanup = null;
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    this.dragCleanup = cleanup;
+  }
+  swallowClick() { this.suppressClick = true; setTimeout(() => { this.suppressClick = false; }, 0); }
+
+  /* dial: drag to tune, press and hold a station to move it */
+  PX = 56;
+  fx(f) { return (f - 88) * this.PX; }
+  snapFreq(f) { return Math.max(88.1, Math.min(107.9, Math.round((f - 0.1) / 0.2) * 0.2 + 0.1)); }
+
+  dialDown(e) {
+    if (e.button) return;
+    const itemEl = e.target && e.target.closest ? e.target.closest('[data-st]') : null;
+    const id = itemEl ? itemEl.getAttribute('data-st') : null;
+    const dr = { p0: e.clientX, last: e.clientX, t: performance.now(), v: 0, moved: false, hold: false };
+    this.drag = dr;
+    clearTimeout(this.holdTimer);
+    if (id && id !== 'new') this.holdTimer = setTimeout(() => { if (!dr.moved) this.enterHold(id, dr.last); }, 450);
+    this.track(e, (ev) => {
+      if (dr.hold) { this.holdMove(ev.clientX); return; }
+      const now = performance.now();
+      dr.v = 0.75 * ((ev.clientX - dr.last) / Math.max(1, now - dr.t)) + 0.25 * dr.v;
+      dr.last = ev.clientX;
+      dr.t = now;
+      if (Math.abs(ev.clientX - dr.p0) > 5) { dr.moved = true; clearTimeout(this.holdTimer); }
+      if (dr.moved) this.setState({ dialDelta: ev.clientX - dr.p0, dialDragging: true });
+    }, () => {
+      clearTimeout(this.holdTimer);
+      this.drag = null;
+      if (dr.hold) { this.commitHold(); this.swallowClick(); return; }
+      if (!dr.moved) return;
+      this.swallowClick();
+      const v = performance.now() - dr.t > 90 ? 0 : dr.v;
+      const m = this.ctx();
+      const center = m.tunedFreq - (dr.last - dr.p0 + v * 420) / this.PX;
+      this.tuneNearest(center, m);
+    });
+    this.dragHold = dr;
+  }
+
+  enterHold(id, clientX) {
+    const m = this.ctx();
+    const st = m.stations.find((x) => x.id === id);
+    if (!st || !this.dialEl) return;
+    this.dragHold.hold = true;
+    this.dialRect = this.dialEl.getBoundingClientRect();
+    const cx = this.dialRect.left + this.dialRect.width / 2;
+    this.holdView = m.tunedFreq;
+    this.holdGrab = (clientX - cx) / this.PX - (st.freq - this.holdView);
+    this.holdX = clientX;
+    if (navigator.vibrate) navigator.vibrate(10);
+    this.setState({ hold: { id, freq: st.freq }, viewFreq: this.holdView, dialDelta: 0, dialDragging: false });
+  }
+
+  holdMove(clientX) {
+    this.holdX = clientX;
+    const r = this.dialRect;
+    const edge = clientX < r.left + 48 ? -1 : clientX > r.right - 48 ? 1 : 0;
+    this.edgeDir = edge;
+    if (edge && !this.edgeRaf) {
+      const loop = () => {
+        if (!this.edgeDir || !this.dragHold || !this.dragHold.hold) { this.edgeRaf = null; return; }
+        this.holdView = Math.max(88.1, Math.min(107.9, this.holdView + this.edgeDir * 0.07));
+        this.placeHold();
+        this.edgeRaf = requestAnimationFrame(loop);
+      };
+      this.edgeRaf = requestAnimationFrame(loop);
+    }
+    this.placeHold();
+  }
+
+  placeHold() {
+    const r = this.dialRect;
+    const cx = r.left + r.width / 2;
+    const f = this.snapFreq(this.holdView + (this.holdX - cx) / this.PX - this.holdGrab);
+    const { s } = this.view();
+    if (s.hold) this.setState({ hold: { id: s.hold.id, freq: f }, viewFreq: this.holdView });
+  }
+
+  commitHold() {
+    cancelAnimationFrame(this.edgeRaf);
+    this.edgeRaf = null;
+    this.edgeDir = 0;
+    const m = this.ctx();
+    const h = m.s.hold;
+    if (!h) return;
+    const others = m.stations.filter((x) => x.id !== h.id).map((x) => x.freq);
+    const free = (f) => others.every((o) => Math.abs(o - f) >= 2.2);
+    let f = h.freq;
+    for (let k = 0; k < 100 && !free(f); k++) {
+      const off = Math.ceil((k + 1) / 2) * 0.2 * (k % 2 ? -1 : 1);
+      const cand = this.snapFreq(h.freq + off);
+      if (free(cand)) { f = cand; break; }
+    }
+    const st = m.stations.find((x) => x.id === h.id);
+    this.setState({ freqs: Object.assign({}, m.s.freqs || {}, { [h.id]: f }), hold: null, viewFreq: null, dialDur: 520, toast: st.name + ' now lives at ' + f.toFixed(1) + ' FM.', suggestId: null });
+  }
+
+  tuneNearest(center, m) {
+    const marks = m.stations.map((x) => ({ id: x.id, f: x.freq })).concat([{ id: 'new', f: 109.6 }]);
+    let best = marks[0];
+    marks.forEach((x) => { if (Math.abs(x.f - center) < Math.abs(best.f - center)) best = x; });
+    this.tuneTo(best.id, Math.abs(best.f - m.tunedFreq));
+  }
+
+  tuneTo(id, dist) {
+    const m = this.ctx();
+    const dur = Math.min(1500, 340 + 60 * (dist ?? 2));
+    if (id === 'new') {
+      this.setState({ dialDelta: 0, dialDragging: false, dialNew: true, dialDur: dur, suggestId: null, toast: null });
+      clearTimeout(this.newTimer);
+      this.newTimer = setTimeout(() => this.navigate({ screen: 'create', dialNew: false, path: 'records', step: 'records', seeds: [], feel: [], focus: 3 }), dur + 150);
+      return;
+    }
+    this.setState({ dialDelta: 0, dialDragging: false, dialNew: false, dialDur: dur, pendingId: id === m.station.id ? null : id, suggestId: null, toast: null });
+  }
+
+  tuneStep(dir) {
+    const m = this.ctx();
+    const marks = m.stations.map((x) => ({ id: x.id, f: x.freq })).concat([{ id: 'new', f: 109.6 }]).sort((a, b) => a.f - b.f);
+    const i = marks.findIndex((x) => Math.abs(x.f - m.tunedFreq) < 0.01);
+    const n = marks[Math.max(0, Math.min(marks.length - 1, i + dir))];
+    this.tuneTo(n.id, Math.abs(n.f - m.tunedFreq));
+  }
+
+  /* vinyl: spin the edge to seek, grab the label to slide it in or out */
+  vinylDown(e) {
+    if (e.button) return;
+    const el = e.currentTarget;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const rr = Math.hypot(e.clientX - cx, e.clientY - cy) / (r.width / 2);
+    const m = this.ctx();
+    if (m.putAway || rr < 0.42) {
+      const dr = { x0: e.clientX, moved: false };
+      this.drag = dr;
+      this.track(e, (ev) => {
+        const dx = Math.max(-190, Math.min(m.putAway ? 190 : 40, ev.clientX - dr.x0));
+        if (Math.abs(dx) > 4) dr.moved = true;
+        if (dr.moved) this.setState({ vinylDx: dx, vinylDragging: true });
+      }, (ev) => {
+        this.drag = null;
+        const dx = ev.clientX - dr.x0;
+        if (!dr.moved) { if (!m.putAway) this.setState({ playing: !m.playing }); return; }
+        if (!m.putAway && dx < -80) this.setState({ putAway: true, vinylDx: 0, vinylDragging: false, sleeveOpen: false });
+        else if (m.putAway && dx > 70) this.setState({ putAway: false, playing: true, vinylDx: 0, vinylDragging: false, pos: m.s.pos });
+        else this.setState({ vinylDx: 0, vinylDragging: false });
+      });
+      return;
+    }
+    const anim = el.__spin;
+    if (anim) anim.pause();
+    const sd = { anim, base: anim ? (anim.currentTime || 0) : 0, last: Math.atan2(e.clientY - cy, e.clientX - cx), total: 0, v: 0, t: performance.now(), cx, cy, moved: false };
+    this.spinDrag = sd;
+    this.track(e, (ev) => {
+      const a = Math.atan2(ev.clientY - sd.cy, ev.clientX - sd.cx);
+      let dA = a - sd.last;
+      if (dA > Math.PI) dA -= 2 * Math.PI;
+      if (dA < -Math.PI) dA += 2 * Math.PI;
+      sd.last = a;
+      sd.total += dA;
+      const now = performance.now();
+      sd.v = 0.7 * ((dA * 180 / Math.PI) / Math.max(1, now - sd.t)) + 0.3 * sd.v;
+      sd.t = now;
+      const deg = sd.total * 180 / Math.PI;
+      if (Math.abs(deg) > 3) sd.moved = true;
+      if (sd.anim) sd.anim.currentTime = (((sd.base + (deg / 360) * 5200) % 5200) + 5200) % 5200;
+      this.setState({ seekDelta: (deg / 360) * 14 });
+    }, () => {
+      this.spinDrag = null;
+      const mm = this.ctx();
+      if (!sd.moved) { this.setState({ seekDelta: null, playing: !mm.playing }); return; }
+      const fling = performance.now() - sd.t > 90 ? 0 : sd.v * 380;
+      const deg = sd.total * 180 / Math.PI + fling;
+      const target = mm.pos + (deg / 360) * 14;
+      if (target >= mm.len - 1) { this.advance({ seekDelta: null }); return; }
+      this.setState({ pos: Math.max(0, target), seekDelta: null });
+      this.syncSpin();
+    });
+  }
+
+  /* press vs press-and-hold for small buttons */
+  press(onTap, onHold) {
+    return {
+      down: (e) => {
+        if (e.button) return;
+        clearTimeout(this.pressTimer);
+        this.pressFired = false;
+        this.pressTimer = setTimeout(() => { this.pressTimer = null; this.pressFired = true; onHold(); }, 450);
+      },
+      up: () => {
+        if (this.pressTimer) { clearTimeout(this.pressTimer); this.pressTimer = null; if (!this.pressFired) onTap(); }
+      },
+      leave: () => { if (this.pressTimer) { clearTimeout(this.pressTimer); this.pressTimer = null; } },
+      key: (e) => { if (e.detail === 0) onTap(); },
+    };
+  }
+
+  /* crate: drag, swipe or click to flip records */
+  crateDown(e) {
+    if (e.button) return;
+    const m = this.ctx();
+    const axis = m.orient === 'bin' ? 'y' : 'x';
+    const at = (ev) => (axis === 'y' ? ev.clientY : ev.clientX);
+    const dr = { p0: at(e), last: at(e), t: performance.now(), v: 0, moved: false };
+    this.drag = dr;
+    this.track(e, (ev) => {
+      const q = at(ev);
+      const now = performance.now();
+      dr.v = 0.75 * ((q - dr.last) / Math.max(1, now - dr.t)) + 0.25 * dr.v;
+      dr.last = q;
+      dr.t = now;
+      if (Math.abs(q - dr.p0) > 4) dr.moved = true;
+      if (dr.moved) this.setState({ crateDelta: q - dr.p0, crateDragging: true });
+    }, () => {
+      this.drag = null;
+      if (!dr.moved) return;
+      this.swallowClick();
+      const v = performance.now() - dr.t > 90 ? 0 : dr.v;
+      const mm = this.ctx();
+      const unit = mm.orient === 'bin' ? 70 : 120;
+      const steps = Math.round(-(dr.last - dr.p0 + v * 320) / unit);
+      this.setState({ focus: Math.max(0, Math.min(mm.pool.length - 1, mm.focus + steps)), crateDelta: 0, crateDragging: false });
+    });
+  }
+
+  addStation(st) {
+    const m = this.ctx();
+    const taken = m.stations.map((x) => x.freq);
+    let f = 107.9;
+    while (f > 88.1 && taken.some((o) => Math.abs(o - f) < 2.2)) f = Math.round((f - 0.2) * 10) / 10;
+    st.freq = f;
+    this.navigate({ custom: (m.s.custom || []).concat([st]), pendingId: st.id, screen: 'radio', toast: null, suggestId: null, playing: true, putAway: false, seeds: [], feel: [] });
+  }
+
+  setReacted(next) {
+    const m = this.ctx();
+    const patch = { reactions: Object.assign({}, m.reactions, { [m.key]: next }), toast: null, suggestId: null };
+    if (next.length) {
+      const here = this.overlap(next, m.station.vibes);
+      let best = null;
+      let bestScore = 0;
+      m.stations.forEach((st) => {
+        if (st.id === m.station.id) return;
+        const sc = this.overlap(next, st.vibes);
+        if (sc > bestScore) { best = st; bestScore = sc; }
+      });
+      if (best && bestScore > here) patch.suggestId = best.id;
+      else patch.toast = 'Noted. ' + m.station.name + ' will lean into ' + next.slice(-3).join(' ') + '.';
+    }
+    this.setState(patch);
+  }
+
+  advance(extra) {
+    const m = this.ctx();
+    if (m.pending) this.setState(Object.assign({ stationId: m.pending.id, pendingId: null, trackIdx: 0, pos: 0, toast: null, suggestId: null, skipMenu: false }, extra || {}));
+    else this.setState(Object.assign({ trackIdx: m.trackIdx + 1, pos: 0, toast: null, suggestId: null, skipMenu: false }, extra || {}));
+  }
+
+  renderVals() {
+    const m = this.ctx();
+    const { d, s, screen, playing, putAway, stations, station, pending, track, len, pos, tunedFreq, reacted, kind, query, feel, pool, path, step, focus, seeds, orient, all } = m;
+    const choice = s.theme ?? this.props.theme ?? 'system';
+    const sysDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const dark = choice === 'dark' || (choice === 'system' && sysDark);
+    const fItem = pool[focus];
+    const isCreate = screen === 'create';
+    const isBrowse = screen === 'browse';
+    const mIdx = (((s.mIdx ?? 0) % d.memories.length) + d.memories.length) % d.memories.length;
+    const mem = d.memories[mIdx];
+    const baseArt = screen === 'radio' ? track : screen === 'memories' ? mem.art : (fItem ? fItem.top : track);
+    const c = this.palette(dark, baseArt.c1);
+    const art = this.art(track);
+    const ease = 'cubic-bezier(.2,.8,.2,1)';
+    const go = (id) => () => this.navigate({ screen: id, toast: null, popover: null, skipMenu: false, sleeveOpen: false, panel: null, step: id === 'create' ? path : (s.step ?? '') });
+
+    const tabOf = { radio: 'radio', create: 'radio', browse: 'browse', memories: 'memories' };
+    const tabs = [['radio', 'Radio'], ['memories', 'Memories'], ['browse', 'Browse']].map(([id, label]) => {
+      const on = tabOf[screen] === id;
+      return { label, go: go(id), current: on ? 'page' : 'false', bg: on ? c.card : 'transparent', fg: on ? c.ink : c.sub, shadow: on ? '0 1px 3px rgba(0,0,0,0.14)' : 'none' };
+    });
+    const themes = [['system', 'Match system'], ['light', 'Light'], ['dark', 'Dark']].map(([id, label]) => ({
+      label, pick: () => this.setState({ theme: id }), pressed: choice === id ? 'true' : 'false',
+      bg: choice === id ? c.card : 'transparent', fg: choice === id ? c.ink : c.sub, isAuto: id === 'system', isLight: id === 'light', isDark: id === 'dark',
+    }));
+
+    /* hero */
+    const vinylDx = s.vinylDx || 0;
+    const baseLeft = putAway ? 120 : 290;
+    const seekDelta = s.seekDelta ?? (this.props.seekPreview != null ? Number(this.props.seekPreview) : null);
+    const seekShow = seekDelta != null;
+    const seekTarget = Math.max(0, Math.min(len, pos + (seekDelta || 0)));
+    const sleeveOpen = s.sleeveOpen ?? this.flag(this.props.sleeveOpen);
+    const album = d.albums.find((x) => x.top === track) || d.albums.find((x) => x.sub.indexOf(track.a) === 0);
+    const artistItem = d.artists.find((x) => x.title === track.a);
+    const openCrate = (k, item) => () => {
+      const list = k === 'albums' ? d.albums : d.artists;
+      this.navigate({ screen: 'browse', kind: k, crateQuery: '', focus: Math.max(0, list.indexOf(item)), sleeveOpen: false });
+    };
+    const sleeveOptions = [
+      { label: 'Lyrics', sub: 'Follows the song as it plays', run: () => this.setState({ panel: 'lyrics', sleeveOpen: false }) },
+      { label: album ? 'Open the album' : 'Find the album', sub: album ? album.title : 'In the crate', run: openCrate('albums', album) },
+      { label: 'Open the artist', sub: track.a, run: openCrate('artists', artistItem) },
+      { label: 'Start radio from this song', sub: 'Tunes in next', run: () => { this.setState({ sleeveOpen: false }); this.addStation({ id: 'c' + Date.now(), name: track.t + ' Radio', kind: 'From a song · ' + track.a, vibes: track.v.slice(0, 3), seeds: [track], tracks: [track, d.tr.lovely, d.tr.sun], out: [] }); } },
+    ];
+
+    /* reactions */
+    const popover = s.popover !== undefined ? s.popover : (this.props.popover ?? null);
+    const customs = s.customEmoji || [];
+    const toggleIn = (arr, e) => (arr.includes(e) ? arr.filter((x) => x !== e) : arr.concat([e]));
+    const chipOf = (e, on) => {
+      const word = !this.isEmoji(e);
+      return {
+        text: word ? '“' + e + '”' : e, label: (on ? 'Remove ' : 'Feels ') + (d.names[e] || e), pressed: on ? 'true' : 'false',
+        bg: on ? c.accentSoft : 'transparent', border: on ? c.accent : c.line, scale: on ? 1.06 : 1,
+        pad: word ? '0 12px' : '0', size: word ? 13 : 17,
+      };
+    };
+    const stripList = this.uniq(this.uniq(track.v.concat(['🔥', '🥹', '💃', '🌙', '☀️'])).slice(0, 5).concat(customs.filter((x) => this.isEmoji(x)).slice(-2), reacted));
+    const chips = stripList.slice(0, 9).map((e) => Object.assign(chipOf(e, reacted.includes(e)), { toggle: () => this.setReacted(toggleIn(reacted, e)) }));
+    const pickerItems = this.uniq(d.vocab.concat(customs.filter((x) => this.isEmoji(x)))).slice(0, 32).map((e) => Object.assign(chipOf(e, reacted.includes(e)), { toggle: () => this.setReacted(toggleIn(reacted, e)) }));
+    const saveWords = () => {
+      const w = String(s.wordsDraft || '').trim().replace(/\s+/g, ' ');
+      if (!w) return;
+      this.setState({ wordsDraft: '', popover: null, customEmoji: this.uniq(customs.concat([w])) });
+      this.setReacted(this.uniq(reacted.concat([w])));
+    };
+
+    /* skip & keep-out */
+    const skipMenu = s.skipMenu ?? this.flag(this.props.skipMenu);
+    const excluded = s.excluded || {};
+    const outFor = (st) => (excluded[st.id] ?? st.out ?? []);
+    const keepOut = (label, kindLabel, msg) => () => {
+      this.setState({ excluded: Object.assign({}, excluded, { [station.id]: outFor(station).concat([{ label, kind: kindLabel }]) }) });
+      this.advance({ toast: msg });
+    };
+    const skipOptions = [
+      { label: 'Skip this song', sub: 'Just this once', run: () => this.advance() },
+      { label: 'Not on ' + station.name, sub: 'This song stays off this station', run: keepOut(track.t, 'song', track.t + ' is out of ' + station.name + '.') },
+      { label: 'Less ' + track.a + ' here', sub: 'Plays them more rarely on this station', run: () => this.advance({ toast: 'Less ' + track.a + ' on ' + station.name + '.' }) },
+      { label: 'Never play ' + track.a, sub: 'Kept out of every station', run: keepOut(track.a, 'everywhere', track.a + ' is kept out of all your stations.') },
+    ];
+
+    /* dial */
+    const hold = s.hold ?? (this.props.hold ? { id: this.props.hold, freq: Number(this.props.holdFreq ?? 0) || (stations.find((x) => x.id === this.props.hold) || station).freq } : null);
+    const centerFreq = hold ? (s.viewFreq ?? tunedFreq) : tunedFreq;
+    const PX = this.PX;
+    let dialX = -this.fx(centerFreq) + (s.dialDelta || 0);
+    const maxX = -this.fx(88.1);
+    const minX = -this.fx(109.6);
+    if (dialX > maxX) dialX = maxX + (dialX - maxX) * 0.35;
+    if (dialX < minX) dialX = minX + (dialX - minX) * 0.35;
+    const bandLabels = [];
+    for (let f = 88; f <= 108; f += 2) bandLabels.push({ x: this.fx(f), label: String(f) });
+    const dialItems = stations.map((st) => {
+      const held = hold && hold.id === st.id;
+      const f = held ? hold.freq : st.freq;
+      const tuned = Math.abs(st.freq - tunedFreq) < 0.01 && !s.dialNew;
+      return {
+        id: st.id, left: Math.round(this.fx(f) - 62), freq: f.toFixed(1) + ' FM', name: st.name,
+        thumbs: (st.seeds || st.tracks).slice(0, 3).map((t) => ({ art: this.art(t) })),
+        label: 'Tune to ' + st.name + ' at ' + f.toFixed(1) + ' FM. Press and hold to move it.',
+        fg: tuned || held ? c.ink : c.sub, weight: tuned || held ? 800 : 500, freqColor: held ? c.accent : (tuned ? c.ink : c.sub),
+        pressed: tuned ? 'true' : 'false', bg: held ? c.card : 'transparent', lift: held ? -12 : 0, scale: held ? 1.1 : 1,
+        shadow: held ? c.liftShadow : 'none', z: held ? 20 : 1,
+        transition: held ? 'transform 200ms ease, box-shadow 200ms ease' : 'left 450ms ' + ease + ', transform 300ms ' + ease + ', box-shadow 300ms ease, color 300ms ease',
+        pick: () => { if (!this.suppressClick) this.tuneTo(st.id, Math.abs(st.freq - tunedFreq)); },
+      };
+    }).concat([{
+      id: 'new', left: Math.round(this.fx(109.6) - 62), freq: '+ ADD', name: 'New station', thumbs: [],
+      label: 'Start a new station', fg: c.ink, weight: 700, freqColor: c.accent, pressed: s.dialNew ? 'true' : 'false', bg: 'transparent', lift: 0, scale: 1, shadow: 'none', z: 1,
+      transition: 'transform 300ms ease', pick: () => { if (!this.suppressClick) this.tuneTo('new', Math.abs(109.6 - tunedFreq)); },
+    }]);
+    const dialDur = s.dialDur ?? 420;
+    const dialTransition = s.dialDragging ? 'none' : (hold ? 'transform 120ms linear' : 'transform ' + dialDur + 'ms ' + ease);
+
+    /* status */
+    const suggestSt = !pending ? stations.find((x) => x.id === (s.suggestId !== undefined ? s.suggestId : (this.props.suggest ?? null))) : null;
+    const heldSt = hold ? stations.find((x) => x.id === hold.id) : null;
+    const statusAway = putAway;
+    const statusPending = !putAway && !!pending && !hold;
+    const statusSuggest = !putAway && !statusPending && !!suggestSt && !hold;
+    const statusLine = hold ? 'Place ' + (heldSt ? heldSt.name : 'it') + ' anywhere on the dial · ' + hold.freq.toFixed(1) + ' FM'
+      : (s.toast || (s.dialNew ? 'Opening a fresh crate…' : 'Drag the dial to tune · Hold a station to move it · Spin the record to seek'));
+    const sessionEmoji = this.uniq([].concat(...Object.values(m.reactions)).concat(reacted)).filter((x) => this.isEmoji(x)).slice(0, 3).join(' ');
+
+    /* panel */
+    const panel = s.panel !== undefined ? s.panel : (this.props.panel ?? null);
+    const lineNow = Math.floor(pos / 5) % 16;
+    const widths = [380, 300, 420, 260, 360, 440, 220, 340, 400, 280, 360, 320, 410, 250, 370, 300];
+    const lyricLines = widths.map((w, i) => ({ w, color: i === lineNow ? c.ink : c.sub, opacity: i === lineNow ? 1 : (Math.abs(i - lineNow) === 1 ? 0.45 : 0.22) }));
+    const learning = s.learning ?? true;
+
+    /* create & browse */
+    const binMode = orient === 'bin';
+    const fpos = focus - (s.crateDelta || 0) / (binMode ? 70 : 120);
+    const sleeve = binMode ? 200 : 210;
+    const toggleSeed = (id) => (seeds.includes(id) ? seeds.filter((x) => x !== id) : seeds.concat([id]).slice(-3));
+    const crateItems = pool.map((it, i) => {
+      const pos2 = i - fpos;
+      const a = Math.abs(pos2);
+      let transform;
+      let z;
+      let opacity;
+      let bright = 1;
+      if (binMode) {
+        if (pos2 < 0) {
+          const f = Math.min(1, -pos2);
+          transform = 'translateY(' + (f * 150) + 'px) rotateX(' + (-f * 82) + 'deg)';
+          opacity = Math.max(0, 1 - f * 1.2);
+          z = 200;
+        } else {
+          const k = Math.min(pos2, 6);
+          transform = 'translateY(' + (-k * 20) + 'px) scale(' + (1 - k * 0.045) + ')';
+          opacity = pos2 > 6 ? 0 : 1;
+          bright = 1 - k * 0.07;
+          z = 100 - Math.round(pos2 * 10);
+        }
+      } else {
+        const sgn = pos2 < 0 ? -1 : 1;
+        transform = 'translateX(' + (pos2 * 64 + sgn * Math.min(a, 1) * 120) + 'px) rotateY(' + (-sgn * Math.min(a, 1) * 60) + 'deg) scale(' + (a < 1 ? 1 - a * 0.1 : 0.9 - Math.min(a - 1, 4) * 0.02) + ')';
+        opacity = a > 5 ? 0 : 1;
+        bright = 1 - Math.min(a, 4) * 0.06;
+        z = 100 - Math.round(a * 10);
+      }
+      const isSeed = seeds.includes(it.id);
+      return {
+        art: this.art(it.top), transform, z, opacity, bright: bright.toFixed(2), isSeed,
+        label: it.title + ', ' + it.sub + (isSeed ? ', pulled' : ''), pressed: isSeed ? 'true' : 'false',
+        tap: () => {
+          if (this.suppressClick) return;
+          if (i !== focus) this.setState({ focus: i });
+          else if (isCreate) this.setState({ seeds: toggleSeed(it.id) });
+        },
+      };
+    });
+    const seedItems = seeds.map((id) => all.find((x) => x.id === id)).filter(Boolean);
+    const focusSeed = !!fItem && seeds.includes(fItem.id);
+    const feelToggle = (e) => () => this.setState({ feel: toggleIn(feel, e) });
+    const feelVocab = this.uniq(d.vocab.slice(0, 16).concat(customs, feel));
+    const feelItems = feelVocab.map((e) => Object.assign(chipOf(e, feel.includes(e)), { toggle: feelToggle(e), size: this.isEmoji(e) ? 22 : 14, pad: this.isEmoji(e) ? '0' : '0 14px' }));
+    const addFeelWords = () => {
+      const raw = String(s.feelDraft || '').trim().replace(/\s+/g, ' ');
+      if (!raw) return;
+      const e = this.firstEmoji(raw) && raw.length <= 4 ? this.firstEmoji(raw) : raw;
+      this.setState({ feel: this.uniq(feel.concat([e])), customEmoji: this.uniq(customs.concat([e])), feelDraft: '' });
+    };
+    const ranked = feel.length ? d.tracks.concat(d.albums).slice().sort((a, b) => this.overlap(b.top.v, feel) - this.overlap(a.top.v, feel)) : d.tracks.concat(d.albums);
+    const previewSource = seedItems.length ? seedItems.concat(ranked.filter((x) => !seeds.includes(x.id))) : ranked;
+    const previewTiles = previewSource.slice(0, 7).map((it, i) => ({ art: this.art(it.top), rot: [-6, 3, -2, 5, -4, 2, -3][i] }));
+    const canStart = seedItems.length > 0 || feel.length > 0;
+    const newName = seedItems.length ? seedItems[0].title + ' Radio' : (feel.length ? feel.slice(0, 3).join(' ') + ' Radio' : 'station');
+    const startStation = () => {
+      if (!canStart) return;
+      const vibeTracks = d.tracks.slice().sort((a, b) => this.overlap(b.top.v, feel) - this.overlap(a.top.v, feel)).slice(0, 3).map((x) => x.top);
+      const seedTracks = seedItems.map((x) => x.top);
+      this.addStation({
+        id: 'c' + Date.now(), name: newName,
+        kind: seedItems.length ? 'From ' + seedItems.map((x) => x.title).join(', ') + (feel.length ? ' · ' + feel.join(' ') : '') : 'Feels like ' + feel.join(' '),
+        vibes: feel.length ? feel.slice(0, 3) : this.uniq([].concat(...seedTracks.map((x) => x.v))).slice(0, 3),
+        seeds: seedTracks.length ? seedTracks : vibeTracks, tracks: seedTracks.length ? seedTracks.concat(vibeTracks).slice(0, 4) : vibeTracks, out: [],
+      });
+    };
+    const pickedList = seedItems.map((it) => ({ text: it.title, focus: () => {
+      const k = it.id[0] === 'a' ? 'artists' : it.id[0] === 'b' ? 'albums' : 'tracks';
+      const list = k === 'artists' ? d.artists : k === 'albums' ? d.albums : d.tracks;
+      this.navigate({ step: 'records', kind: k, crateQuery: '', focus: list.indexOf(it) });
+    }, remove: () => this.setState({ seeds: seeds.filter((x) => x !== it.id) }) }))
+      .concat(feel.map((e) => ({ text: this.isEmoji(e) ? e : '“' + e + '”', focus: () => this.navigate({ step: 'feelings' }), remove: () => this.setState({ feel: feel.filter((x) => x !== e) }) })));
+    const stepRecords = isBrowse || (isCreate && step === 'records');
+    const stepFeelings = isCreate && step === 'feelings';
+    const otherStep = step === 'records' ? 'feelings' : 'records';
+    const nextLabel = path === step
+      ? (step === 'records' ? 'Add a feeling (optional)' : 'Add records (optional)')
+      : (step === 'records' ? 'Back to feelings' : 'Back to records');
+
+    const stationSeeds = (station.seeds || station.tracks).slice(0, 3);
+    const removedSeeds = (s.removedSeeds || {})[station.id] || [];
+
+    return {
+      c, art, track, station,
+      tabs, themes,
+      mainPadBottom: screen === 'radio' ? 30 : 96,
+      showRadio: screen === 'radio', showCrateCard: isCreate || isBrowse, showMemories: screen === 'memories', showMini: screen !== 'radio',
+      isCreate, isBrowse,
+      setVinyl: this.setVinyl, setStage: this.setStage, setTitle: this.setTitle, setDial: this.setDial, setMemPhoto: this.setMemPhoto,
+      noMenu: (e) => e.preventDefault(),
+
+      vinylLeft: baseLeft + vinylDx,
+      vinylTransition: s.vinylDragging ? 'none' : 'left 900ms ' + ease,
+      vinylCursor: putAway ? 'grab' : 'grab',
+      vinylDown: (e) => this.vinylDown(e),
+      seekShow, seekLeft: 400, seekText: (seekDelta >= 0 ? '+' : '−') + this.clock(Math.abs(seekDelta || 0)) + ' → ' + this.clock(seekTarget),
+      sleeveTransform: sleeveOpen ? 'translateY(22px) rotateY(180deg) scale(1.25)' : 'none',
+      sleeveZ: sleeveOpen ? 30 : 2, sleeveOpenStr: sleeveOpen ? 'true' : 'false',
+      toggleSleeve: () => this.setState({ sleeveOpen: !sleeveOpen, popover: null, skipMenu: false }),
+      sleeveOptions, albumName: album ? album.title : track.a,
+
+      openStation: () => this.setState({ panel: 'station', sleeveOpen: false, popover: null, skipMenu: false }),
+      stationEyebrow: (putAway ? 'Put away · ' : 'On air · ') + station.name,
+      stationBtnLabel: station.name + ' settings: seeds, feelings and what to keep out',
+
+      chips,
+      plus: this.press(() => this.setState({ popover: popover === 'picker' ? null : 'picker', skipMenu: false }), () => this.setState({ popover: 'words', skipMenu: false })),
+      plusOpenStr: popover ? 'true' : 'false', plusBorder: popover ? c.accent : c.line,
+      stripCaption: reacted.length ? 'Steers what plays next' : 'How does it feel?',
+      pickerOpen: popover === 'picker', wordsOpen: popover === 'words', pickerItems,
+      closePopovers: () => this.setState({ popover: null }),
+      wordsDraft: s.wordsDraft ?? (popover === 'words' && !s.popover ? 'first cold morning of fall' : ''),
+      setWordsDraft: (e) => this.setState({ wordsDraft: e.target.value }),
+      wordsKey: (e) => { if (e.key === 'Enter') { e.preventDefault(); saveWords(); } if (e.key === 'Escape') this.setState({ popover: null }); },
+      saveWords,
+
+      pct: Math.round((Math.min(len, seekShow ? seekTarget : pos) / len) * 1000) / 10,
+      pctTransition: s.seekDelta != null ? 'none' : 'width 1000ms linear',
+      posText: this.clock(seekShow ? seekTarget : pos), lenText: track.len,
+
+      playing, paused: !playing, playLabel: playing ? 'Pause' : 'Play',
+      togglePlay: () => (putAway ? this.setState({ putAway: false, playing: true }) : this.setState({ playing: !playing })),
+      skipPress: this.press(() => this.advance(), () => this.setState({ skipMenu: true, popover: null })),
+      skipMenuOpen: skipMenu, skipMenuStr: skipMenu ? 'true' : 'false', skipOptions,
+      saveMoment: () => this.setState({ toast: 'Saved to Memories at ' + this.clock(pos) + (reacted.length ? ' with ' + reacted.slice(0, 3).join(' ') : '') + '.', suggestId: null }),
+
+      bandWidth: Math.round(this.fx(111)), bandLabels, dialItems, dialX: Math.round(dialX), dialTransition,
+      dialCursor: s.dialDragging || hold ? 'grabbing' : 'grab',
+      dialDown: (e) => this.dialDown(e),
+      dialWheel: (e) => {
+        const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        this.wheelDial = (this.wheelDial || 0) + dx;
+        if (Math.abs(this.wheelDial) >= 60) { const stp = this.wheelDial > 0 ? 1 : -1; this.wheelDial = 0; this.tuneStep(stp); }
+      },
+      tunePrev: () => this.tuneStep(-1), tuneNext: () => this.tuneStep(1),
+
+      statusAway, statusPending, statusSuggest, statusText: !statusAway && !statusPending && !statusSuggest,
+      statusLine,
+      awayTitle: 'Put away at ' + this.clock(pos) + (pending ? ' · ' + pending.name + ' is cued' : ''),
+      awaySub: 'Today: ' + (6 + m.trackIdx) + ' songs' + (sessionEmoji ? ' · ' + sessionEmoji : '') + '. Slide the record out to resume.',
+      resumeLabel: pending ? 'Play ' + pending.name : 'Play again',
+      resume: () => this.setState({ putAway: false, playing: true }),
+      saveSession: () => this.setState({ toast: 'Saved today’s listening as a memory.', putAway: true }),
+      pendingName: pending ? pending.name : '',
+      switchNow: () => this.setState({ stationId: pending ? pending.id : station.id, pendingId: null, trackIdx: 0, pos: 0, toast: null, playing: true }),
+      undo: () => this.setState({ pendingId: null, dialDur: 420 }),
+      suggestEmoji: reacted.filter((e) => suggestSt && suggestSt.vibes.includes(e)).join(' ') || reacted.slice(0, 2).join(' '),
+      suggestName: suggestSt ? suggestSt.name : '',
+      acceptSuggest: () => this.setState({ pendingId: suggestSt ? suggestSt.id : null, suggestId: null, dialDur: 900 }),
+      dismissSuggest: () => this.setState({ suggestId: null, toast: station.name + ' will lean into ' + reacted.slice(0, 3).join(' ') + '.' }),
+
+      panelY: panel ? 0 : 100, panelVis: panel ? 'visible' : 'hidden', panelVisDelay: panel ? '0s' : '520ms', panelHidden: panel ? 'false' : 'true',
+      panelLyrics: panel === 'lyrics', panelStation: panel === 'station',
+      closePanel: () => this.setState({ panel: null }),
+      lyricLines, lyricY: -lineNow * 34,
+      sheetThumbs: stationSeeds.map((t) => ({ art: this.art(t) })),
+      stationFreq: station.freq.toFixed(1),
+      sheetSeeds: stationSeeds.filter((t) => !removedSeeds.includes(t.t)).map((t) => ({ title: t.t, art: this.art(t), remove: () => this.setState({ removedSeeds: Object.assign({}, s.removedSeeds || {}, { [station.id]: removedSeeds.concat([t.t]) }) }) })),
+      pullMore: () => this.navigate({ screen: 'create', path: 'records', step: 'records', panel: null, seeds: [], feel: [] }),
+      sheetFeels: this.uniq(station.vibes.concat(reacted)).map((e) => ({ text: this.isEmoji(e) ? e : '“' + e + '”', remove: () => this.setReacted(reacted.filter((x) => x !== e)) })),
+      sheetOut: outFor(station).map((o, i) => ({ label: o.label, kind: o.kind, restore: () => this.setState({ excluded: Object.assign({}, excluded, { [station.id]: outFor(station).filter((_, j) => j !== i) }), toast: o.label + ' can play on ' + station.name + ' again.' }) })),
+      outDraft: s.outDraft ?? '',
+      setOutDraft: (e) => this.setState({ outDraft: e.target.value }),
+      addOut: () => { const v = String(s.outDraft || '').trim(); if (v) this.setState({ excluded: Object.assign({}, excluded, { [station.id]: outFor(station).concat([{ label: v, kind: 'kept out' }]) }), outDraft: '' }); },
+      outKey: (e) => { if (e.key === 'Enter') { e.preventDefault(); const v = String(s.outDraft || '').trim(); if (v) this.setState({ excluded: Object.assign({}, excluded, { [station.id]: outFor(station).concat([{ label: v, kind: 'kept out' }]) }), outDraft: '' }); } },
+      learningStr: learning ? 'true' : 'false', toggleLearning: () => this.setState({ learning: !learning }),
+      switchBg: learning ? c.accent : c.line, switchAlign: learning ? 'flex-end' : 'flex-start',
+
+      crateTitle: isBrowse ? 'Browse' : 'New station',
+      stepLine: isBrowse ? 'Flip through the crate. Start a station from anything.'
+        : (step === 'records' ? 'Pull up to three records' + (path === 'records' ? '. Feelings are optional.' : '. Your feelings are saved.') : 'Pick feelings, in emoji or words' + (path === 'feelings' ? '. Records are optional.' : '. Your records are saved.')),
+      pathTabs: [['records', 'Records'], ['feelings', 'Feelings']].map(([id, label]) => ({
+        label, pressed: step === id ? 'true' : 'false', fg: step === id ? c.ink : c.sub, line: step === id ? c.accent : 'transparent',
+        pick: () => this.navigate({ path: s.path ?? (seeds.length || feel.length ? path : id), step: id }),
+      })),
+      stepRecords, stepFeelings,
+      kinds: [['tracks', 'Songs'], ['artists', 'Artists'], ['albums', 'Albums']].map(([id, label]) => ({
+        label, pressed: kind === id ? 'true' : 'false', bg: kind === id ? c.ink : 'transparent', fg: kind === id ? c.card : c.ink,
+        pick: () => this.setState({ kind: id, focus: 2, crateQuery: '' }),
+      })),
+      query, setQuery: (e) => this.setState({ crateQuery: e.target.value, focus: 0 }),
+      orientItems: [['row', 'Flip records side to side'], ['bin', 'Flip records front to back']].map(([id, label]) => ({
+        label, pressed: orient === id ? 'true' : 'false', bg: orient === id ? c.card : 'transparent', fg: orient === id ? c.ink : c.sub,
+        isRow: id === 'row', isBin: id === 'bin', pick: () => this.setState({ orient: id }),
+      })),
+      crateItems, crateEmpty: pool.length === 0,
+      crateCardW: binMode && !stepFeelings ? 680 : 920, searchW: binMode ? 150 : 220,
+      showCue: !putAway && !!pending && !hold, stopProp: (e) => e.stopPropagation(),
+      crateTop: binMode ? 46 : 22, sleeve, sleeveOffset: -sleeve / 2, crateOrigin: binMode ? '50% 100%' : '50% 50%',
+      crateTransition: s.crateDragging ? 'none' : 'transform 560ms ' + ease + ', opacity 400ms ease, filter 400ms ease',
+      crateCursor: s.crateDragging ? 'grabbing' : 'grab',
+      crateDown: (e) => this.crateDown(e),
+      crateWheel: (e) => {
+        const dv = binMode ? e.deltaY : (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY);
+        this.wheelCrate = (this.wheelCrate || 0) + dv;
+        if (Math.abs(this.wheelCrate) >= 50) { const stp = this.wheelCrate > 0 ? 1 : -1; this.wheelCrate = 0; this.setState({ focus: Math.max(0, Math.min(pool.length - 1, focus + stp)) }); }
+      },
+      focusTitle: fItem ? fItem.title : '', focusSub: fItem ? fItem.sub : '',
+      focusSeedStr: focusSeed ? 'true' : 'false', focusSeedBorder: focusSeed ? c.accent : c.line,
+      pullLabel: focusSeed ? 'Pulled ✓' : (seeds.length >= 3 ? 'Swap in this record' : 'Pull this record'),
+      togglePull: () => { if (fItem) this.setState({ seeds: toggleSeed(fItem.id) }); },
+      startFromFocus: () => { if (fItem) this.addStation({ id: 'c' + Date.now(), name: fItem.title + ' Radio', kind: kind === 'artists' ? 'From an artist' : kind === 'albums' ? 'From an album' : 'From a song · ' + fItem.sub, vibes: fItem.top.v.slice(0, 3), seeds: [fItem.top], tracks: [fItem.top, d.tr.lovely, d.tr.sun], out: [] }); },
+
+      feelHeading: seedItems.length ? 'How should ' + seedItems[0].title + (seedItems.length > 1 ? ' & co.' : '') + ' feel?' : 'What do you want to feel?',
+      feelItems, feelDraft: s.feelDraft ?? '',
+      setFeelDraft: (e) => this.setState({ feelDraft: e.target.value }),
+      feelKey: (e) => { if (e.key === 'Enter') { e.preventDefault(); addFeelWords(); } },
+      addFeelWords, previewTiles,
+      previewCaption: seedItems.length ? 'Your records, plus what Juke will pull alongside them' : (feel.length ? 'Records that feel like ' + feel.slice(0, 3).join(' ') : 'Pick a feeling and the crate fills up'),
+
+      pickedList, nothingPicked: pickedList.length === 0,
+      nextLabel, nextStep: () => this.navigate({ step: otherStep }),
+      startStation, cantStartStr: canStart ? 'false' : 'true',
+      startBg: canStart ? c.accent : c.well, startFg: canStart ? c.onAccent : c.sub,
+      startLabel: canStart ? 'Start ' + newName : 'Pick a record or a feeling',
+      goRadio: go('radio'),
+
+      mem: { title: mem.title, date: mem.date, place: mem.place, story: mem.story, song: mem.song, artist: mem.artist, segment: mem.segment, art: this.art(mem.art), photo: mem.photo, chips: mem.chips },
+      memPos: (mIdx + 1) + ' of ' + d.memories.length,
+      memPrev: () => this.setState({ mIdx: mIdx - 1 }),
+      memNext: () => this.setState({ mIdx: mIdx + 1 }),
+      playMoment: () => this.setState({ moment: mem.segment, playing: true, putAway: false }),
+      miniNote: s.moment && screen === 'memories' ? 'Playing the moment ' + s.moment + ', then back to ' + station.name : (putAway ? 'Put away' : (pending ? 'Next: ' + pending.name : station.name)),
+    };
+  }
+}
+</script>
+</body>
+</html>

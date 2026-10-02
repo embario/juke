@@ -1,0 +1,472 @@
+import AppKit
+import Foundation
+import Observation
+import SwiftData
+
+struct DisplayChatMessage: Identifiable, Equatable {
+    let id: UUID
+    let role: ChatMessage.Role
+    let content: String
+    let createdAt: Date
+}
+
+@MainActor
+@Observable
+final class AppModel {
+    static let chatTextSizeRange = 14.0...22.0
+    static let defaultChatTextSize = 17.0
+
+    var memoryJourneyActive = false
+    var session: JukeSession? {
+        didSet { accessToken.set(session?.accessToken) }
+    }
+    /// The selected section. Set it from anywhere (nav, menu, mini player);
+    /// `SectionStage` animates the old section out and the new one in.
+    var section: JukeSection = .radio
+    var messages: [DisplayChatMessage] = []
+    var openingQuestion = "What are you hearing differently right now?"
+    var draft = ""
+    var isSending = false
+    var isAwaitingReply = false
+    var banner: String?
+    var privacyWelcomePresented = false
+    var chatTextSize = AppModel.defaultChatTextSize {
+        didSet {
+            let bounded = min(Self.chatTextSizeRange.upperBound, max(Self.chatTextSizeRange.lowerBound, chatTextSize))
+            if bounded != chatTextSize { chatTextSize = bounded }
+            UserDefaults.standard.set(bounded, forKey: Self.chatTextSizeKey)
+        }
+    }
+    let memories = MemoryStore()
+    let lock = AppLockController()
+    let detection = MusicDetectionController()
+    let settings: JukeSettings
+    /// Album-art colour feeding `JukeTheme`.
+    let artwork = ArtworkPalette()
+    /// Cross-section requests (New Station route, Library focus, station starts).
+    let coordinator = JukeCoordinator()
+    /// Typed client for the Juke REST API, authenticated as the signed-in user.
+    /// Radio endpoints are in `JukeAPI+Radio.swift`.
+    let api: JukeAPI
+    /// Radio stations, the tuned station and the continuous-play loop.
+    let radio: RadioController
+    /// Turns songs played elsewhere into `recognized` taste events while
+    /// Settings > Listening allows it (S5). Radio sets `isRadioPlaying`.
+    let backgroundRecognition: BackgroundRecognizer
+    /// Artwork a section wants the theme to follow instead of the playing
+    /// track (Memories: the current memory's song). `nil` follows the track.
+    var artworkOverride: URL? {
+        didSet { if oldValue != artworkOverride { syncArtwork() } }
+    }
+
+    private let context: ModelContext
+    private let auth = JukeAuthenticationService()
+    private let neptune = NeptuneVibeClient()
+    private let localIntelligence = LocalVibeIntelligence()
+    private let isUITesting: Bool
+    @ObservationIgnored private let accessToken = AccessTokenStore()
+    @ObservationIgnored private var replyTask: Task<Void, Never>?
+    @ObservationIgnored private var chatVault: ChatVault?
+    @ObservationIgnored private var chatVaultAccountID: String?
+    nonisolated private static let chatTextSizeKey = "vibe.chatTextSize"
+
+    init(container: ModelContainer, settings: JukeSettings = JukeSettings()) {
+        self.settings = settings
+        api = JukeAPI(token: { [accessToken] in accessToken.get() })
+        let arguments = ProcessInfo.processInfo.arguments
+        #if DEBUG
+        isUITesting = arguments.contains("--uitesting")
+        #else
+        isUITesting = false
+        #endif
+        backgroundRecognition = .live(
+            api: api,
+            settings: settings,
+            token: { [accessToken] in accessToken.get() },
+            allowed: { [isUITesting] in !isUITesting }
+        )
+        context = ModelContext(container)
+        let isRadioFixture = arguments.contains("--uitesting")
+        let radioPreferences: RadioPreferences
+        if isRadioFixture {
+            // UI tests get a fresh, in-memory radio: first run only when asked for.
+            let defaults = UserDefaults(suiteName: "juke.radio.uitests.\(UUID().uuidString)") ?? .standard
+            radioPreferences = RadioPreferences(defaults: defaults)
+            let accounts = [JukeAccount.localPreview.id, ProcessInfo.processInfo.environment["VIBE_MEMORY_E2E_ACCOUNT_ID"]].compactMap { $0 }
+            for account in accounts {
+                let preferences = radioPreferences.scoped(to: account)
+                preferences.hasTunedIn = !arguments.contains("--uitesting-radio-first-run")
+                preferences.wasPlaying = preferences.hasTunedIn
+                // The fixture Spotify is mid-way through a radio song.
+                preferences.recentRadioTrackIDs = [RadioFixturePlayback.initialTrackID]
+            }
+            let playback = RadioFixturePlayback()
+            radio = RadioController(backend: RadioFixtureBackend(playback: playback), playback: playback,
+                                    preferences: radioPreferences, coordinator: coordinator)
+        } else {
+            radioPreferences = RadioPreferences()
+            radio = RadioController(
+                backend: api,
+                playback: SpotifyRadioPlayback(token: { [accessToken] in accessToken.get() }),
+                preferences: radioPreferences,
+                coordinator: coordinator
+            )
+        }
+        let savedTextSize = UserDefaults.standard.object(forKey: Self.chatTextSizeKey) as? Double
+        chatTextSize = min(
+            Self.chatTextSizeRange.upperBound,
+            max(Self.chatTextSizeRange.lowerBound, savedTextSize ?? Self.defaultChatTextSize)
+        )
+        if isUITesting && arguments.contains("--uitesting-authenticated") {
+            session = JukeSession(
+                account: .localPreview,
+                accessToken: "ui-test-token",
+                authenticatedAt: .now
+            )
+            #if DEBUG
+            let environment = ProcessInfo.processInfo.environment
+            if let value = environment["VIBE_MEMORY_E2E_BASE_URL"], URL(string: value)?.host == "127.0.0.1",
+               let token = environment["VIBE_MEMORY_E2E_TOKEN"], let accountID = environment["VIBE_MEMORY_E2E_ACCOUNT_ID"] {
+                session = JukeSession(account: JukeAccount(id: accountID, displayName: "Memory test listener", email: nil, cloudAIEnabled: false), accessToken: token, authenticatedAt: .now)
+            }
+            #endif
+            detection.track = RecognizedTrack(
+                title: "Blue in Green",
+                artist: "Miles Davis",
+                album: "Kind of Blue",
+                isrc: "USSM15900122",
+                artworkURL: nil,
+                appleMusicURL: nil,
+                shazamID: nil,
+                providerNamespace: "apple_music",
+                providerTrackID: "ui-test-blue-in-green"
+            )
+            detection.providerName = "Apple Music"
+            detection.isAudioPresent = true
+            detection.configureUITestPlayback(token: "ui-test-token")
+            accessToken.set(session?.accessToken)
+            syncArtwork()
+            if arguments.contains("--uitesting-reset-privacy-welcome") {
+                UserDefaults.standard.removeObject(forKey: privacyWelcomeKey(accountID: JukeAccount.localPreview.id))
+            }
+        } else if !isUITesting {
+            Task { await restoreSession() }
+        }
+        settings.onBackendURLChange = { [weak self] _ in self?.backendChanged() }
+        radio.onTrackChange = { [weak self] track in
+            self?.syncArtwork()
+            self?.backgroundRecognition.noteRadioTrack(track?.spotifyId)
+        }
+        // Radio's own songs and memory replays are never "recognized" listening.
+        backgroundRecognition.isRadioPlaying = { [weak radio] in (radio?.isOnAir ?? false) && (radio?.isPlaying ?? false) }
+        backgroundRecognition.isRadioTrack = { [weak radio] id in radio?.track?.spotifyId == id || radio?.queuedTrack?.spotifyId == id }
+        backgroundRecognition.memoryPlayback = { [weak detection] in detection?.lastMemoryPlayback }
+        // One Spotify poller while radio is on the air: radio's snapshots feed the recognition helper.
+        detection.suspendsSpotifyPolling = { [weak radio] in radio?.isOnAir ?? false }
+        radio.onSnapshot = { [weak detection] snapshot in
+            if let state = snapshot.raw { detection?.apply(state) }
+        }
+        backgroundRecognition.follow(detection)
+    }
+
+    /// A token belongs to the server that issued it, so changing the backend
+    /// in Settings signs out. The token is dropped synchronously, before any
+    /// client can build a request for the new host; teardown follows.
+    func backendChanged() {
+        let wasSignedIn = session != nil
+        endSession()
+        Task { [auth] in await auth.cancelPendingAttempt() }
+        guard wasSignedIn else { return }
+        Task {
+            await finishSignOut()
+            banner = "The Juke server changed. Sign in again to continue."
+        }
+    }
+
+    func prepareUITestPresentationIfNeeded() async {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard isUITesting, arguments.contains("--uitesting-show-privacy-welcome") else { return }
+        try? await Task.sleep(for: .milliseconds(500))
+        guard !Task.isCancelled else { return }
+        presentPrivacyWelcomeIfNeeded()
+    }
+
+    var trackLabel: String? {
+        guard let track = detection.track else { return nil }
+        return "\(track.title) — \(track.artist)"
+    }
+
+    func beginAuthentication(_ destination: JukeAuthDestination) async {
+        let url = await auth.browserURL(for: destination)
+        NSWorkspace.shared.open(url)
+    }
+
+    func completeAuthentication(_ url: URL) async {
+        do {
+            session = try await auth.complete(callbackURL: url)
+            presentPrivacyWelcomeIfNeeded()
+            await synchronizeEncryptedHistory()
+            loadMessages()
+            await refreshOpeningQuestion()
+            await detection.start(token: session?.accessToken)
+            backgroundRecognition.reevaluate()
+        } catch { banner = error.localizedDescription }
+    }
+
+    func logout() async {
+        endSession()
+        await finishSignOut()
+    }
+
+    /// The synchronous half of signing out: nothing can use the token after this.
+    private func endSession() {
+        accessToken.set(nil)
+        replyTask?.cancel()
+        replyTask = nil
+        detection.revokeAccess()
+        backgroundRecognition.reset()
+        session = nil
+        memories.reset()
+        messages = []
+        chatVault = nil
+        chatVaultAccountID = nil
+        section = .radio
+        coordinator.reset()
+        radio.stop()
+    }
+
+    private func finishSignOut() async {
+        await detection.stop()
+        do { try await auth.logout() } catch { banner = error.localizedDescription }
+        lock.lockNow()
+    }
+
+    func send() {
+        guard let session, let token = session.accessToken else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isSending else { return }
+        draft = ""
+        isSending = true
+        let currentTrack = trackLabel
+        replyTask = Task { [weak self] in
+            guard let self else { return }
+            await self.completeSend(text: text, currentTrack: currentTrack, session: session, token: token)
+        }
+    }
+
+    private func completeSend(text: String, currentTrack: String?, session: JukeSession, token: String) async {
+        defer {
+            isSending = false
+            isAwaitingReply = false
+            replyTask = nil
+        }
+        do {
+            try await store(text, role: .user)
+            isAwaitingReply = true
+            let reply: String
+            if isUITesting {
+                // Leave enough time for macOS accessibility to observe the
+                // transient typing state during an end-to-end test run.
+                try await Task.sleep(for: .seconds(3))
+                reply = "That muted trumpet opens a spacious conversation. What part of the performance draws you back in?"
+            } else if session.account.cloudAIEnabled {
+                reply = try await neptune.chat(message: text, currentTrack: currentTrack, token: token)
+            } else {
+                reply = try await localIntelligence.respond(
+                    message: text,
+                    currentTrack: currentTrack,
+                    listenerName: session.account.displayName,
+                    recentConversation: messages.map { "\($0.role.rawValue): \($0.content)" }
+                )
+            }
+            try await store(reply, role: .assistant)
+        } catch is CancellationError {
+            return
+        } catch {
+            banner = error.localizedDescription
+        }
+    }
+
+    func refreshOpeningQuestion() async {
+        guard session != nil else { return }
+        do {
+            openingQuestion = try await localIntelligence.openingQuestion(
+                currentTrack: trackLabel,
+                listenerName: session?.account.displayName,
+                recentConversation: messages.map { "\($0.role.rawValue): \($0.content)" }
+            )
+        } catch { }
+    }
+
+    /// Points the theme at the current track's artwork.
+    func syncArtwork() {
+        let url = artworkOverride ?? (radio.isOnAir || radio.isPutAway ? radio.track?.artworkURL : detection.track?.artworkURL)
+        artwork.update(artworkURL: url, enabled: settings.artworkTintEnabled)
+    }
+
+    private func restoreSession() async {
+        do {
+            session = try await auth.restoreSession()
+            if session != nil {
+                await synchronizeEncryptedHistory()
+                loadMessages()
+                await detection.start(token: session?.accessToken)
+                backgroundRecognition.reevaluate()
+                await refreshOpeningQuestion()
+            }
+        } catch { banner = error.localizedDescription }
+    }
+
+    private func store(_ text: String, role: ChatMessage.Role) async throws {
+        guard let accountID = session?.account.id else { return }
+        let id = UUID()
+        let createdAt = Date()
+        let payload = PrivateChatPayload(role: role.rawValue, content: text, trackIdentity: trackLabel, createdAt: createdAt)
+        let encrypted = try await vault(for: accountID).seal(payload, messageID: id)
+        context.insert(ChatMessage(id: id, accountID: accountID, role: role, encryptedContent: encrypted, trackIdentity: trackLabel, createdAt: createdAt))
+        try context.save()
+        messages.append(DisplayChatMessage(id: id, role: role, content: text, createdAt: createdAt))
+        if let token = session?.accessToken, !isUITesting {
+            let envelope = NeptuneVibeClient.EncryptedEnvelope(recordID: id, accountID: accountID, kind: "chatMessage", ciphertext: encrypted, modifiedAt: createdAt, encryptionVersion: 1)
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await neptune.upload(envelope, token: token)
+                } catch {
+                    // The encrypted local record remains canonical while sync is unavailable.
+                }
+            }
+        }
+    }
+
+    private func loadMessages() {
+        guard let accountID = session?.account.id else { return }
+        let descriptor = FetchDescriptor<ChatMessage>(
+            predicate: #Predicate { $0.accountID == accountID },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        do {
+            let records = try context.fetch(descriptor)
+            Task {
+                let vault = vault(for: accountID)
+                var output: [DisplayChatMessage] = []
+                for record in records {
+                    if let payload = try? await vault.open(record.encryptedContent, messageID: record.id),
+                       let role = ChatMessage.Role(rawValue: record.roleRawValue) {
+                        output.append(DisplayChatMessage(id: record.id, role: role, content: payload.content, createdAt: record.createdAt))
+                    }
+                }
+                messages = output
+            }
+        } catch { banner = "Your private conversations could not be opened." }
+    }
+
+    private func synchronizeEncryptedHistory() async {
+        guard let session, let token = session.accessToken else { return }
+        do {
+            let incoming = try await neptune.encryptedChanges(token: token)
+            let existing = try context.fetch(FetchDescriptor<ChatMessage>())
+            let ids = Set(existing.map(\.id))
+            let vault = vault(for: session.account.id)
+            for envelope in incoming where !ids.contains(envelope.recordID) && envelope.accountID == session.account.id {
+                guard let payload = try? await vault.open(envelope.ciphertext, messageID: envelope.recordID),
+                      let role = ChatMessage.Role(rawValue: payload.role) else { continue }
+                context.insert(ChatMessage(id: envelope.recordID, accountID: envelope.accountID, role: role, encryptedContent: envelope.ciphertext, trackIdentity: payload.trackIdentity, createdAt: payload.createdAt))
+            }
+            try context.save()
+        } catch { }
+    }
+
+    private func presentPrivacyWelcomeIfNeeded() {
+        guard let accountID = session?.account.id else { return }
+        let key = privacyWelcomeKey(accountID: accountID)
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        privacyWelcomePresented = true
+    }
+
+    private func privacyWelcomeKey(accountID: String) -> String {
+        "vibe.encryptionWelcomeSeen.\(accountID)"
+    }
+
+    func play(_ result: CatalogSearchResult, kind: String) async {
+        guard detection.canStartSpotifyPlayback else {
+            banner = "Spotify playback is not connected. You can still browse and listen along in spectator mode."
+            return
+        }
+        guard let spotifyID = result.spotifyID else {
+            banner = "This catalog result does not have a playable Spotify reference yet."
+            return
+        }
+        await detection.playSpotify(
+            id: spotifyID,
+            kind: kind,
+            optimisticTrack: kind == "tracks" ? result.recognizedTrack : nil
+        )
+    }
+
+    func play(_ track: CatalogTrackDetail, albumName: String, artistName: String? = nil) async {
+        guard detection.canStartSpotifyPlayback else {
+            banner = "Spotify playback is not connected. You can still browse and listen along in spectator mode."
+            return
+        }
+        guard let spotifyID = track.spotifyID else {
+            banner = "This track does not have a playable Spotify reference yet."
+            return
+        }
+        await detection.playSpotify(
+            id: spotifyID,
+            kind: "tracks",
+            optimisticTrack: RecognizedTrack(
+                title: track.name,
+                artist: artistName ?? "Juke catalog",
+                album: albumName,
+                isrc: nil,
+                artworkURL: nil,
+                appleMusicURL: nil,
+                shazamID: nil,
+                trackDuration: track.durationMs.map { TimeInterval($0) / 1_000 },
+                providerNamespace: "spotify",
+                providerTrackID: spotifyID
+            )
+        )
+    }
+
+    func useSpotifySpectatorMode() {
+        detection.useSpotifySpectatorMode()
+    }
+
+    func useSpotifyPlaybackMode() {
+        let needsConnection = !detection.hasVerifiedSpotifyPlayback
+        detection.useSpotifyPlaybackMode()
+        if needsConnection { openSpotifyConnection() }
+    }
+
+    func openSpotifyConnection() {
+        guard let token = session?.accessToken else {
+            banner = "Sign in to Juke before connecting Spotify."
+            return
+        }
+        if isUITesting {
+            banner = "Spotify connection would open in Juke."
+        } else {
+            Task {
+                do {
+                    let url = try await auth.spotifyConnectionURL(token: token)
+                    NSWorkspace.shared.open(url)
+                } catch {
+                    banner = "Juke could not start Spotify linking. Please try again."
+                }
+            }
+        }
+    }
+
+    private func vault(for accountID: String) -> ChatVault {
+        if chatVaultAccountID != accountID || chatVault == nil {
+            chatVault = ChatVault(accountID: accountID)
+            chatVaultAccountID = accountID
+        }
+        return chatVault!
+    }
+
+}

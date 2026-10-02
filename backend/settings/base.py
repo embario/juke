@@ -170,6 +170,7 @@ INSTALLED_APPS = [
     'recommender',
     'powerhour',
     'tunetrivia',
+    'radio',
 ]
 
 MIDDLEWARE = [
@@ -310,6 +311,7 @@ REST_FRAMEWORK = {
         'spotify_connect_ticket_issue': os.environ.get('SPOTIFY_CONNECT_TICKET_ISSUE_RATE', '10/min'),
         'vibe_auth_exchange': os.environ.get('VIBE_AUTH_EXCHANGE_RATE', '20/min'),
         'vibe_user': os.environ.get('VIBE_USER_RATE', '120/min'),
+        'radio_user': os.environ.get('RADIO_USER_RATE', '600/min'),
     },
 }
 
@@ -501,7 +503,11 @@ VIBE_CHAT_MODEL = os.environ.get('VIBE_CHAT_MODEL', 'gpt-4o-mini')
 VIBE_AUTH_CODE_TTL_SECONDS = int(os.environ.get('VIBE_AUTH_CODE_TTL_SECONDS', '120'))
 VIBE_OAUTH_CLIENTS = {
     'juke-vibe-mac': {'juke-vibe://auth/callback'},
+    # Juke for macOS (formerly Juke Vibe, macos/juke).
+    'juke-app-mac': {'juke-app://auth/callback'},
     'juke-vibe-ios': {'juke-vibe://auth/callback'},
+    # Juke for iPhone (formerly Juke Vibe, mobile/ios/jukeapp).
+    'juke-app-ios': {'juke-app://auth/callback'},
 }
 
 

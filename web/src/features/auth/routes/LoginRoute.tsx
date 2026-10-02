@@ -59,7 +59,7 @@ const LoginRoute = () => {
       .catch((err) => {
         if (active) {
           vibeAuthorizationStarted.current = false;
-          setError(err instanceof Error ? err.message : 'Unable to return to Juke Vibe.');
+          setError(err instanceof Error ? err.message : 'Unable to return to the Juke app.');
         }
       });
     return () => { active = false; };

@@ -97,6 +97,53 @@ class VibeAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_renamed_macos_client_completes_the_flow_with_its_own_redirect(self):
+        for client_id in ('juke-app-mac',):
+            verifier = 'j' * 43
+            challenge = base64url(hashlib.sha256(verifier.encode('ascii')).digest())
+            self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+            response = self.client.post(
+                '/api/v1/auth/vibe/authorize',
+                {
+                    'client_id': client_id,
+                    'redirect_uri': 'juke-app://auth/callback',
+                    'state': 'state-value',
+                    'code_challenge': challenge,
+                    'code_challenge_method': 'S256',
+                },
+                format='json',
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK, client_id)
+            self.assertTrue(response.data['redirect_to'].startswith('juke-app://auth/callback?'))
+            code = parse_qs(urlparse(response.data['redirect_to']).query)['code'][0]
+
+            self.client.credentials()
+            exchanged = self.client.post(
+                '/api/v1/auth/vibe/exchange',
+                {'code': code, 'code_verifier': verifier, 'redirect_uri': 'juke-app://auth/callback'},
+                format='json',
+            )
+            self.assertEqual(exchanged.status_code, status.HTTP_200_OK, client_id)
+            self.assertEqual(exchanged.data['accessToken'], self.token.key)
+
+    def test_clients_cannot_borrow_each_others_redirect(self):
+        for client_id, redirect_uri in (
+            ('juke-app-mac', 'juke-vibe://auth/callback'),
+            ('juke-vibe-mac', 'juke-app://auth/callback'),
+        ):
+            response = self.client.post(
+                '/api/v1/auth/vibe/authorize',
+                {
+                    'client_id': client_id,
+                    'redirect_uri': redirect_uri,
+                    'state': 'state-value',
+                    'code_challenge': 'x' * 43,
+                    'code_challenge_method': 'S256',
+                },
+                format='json',
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, client_id)
+
     def test_authorize_rejects_unlisted_redirect(self):
         response = self.client.post(
             '/api/v1/auth/vibe/authorize',
@@ -110,6 +157,38 @@ class VibeAPITests(APITestCase):
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_juke_app_ios_client_round_trips_with_juke_app_redirect(self):
+        verifier = 'j' * 43
+        challenge = base64url(hashlib.sha256(verifier.encode('ascii')).digest())
+        request = {
+            'client_id': 'juke-app-ios',
+            'redirect_uri': 'juke-app://auth/callback',
+            'state': 'state-value',
+            'code_challenge': challenge,
+            'code_challenge_method': 'S256',
+        }
+        mismatched = self.client.post(
+            '/api/v1/auth/vibe/authorize',
+            {**request, 'redirect_uri': 'juke-vibe://auth/callback'},
+            format='json',
+        )
+        self.assertEqual(mismatched.status_code, status.HTTP_400_BAD_REQUEST)
+
+        response = self.client.post('/api/v1/auth/vibe/authorize', request, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        redirect = urlparse(response.data['redirect_to'])
+        self.assertEqual((redirect.scheme, redirect.netloc, redirect.path), ('juke-app', 'auth', '/callback'))
+        code = parse_qs(redirect.query)['code'][0]
+
+        self.client.credentials()
+        exchanged = self.client.post(
+            '/api/v1/auth/vibe/exchange',
+            {'code': code, 'code_verifier': verifier, 'redirect_uri': 'juke-app://auth/callback'},
+            format='json',
+        )
+        self.assertEqual(exchanged.status_code, status.HTTP_200_OK)
+        self.assertEqual(exchanged.data['accessToken'], self.token.key)
 
     def envelope(self, *, record_id=None, account_id=None, ciphertext=b'encrypted bytes', modified_at=800000000.0):
         return {
