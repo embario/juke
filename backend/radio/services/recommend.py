@@ -1,21 +1,36 @@
 """Radio recommendation pipeline.
 
-Seeds → MLCore co-occurrence (→ Spotify aliases) → MLCore metadata → seed artists' top
-tracks → Spotify search on feelings/keywords → the seeds themselves. Every source is
-filtered by exclusions and recent history, then hydrated into ``Track`` payloads.
+Stations with seeds stay close to them. Shortfalls are filled in this order:
+
+1. MLCore co-occurrence on the seeds (→ Spotify aliases);
+2. a second co-occurrence hop seeded with the first good picks;
+3. the MLCore metadata ranker;
+4. top tracks of the seed artists (every credited artist);
+5. top tracks of artists that co-occur (artists of the MLCore picks);
+6. Spotify search on *sound* (genre filters from the station's feelings, or the seed
+   artists' genres);
+7. the seeds themselves.
+
+Feelings on a seeded station re-rank the candidate pool by artist-genre affinity rather than
+injecting songs whose titles happen to contain the feeling's words. Feeling-only stations
+search genre filters (``feelings.py``), drop literal title matches that don't fit and
+diversify artists. Every source is filtered by exclusions and recent history.
 """
 from __future__ import annotations
 
 import logging
 import random
+from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from django.conf import settings
 
 from mlcore.models import CanonicalItemAlias
 from radio.models import Station
+from radio.services import feelings as feeling_rules
 from radio.services import signals, spotify
+from radio.services.feelings import FEELING_KEYWORDS, feeling_keyword  # noqa: F401 - re-exported
 
 logger = logging.getLogger(__name__)
 
@@ -30,25 +45,17 @@ MLCORE_TIMEOUT_SECONDS = float(getattr(settings, 'RADIO_MLCORE_TIMEOUT_SECONDS',
 # Spotify hasn't hydrated yet.
 NEXT_BUDGET_SECONDS = float(getattr(settings, 'RADIO_NEXT_BUDGET_SECONDS', 4))
 MIN_ENGINE_SECONDS = 0.3
+# MLCore may not spend the whole budget: keep this much for the (fast, ~0.1–0.3 s per call)
+# Spotify fallbacks — seed artists' top tracks, hydration — which give far better radio than
+# an empty or single-artist batch. Measured on neptune: a cold second co-occurrence hop can
+# exceed 2 s and used to starve every later source.
+MLCORE_RESERVE_SECONDS = float(getattr(settings, 'RADIO_MLCORE_RESERVE_SECONDS', 1.5))
+MAX_ARTIST_EXPANSION = 4
+MAX_SEARCH_QUERIES = 8
+POOL_FACTOR = 2  # seeded + feelings: gather 2× candidates, then re-rank by feeling affinity
 
-# Emoji feelings → search keywords. Free-text feelings are used as search terms directly.
-FEELING_KEYWORDS = {
-    '🌙': 'late night', '🌃': 'late night', '☕': 'slow morning', '🌅': 'sunrise', '🌄': 'morning',
-    '🌧️': 'rainy day', '🌧': 'rainy day', '☔': 'rainy day', '❄️': 'winter', '☀️': 'sunny', '🌞': 'summer',
-    '🏖️': 'beach', '💃': 'dance', '🕺': 'dance', '🪩': 'disco', '🎉': 'party', '🔥': 'hype', '⚡': 'energy',
-    '🏃': 'running', '💪': 'workout', '🚗': 'road trip', '🛣️': 'road trip', '😌': 'chill', '🧘': 'calm',
-    '😴': 'sleep', '🛌': 'sleep', '📚': 'focus', '🧠': 'focus', '💻': 'focus', '❤️': 'love', '💕': 'love',
-    '💔': 'heartbreak', '😢': 'sad', '😭': 'sad', '🥲': 'bittersweet', '😊': 'happy', '😄': 'happy',
-    '🤘': 'rock', '🎸': 'guitar', '🎹': 'piano', '🎷': 'jazz', '🎻': 'strings', '🌴': 'tropical',
-    '🍂': 'autumn', '🌸': 'spring', '🌊': 'ocean', '✨': 'dreamy', '🌈': 'feel good', '🕯️': 'cozy',
-    '🍷': 'dinner', '🎄': 'holiday', '👀': 'discover',
-}
-DEFAULT_KEYWORDS = ('feel good', 'chill')
-
-
-def feeling_keyword(feeling: str) -> str:
-    feeling = (feeling or '').strip()
-    return FEELING_KEYWORDS.get(feeling) or FEELING_KEYWORDS.get(feeling.replace('️', '')) or feeling
+# Public source names (the ``source`` enum of the API contract).
+SOURCES = ('mlcore', 'metadata', 'artist', 'search', 'seed')
 
 
 @dataclass
@@ -62,8 +69,12 @@ class _Context:
     station: Station
     seed_track_ids: List[str]
     seed_artist_ids: List[str]
-    keywords: List[str]
+    feelings: List[str]
     flt: signals.ExclusionFilter
+
+    @property
+    def has_seeds(self) -> bool:
+        return bool(self.seed_track_ids or self.seed_artist_ids)
 
 
 def _seed_ids(seeds: Sequence[Dict], kind: str) -> List[str]:
@@ -97,18 +108,14 @@ def build_context(user, station: Station, recent_ids: Iterable[str] = ()) -> _Co
         seed_tracks, seed_artists = resolve_station_seeds(station)
         if station.learning:
             seed_tracks += signals.learned_track_ids(user, station=station)
-    keywords = [feeling_keyword(feeling) for feeling in station.feelings or []]
-    if not keywords:
-        keywords = [seed.get('subtitle') or seed.get('title') for seed in station.seeds or []
-                    if seed.get('kind') == 'artist' or seed.get('subtitle')]
-        keywords = [keyword for keyword in keywords if keyword][:3]
-    if not keywords and station.is_personal:
-        keywords = signals.memory_tags(user, limit=3)
+    station_feelings = [feeling for feeling in station.feelings or [] if feeling.strip()]
+    if not station_feelings and station.is_personal and not seed_tracks and not seed_artists:
+        station_feelings = signals.memory_tags(user, limit=3)
     return _Context(
         station=station,
         seed_track_ids=list(dict.fromkeys(seed_tracks))[:MAX_SEEDS],
         seed_artist_ids=list(dict.fromkeys(seed_artists)),
-        keywords=list(dict.fromkeys(keywords)) or list(DEFAULT_KEYWORDS),
+        feelings=list(dict.fromkeys(station_feelings)),
         flt=flt,
     )
 
@@ -173,6 +180,7 @@ def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence
     timeout = MLCORE_TIMEOUT_SECONDS
     left = spotify.remaining()
     if left is not None:
+        left -= MLCORE_RESERVE_SECONDS
         if left < MIN_ENGINE_SECONDS:
             return []
         timeout = min(timeout, left)
@@ -192,20 +200,29 @@ def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence
     return [(aliases[cid]['spotifyId'], aliases[cid]['evidence']) for cid in canonical_ids if cid in aliases]
 
 
-class _Picker:
-    """Accumulates filtered, hydrated, artist-diverse tracks across sources."""
+def coarse(source: str) -> str:
+    return source.split(':', 1)[0]
 
-    def __init__(self, ctx: _Context, count: int):
+
+class _Picker:
+    """Accumulates filtered, hydrated, artist-diverse tracks across sources.
+
+    Sources are detailed labels (``mlcore:hop2``, ``artist:cooccur``, ``search:genre`` …);
+    the API's ``source`` uses the part before the colon.
+    """
+
+    def __init__(self, ctx: _Context, count: int, target: Optional[int] = None):
         self.ctx = ctx
         self.count = count
+        self.target = max(count, target or count)
         self.tracks: List[Dict] = []
-        self.overflow: List[tuple[str, Dict]] = []
-        self.source: Optional[str] = None
+        self.overflow: List[Dict] = []
+        self.sources: Dict[str, List[str]] = {}
         self.seen: set = set()
 
     @property
     def done(self) -> bool:
-        return len(self.tracks) >= self.count
+        return len(self.tracks) >= self.target
 
     @staticmethod
     def artist_key(track: Dict) -> str:
@@ -219,19 +236,31 @@ class _Picker:
     def _artists(self) -> set:
         return {self.artist_key(track) for track in self.tracks}
 
+    def picked_from(self, *prefixes: str) -> List[Dict]:
+        """Accepted and overflow tracks whose first source starts with one of ``prefixes``."""
+        return [track for track in self.tracks + self.overflow
+                if any(self.sources[track['spotifyId']][0].startswith(prefix) for prefix in prefixes)]
+
     def offer(self, source: str, candidates: Iterable[Dict]) -> None:
-        for track in candidates:
+        self.offer_pairs((source, track) for track in candidates)
+
+    def offer_pairs(self, pairs: Iterable[Tuple[str, Dict]]) -> None:
+        for source, track in pairs:
+            track_id = (track or {}).get('spotifyId')
+            if not track_id:
+                continue
+            if track_id in self.sources and source not in self.sources[track_id]:
+                self.sources[track_id].append(source)  # also suggested by a later source
             if self.done:
-                return
-            track_id = track.get('spotifyId')
-            if not track_id or track_id in self.seen or self.ctx.flt.blocks_track(track):
+                continue
+            if track_id in self.seen or self.ctx.flt.blocks_track(track):
                 continue
             self.seen.add(track_id)
+            self.sources[track_id] = [source]
             if self.artist_key(track) in self._artists():
-                self.overflow.append((source, track))
+                self.overflow.append(track)
                 continue
             self.tracks.append(track)
-            self.source = self.source or source
 
     def offer_ids(self, source: str, ids_with_evidence: Sequence[tuple[str, Dict]]) -> None:
         ids = [(track_id, evidence) for track_id, evidence in ids_with_evidence
@@ -239,7 +268,7 @@ class _Picker:
         if not ids:
             return
         # Hydrate a bounded window at a time to keep Spotify calls proportional to need.
-        window = max(self.count * 3, 10)
+        window = max(self.target * 3, 10)
         for start in range(0, len(ids), window):
             chunk = ids[start:start + window]
             # Out of budget: get_tracks only serves the cache; the rest fall back to alias evidence.
@@ -248,14 +277,91 @@ class _Picker:
             if self.done:
                 return
 
-    def finish(self) -> Recommendation:
+    def finish(self, rank: Optional[Callable[[List[Dict]], List[Dict]]] = None) -> Recommendation:
+        pool = list(self.tracks)
         # Not enough distinct artists: allow repeats rather than coming up short.
-        for source, track in self.overflow:
-            if self.done:
+        for track in self.overflow:
+            if len(pool) >= self.count:
                 break
-            self.tracks.append(track)
-            self.source = self.source or source
-        return Recommendation(tracks=self.tracks[:self.count], source=self.source or 'search')
+            pool.append(track)
+        if rank is not None and len(pool) > self.count:
+            pool = rank(pool)
+        chosen = pool[:self.count]
+        tracks = [{**track, 'sources': list(self.sources[track['spotifyId']])} for track in chosen]
+        return Recommendation(tracks=tracks, source=majority_source(tracks))
+
+
+def majority_source(tracks: Sequence[Dict]) -> str:
+    """The public source that supplied most of the batch; ties go to the earliest track."""
+    firsts = [coarse(track['sources'][0]) for track in tracks if track.get('sources')]
+    if not firsts:
+        return 'search'
+    counts = Counter(firsts)
+    best = max(counts.values())
+    return next(source for source in firsts if counts[source] == best)
+
+
+def _feeling_ranker(feelings: Sequence[str], sources: Dict[str, List[str]]) -> Optional[Callable[[List[Dict]], List[Dict]]]:
+    wanted = feeling_rules.feeling_genres(feelings)
+    if not wanted:
+        return None
+
+    def rank(pool: List[Dict]) -> List[Dict]:
+        artist_ids = [artist_id for track in pool for artist_id in (track.get('artistIds') or [])[:2]]
+        genres = spotify.artist_genres(artist_ids)
+        if not genres:
+            return pool  # nothing known about the sound: keep source order
+
+        def affinity(track):
+            return max((feeling_rules.genre_affinity(genres.get(artist_id, []), wanted)
+                        for artist_id in (track.get('artistIds') or [])[:2]), default=0)
+
+        def tier(track):
+            # Seed-related picks always outrank sound-search fill; feelings only reorder within a tier.
+            return 1 if sources[track['spotifyId']][0].startswith('search') else 0
+
+        # Stable: within equal tier and affinity the source order (seed closeness) is kept.
+        return sorted(pool, key=lambda track: (tier(track), -affinity(track)))
+    return rank
+
+
+def _sound_search(picker: _Picker, feelings: Sequence[str], extra_genres: Sequence[str] = ()) -> None:
+    """Search Spotify by sound (genre filters), round-robin across queries for variety."""
+    queries = feeling_rules.search_queries(feelings, extra_genres=extra_genres)[:MAX_SEARCH_QUERIES]
+    if not queries:
+        return
+    wanted = feeling_rules.feeling_genres(feelings) | {genre.casefold() for genre in extra_genres}
+    for offset in (0, spotify.SEARCH_LIMIT):
+        if picker.done or spotify.out_of_time():
+            return
+        columns = []
+        for query, kind in queries:
+            if spotify.out_of_time():
+                break
+            columns.append([(f'search:{kind}', track) for track in spotify.search_tracks(query, offset=offset)])
+        text_ids = [artist_id for column in columns for source, track in column if source == 'search:text'
+                    for artist_id in (track.get('artistIds') or [])[:1]]
+        text_genres = spotify.artist_genres(text_ids) if text_ids else {}
+        seen_titles = set()
+        pairs = []
+        for row in range(max((len(column) for column in columns), default=0)):
+            for column in columns:
+                if row >= len(column):
+                    continue
+                source, track = column[row]
+                if not feeling_rules.looks_like_music(track):
+                    continue
+                title_key = ((track.get('title') or '').casefold(), picker.artist_key(track))
+                if title_key in seen_titles:
+                    continue
+                seen_titles.add(title_key)
+                if feeling_rules.literal_title_match(track, feelings):
+                    # "Late Night" by anyone is not late-night music; keep it only if the artist fits.
+                    artist_genres = text_genres.get((track.get('artistIds') or [''])[0], [])
+                    if source != 'search:genre' and feeling_rules.genre_affinity(artist_genres, wanted) == 0:
+                        continue
+                pairs.append((source, track))
+        picker.offer_pairs(pairs)
 
 
 def next_tracks(user, station: Station, count: int = 3, recent_ids: Iterable[str] = ()) -> Recommendation:
@@ -265,39 +371,74 @@ def next_tracks(user, station: Station, count: int = 3, recent_ids: Iterable[str
 
 def _next_tracks(user, station: Station, count: int, recent_ids: Iterable[str]) -> Recommendation:
     ctx = build_context(user, station, recent_ids)
-    picker = _Picker(ctx, count)
+    if not ctx.has_seeds:
+        picker = _Picker(ctx, count)
+        _sound_search(picker, ctx.feelings or list(feeling_rules.DEFAULT_FEELINGS))
+        return picker.finish()
+
+    rerank = bool(ctx.feelings and feeling_rules.feeling_genres(ctx.feelings))
+    picker = _Picker(ctx, count, target=min(20, count * POOL_FACTOR) if rerank else count)
+    rank = _feeling_ranker(ctx.feelings, picker.sources) if rerank else None
     exclude = ctx.flt.engine_exclusions(MAX_IDENTITY_ITEMS)
-    want = min(MAX_IDENTITY_ITEMS, count * 5 + 10)
+    want = min(MAX_IDENTITY_ITEMS, picker.target * 5 + 10)
 
-    for ranker, source in (('cooccurrence', 'mlcore'), ('metadata', 'metadata')):
-        if picker.done or spotify.out_of_time(MIN_ENGINE_SECONDS):
-            break
-        picker.offer_ids(source, mlcore_track_ids(ranker, ctx.seed_track_ids, exclude, want))
+    def engine_time() -> bool:
+        return not picker.done and not spotify.out_of_time(MIN_ENGINE_SECONDS + MLCORE_RESERVE_SECONDS)
 
+    cooccurrence: List[tuple[str, Dict]] = []
+    if engine_time():
+        cooccurrence = mlcore_track_ids('cooccurrence', ctx.seed_track_ids, exclude, want)
+        picker.offer_ids('mlcore', cooccurrence)
+
+    if engine_time() and cooccurrence:
+        # Second hop: the first good picks become seeds, reaching past one album or artist.
+        good = [track['spotifyId'] for track in picker.picked_from('mlcore')] or [track_id for track_id, _ in cooccurrence]
+        hop_seeds = [track_id for track_id in good if track_id not in ctx.seed_track_ids][:MLCORE_SEED_LIMIT]
+        if hop_seeds:
+            hop_exclude = list(dict.fromkeys(ctx.seed_track_ids + list(picker.seen) + exclude))[:MAX_IDENTITY_ITEMS]
+            picker.offer_ids('mlcore:hop2', mlcore_track_ids('cooccurrence', hop_seeds, hop_exclude, want))
+
+    if engine_time():
+        picker.offer_ids('metadata', mlcore_track_ids('metadata', ctx.seed_track_ids, exclude, want))
+
+    seed_artists = list(ctx.seed_artist_ids)
     if not picker.done and not spotify.out_of_time():
-        artist_ids = list(ctx.seed_artist_ids)
         seed_tracks = spotify.get_tracks(ctx.seed_track_ids[:10]) if ctx.seed_track_ids else {}
-        artist_ids += [track['artistId'] for track in seed_tracks.values() if track.get('artistId')]
-        for artist_id in list(dict.fromkeys(artist_ids))[:8]:
+        seed_artists += [artist_id for track in seed_tracks.values() for artist_id in track.get('artistIds') or []]
+        seed_artists = list(dict.fromkeys(seed_artists))
+        for artist_id in seed_artists[:MAX_ARTIST_EXPANSION]:
             if picker.done or spotify.out_of_time():
                 break
-            picker.offer('artist', spotify.artist_top_tracks(artist_id))
+            picker.offer('artist:seed', spotify.artist_top_tracks(artist_id))
 
-    for keyword in ctx.keywords:
-        if picker.done or spotify.out_of_time():
-            break
-        picker.offer('search', spotify.search_tracks(keyword))
+    if not picker.done and not spotify.out_of_time():
+        cooccurring = [artist_id for track in picker.picked_from('mlcore') for artist_id in (track.get('artistIds') or [])[:1]]
+        cooccurring = [artist_id for artist_id in dict.fromkeys(cooccurring) if artist_id not in seed_artists]
+        for artist_id in cooccurring[:MAX_ARTIST_EXPANSION]:
+            if picker.done or spotify.out_of_time():
+                break
+            picker.offer('artist:cooccur', spotify.artist_top_tracks(artist_id))
+
+    # Sound search only fills a real shortfall (fewer seed-related tracks than requested),
+    # never the extra re-ranking pool.
+    if len(picker.tracks) < count and not spotify.out_of_time():
+        seed_genres: List[str] = []
+        if not ctx.feelings and seed_artists:
+            genres = spotify.artist_genres(seed_artists[:MAX_ARTIST_EXPANSION])
+            seed_genres = list(dict.fromkeys(genre for artist_id in seed_artists for genre in genres.get(artist_id, [])))[:3]
+        if ctx.feelings or seed_genres:
+            _sound_search(picker, ctx.feelings, seed_genres)
 
     if not picker.done and ctx.seed_track_ids:
         hydrated = spotify.get_tracks(ctx.seed_track_ids)  # cache-only once the budget is spent
         picker.offer('seed', [hydrated[track_id] for track_id in ctx.seed_track_ids if track_id in hydrated])
 
-    return picker.finish()
+    return picker.finish(rank)
 
 
 def crate_track_picks(user, seed_ids: Sequence[str], limit: int) -> List[Dict]:
     """MLCore co-occurrence picks for the crate, hydrated, without exclusions/recency rules."""
     with spotify.budget(NEXT_BUDGET_SECONDS):
         pairs = mlcore_track_ids('cooccurrence', list(seed_ids)[:MAX_SEEDS], [], limit)
-    hydrated = spotify.get_tracks([track_id for track_id, _ in pairs])
+        hydrated = spotify.get_tracks([track_id for track_id, _ in pairs])
     return [hydrated.get(track_id) or _evidence_track(track_id, evidence) for track_id, evidence in pairs]

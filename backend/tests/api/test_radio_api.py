@@ -218,7 +218,8 @@ class NextTests(RadioAPITestCase):
         self.assertEqual(response.data['source'], 'mlcore')
         self.assertEqual([t['spotifyId'] for t in response.data['tracks']], ['ml-2', 'ml-3'])
         track = response.data['tracks'][0]
-        self.assertEqual(set(track), {'spotifyId', 'uri', 'title', 'artist', 'artistId', 'artistIds', 'artistNames',
+        self.assertEqual(track['sources'], ['mlcore'])
+        self.assertEqual(set(track), {'spotifyId', 'uri', 'title', 'artist', 'artistId', 'artistIds', 'artistNames', 'sources',
                                       'album', 'albumId', 'artworkUrl',
                                       'durationMs'})
         self.assertEqual(self.client.post(f"{BASE}stations/{station['id']}/next/", {}, format='json').status_code, 200)
@@ -233,7 +234,7 @@ class NextTests(RadioAPITestCase):
     def test_search_fallback_when_engine_down(self):
         station = self.create_station(seeds=[], feelings=['💃'])
         self.engine.side_effect = ConnectionError('engine down')
-        self.fake.search_results['dance'] = [sp_track(f'd{idx}', artist_id=f'd{idx}') for idx in range(5)]
+        self.fake.search_results['genre:house'] = [sp_track(f'd{idx}', artist_id=f'd{idx}') for idx in range(5)]
         response = self.client.post(f"{BASE}stations/{station['id']}/next", {'count': 3}, format='json')
         self.assertEqual(response.data['source'], 'search')
         self.assertEqual(len(response.data['tracks']), 3)
@@ -452,7 +453,7 @@ class ReviewFollowUpTests(RadioAPITestCase):
 
     def test_artist_exclusion_labels_are_resolved(self):
         station = self.create_station()
-        self.fake.artists['ar-x'] = 'Resolved Name'
+        self.fake.artist_names['ar-x'] = 'Resolved Name'
         response = self.client.post(f"{BASE}stations/{station['id']}/exclusions/",
                                     {'scope': 'everywhere', 'kind': 'artist', 'value': 'ar-x'}, format='json')
         self.assertEqual(response.data['label'], 'Resolved Name')
@@ -465,7 +466,7 @@ class ReviewFollowUpTests(RadioAPITestCase):
         items = [canonical_with_alias('duet'), canonical_with_alias('ev-only', evidence={'name': 'E', 'artists': ['Feature']}),
                  canonical_with_alias('fine')]
         self.fake.add(sp_track('duet', artist_id='lead', featuring=[('feat', 'Feature')]), sp_track('fine', artist_id='ok'))
-        self.fake.artists['feat'] = 'Feature'
+        self.fake.artist_names['feat'] = 'Feature'
         self.engine.return_value = engine_response(*items)
         self.client.post(f"{BASE}stations/{station['id']}/exclusions/",
                          {'scope': 'everywhere', 'kind': 'artist', 'value': 'feat'}, format='json')
