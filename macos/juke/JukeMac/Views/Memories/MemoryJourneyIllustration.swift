@@ -84,16 +84,17 @@ struct SpinningRecord: View {
     }
 }
 
+/// The composer's primary pill: the Juke accent, like every other primary action.
 struct JourneyButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
-    @Environment(\.journeyAccent) private var accent
+    @Environment(\.jukeTheme) private var theme
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 14, weight: .semibold, design: .rounded))
-            .padding(.horizontal, 23).padding(.vertical, 14)
-            .foregroundStyle(enabled ? Color.white : Color.secondary)
-            .background(enabled ? accent.mix(with: Color(red: 0.14, green: 0.12, blue: 0.2), by: 0.55) : Color.primary.opacity(0.07), in: Capsule())
+        configuration.label.font(JukeFont.body(14, weight: .bold))
+            .padding(.horizontal, 22).frame(minHeight: JukeMetrics.minimumHitTarget)
+            .foregroundStyle(enabled ? theme.onAccent.color : theme.sub.color)
+            .background(enabled ? theme.accent.color : theme.well.color, in: Capsule())
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.easeOut(duration: 0.4), value: accent)
+            .contentShape(Capsule())
     }
 }
 

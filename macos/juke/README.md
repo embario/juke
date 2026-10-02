@@ -65,11 +65,23 @@ background recognition, and the backend URL (default
   `VinylDisc`). Bricolage Grotesque is not bundled yet; the system rounded
   design stands in.
 - `JukeMac/Services/ArtworkPalette.swift`: dominant album-art colour feeding the theme.
+  A section can point it at its own artwork with `AppModel.artworkOverride`
+  (Memories follows the current memory's song).
+- `JukeMac/Services/BackgroundRecognition.swift`: background recognition. While
+  Settings > Listening is on and Juke radio is not playing, a song that stays on
+  for 30 s becomes `POST radio/events/ {event: "recognized", source:
+  "metadata"|"shazam"}` (same track at most once per 30 min, 40 per hour).
+  Spotify metadata carries the track ID; Apple Music and Shazam songs are
+  resolved through catalog search and skipped unless title and artist match.
+  It only reads `MusicDetectionController` and never starts audio capture;
+  Radio sets `backgroundRecognition.isRadioPlaying`.
 - `JukeMac/Services/API`: `JukeServer`, `JukeAPI` (typed requests, token auth,
   error mapping), `RadioModels.swift` (`Radio.Track`, `Radio.Station`, ...),
   `JukeAPI+Radio.swift` (every `/api/v1/radio/` endpoint).
 - `JukeMac/Views/Shell`: root window, header, `SectionStage` transitions, mini player.
 - `JukeMac/Views/Radio`, `Library`, `Memories`, `Chat`: one folder per section.
+  Memories is one card per memory (`MemoryBrowser` holds the ‹ n of N ›
+  state); Chat is one card with the song on top and the composer as a well.
 - `JukeMac/Views/Settings`, `Views/Shared`.
 
 ## Music memories (macOS first)

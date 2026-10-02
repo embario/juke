@@ -35,7 +35,7 @@ struct SettingsView: View {
             Section("Listening") {
                 Toggle("Recognize music in the background", isOn: $settings.backgroundRecognitionEnabled)
                     .accessibilityIdentifier("settings.backgroundRecognition")
-                Text("Juke quietly notes what plays in Spotify or Apple Music (and, when you allow it, what Shazam hears) so your station keeps learning.")
+                Text("Juke notices what you play elsewhere to learn your taste. It reads Spotify and Apple Music, and uses Shazam only when you choose This Mac or Around Me; it never turns on the microphone by itself.")
                     .font(.caption).foregroundStyle(theme.sub.color)
             }
 

@@ -7,6 +7,7 @@ struct MemoryComposerView: View {
     @Environment(AppModel.self) private var app
     @Environment(MemoryStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.jukeTheme) private var theme
     @State private var draft = MemoryDraft()
     @State private var moment = MemoryMomentSelection()
     @State private var library = MemoryPhotoLibrary()
@@ -83,7 +84,7 @@ struct MemoryComposerView: View {
     private var featuredArtwork: NSImage? { featuredSong?.artworkURL.flatMap { artwork.images[$0] } }
     private var accent: Color {
         if let url = featuredSong?.artworkURL, let color = artwork.colors[url] { return color }
-        return leadColor ?? .orange
+        return leadColor ?? theme.accent.color
     }
     private func isPlaying(_ song: MemorySong?) -> Bool {
         guard let song, app.detection.isPlaying, let track = app.detection.track else { return false }
@@ -117,9 +118,9 @@ struct MemoryComposerView: View {
             GeometryReader { geometry in
                 VStack(spacing: 18) {
                     VStack(spacing: 8) {
-                        Text(detail == nil ? title(for: step) : detailTitle).font(.system(size: geometry.size.height < 450 ? 29 : 36, weight: .semibold, design: .rounded))
+                        Text(detail == nil ? title(for: step) : detailTitle).font(JukeFont.display(geometry.size.height < 450 ? 28 : 34, weight: .bold)).tracking(-0.6)
                             .contentTransition(.opacity).id("title.\(promptIndex).\(detail ?? String(step.rawValue))")
-                        Text(detail == nil ? subtitle(for: step) : "Only the details you want to keep.").font(.body).foregroundStyle(.secondary)
+                        Text(detail == nil ? subtitle(for: step) : "Only the details you want to keep.").font(JukeFont.body(16)).foregroundStyle(theme.sub.color)
                     }.multilineTextAlignment(.center).padding(.top, 12)
                     ZStack {
                         Group {
@@ -137,13 +138,11 @@ struct MemoryComposerView: View {
                         .id(detail ?? String(step.rawValue))
                         .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: reduceMotion ? 0 : 18)), removal: .opacity))
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if let error { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("memory.error") }
+                    if let error { Text(error).font(JukeFont.body(13)).foregroundStyle(theme.accent.color).accessibilityIdentifier("memory.error") }
                 }.padding(.horizontal, 36).padding(.bottom, 12).frame(maxWidth: 1040).frame(maxWidth: .infinity)
             }
             footer
         }
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.85))
-        .overlay(alignment: .topTrailing) { Circle().fill(accent.opacity(0.1)).frame(width: 450).blur(radius: 85).offset(x: 230, y: -240).allowsHitTesting(false) }
         .environment(\.journeyAccent, accent)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: accent)
         .accessibilityElement(children: .contain).accessibilityIdentifier("memory.journey")
@@ -215,10 +214,10 @@ struct MemoryComposerView: View {
             HStack(spacing: 12) {
                 yearStrip
                 Button(showSelectedPhotos ? "Show all photos" : "\(picked.count) selected") { showSelectedPhotos.toggle() }
-                    .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary).disabled(picked.isEmpty && !showSelectedPhotos).fixedSize()
+                    .buttonStyle(.plain).font(JukeFont.body(12)).foregroundStyle(theme.sub.color).disabled(picked.isEmpty && !showSelectedPhotos).fixedSize()
             }
             ScrollView {
-                if library.assets.isEmpty { Text("No photos from this year.").foregroundStyle(.secondary).padding(40) }
+                if library.assets.isEmpty { Text("No photos from this year.").foregroundStyle(theme.sub.color).padding(40) }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                     ForEach(showSelectedPhotos ? picked.compactMap { selectedAssets[$0] } : library.assets, id: \.localIdentifier) { asset in
                         MemoryPhotoTile(asset: asset, selected: picked.contains(asset.localIdentifier)) { togglePhoto(asset.localIdentifier) }
@@ -226,7 +225,7 @@ struct MemoryComposerView: View {
                 }.padding(4)
                 if library.canLoadMore && !showSelectedPhotos { Button("Further back") { Task { await library.more() } }.buttonStyle(.plain).padding(15) }
             }.accessibilityIdentifier("memory.photoGrid")
-            Text("Only photos you choose are uploaded to your memory.").font(.caption).foregroundStyle(.secondary)
+            Text("Only photos you choose are uploaded to your memory.").font(JukeFont.body(12)).foregroundStyle(theme.sub.color)
         }
     }
 
@@ -245,22 +244,22 @@ struct MemoryComposerView: View {
         Button(action: action) {
             Text(label).font(.system(size: 13, weight: selected ? .semibold : .regular, design: .rounded)).monospacedDigit()
                 .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(selected ? accent.opacity(0.2) : Color.primary.opacity(0.05), in: Capsule())
+                .background(selected ? accent.opacity(0.2) : theme.well.color, in: Capsule())
         }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var photoPermission: some View {
         VStack(spacing: 12) {
             MemoryJourneyIllustration(kind: .photo, image: leadImage).frame(maxHeight: 245)
-            if mediaCount > 0 { Text("\(mediaCount) little windows back").font(.headline) }
+            if mediaCount > 0 { Text("\(mediaCount) little windows back").font(JukeFont.body(15, weight: .semibold)) }
             if library.isLoading { ProgressView() }
             else if library.status == .notDetermined {
                 Button("Show my photos") { Task { await library.open(requestPermission: true) } }
                     .buttonStyle(JourneyButtonStyle()).accessibilityIdentifier("memory.photos")
-                Text("Allow Photos once to choose pictures right here.\nOnly your selections are uploaded.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text("Allow Photos once to choose pictures right here.\nOnly your selections are uploaded.").font(JukeFont.body(12)).foregroundStyle(theme.sub.color).multilineTextAlignment(.center)
             } else if library.status == .denied || library.status == .restricted {
-                Text("Photos access is off. Drop a photo here from Photos,\nor keep going without one.").foregroundStyle(.secondary).multilineTextAlignment(.center)
-            } else { Text("No photos here yet. You can keep going without one.").foregroundStyle(.secondary) }
+                Text("Photos access is off. Drop a photo here from Photos,\nor keep going without one.").foregroundStyle(theme.sub.color).multilineTextAlignment(.center)
+            } else { Text("No photos here yet. You can keep going without one.").foregroundStyle(theme.sub.color) }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -292,7 +291,7 @@ struct MemoryComposerView: View {
             ForEach($draft.songs) { $song in songRow($song) }
             songSearch
             if !recentSongs.isEmpty && query.isEmpty {
-                Text("BRING BACK A SONG").font(.caption.weight(.semibold)).tracking(1).foregroundStyle(.secondary)
+                Text("BRING BACK A SONG").font(.caption.weight(.semibold)).tracking(1).foregroundStyle(theme.sub.color)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack { ForEach(recentSongs.prefix(12)) { song in Button { var copy = song; copy.id = UUID(); add(copy) } label: { Label(song.title, systemImage: "plus") }.buttonStyle(.bordered).disabled(draft.songs.count >= 20) } }
                 }
@@ -306,7 +305,7 @@ struct MemoryComposerView: View {
                 artworkThumb(song.artworkURL, size: 52)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("PLAYING NOW").font(.caption2.weight(.bold)).tracking(1.5).foregroundStyle(accent)
-                    Text(song.title).font(.headline).lineLimit(1); Text(song.artist).foregroundStyle(.secondary).lineLimit(1)
+                    Text(song.title).font(JukeFont.body(15, weight: .semibold)).lineLimit(1); Text(song.artist).foregroundStyle(theme.sub.color).lineLimit(1)
                 }
                 Spacer()
                 Label(draft.songs.isEmpty && order.first == .song ? "Yes, this one" : "Add", systemImage: "plus.circle.fill").font(.callout.weight(.semibold))
@@ -320,7 +319,7 @@ struct MemoryComposerView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 artworkThumb(value.artworkURL, size: 46)
-                VStack(alignment: .leading) { Text(value.title).font(.headline).lineLimit(1); Text(value.artist).foregroundStyle(.secondary).lineLimit(1) }
+                VStack(alignment: .leading) { Text(value.title).font(JukeFont.body(15, weight: .semibold)).lineLimit(1); Text(value.artist).foregroundStyle(theme.sub.color).lineLimit(1) }
                 Spacer()
                 Button(value.startSeconds == nil ? "Keep a snippet" : "Whole song") {
                     if value.startSeconds == nil {
@@ -349,10 +348,10 @@ struct MemoryComposerView: View {
                             }.help("Start the snippet where the song is playing now")
                         }
                         Button { hear(value) } label: { Label("Hear it", systemImage: "play.fill") }.disabled(app.detection.isPlaybackBusy)
-                    }.font(.caption).buttonStyle(.plain).foregroundStyle(.secondary)
+                    }.font(JukeFont.body(12)).buttonStyle(.plain).foregroundStyle(theme.sub.color)
                 }.padding(.leading, 58)
             }
-        }.padding(16).background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 18))
+        }.padding(16).background(theme.well.color, in: RoundedRectangle(cornerRadius: 18))
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
     }
 
@@ -360,14 +359,14 @@ struct MemoryComposerView: View {
     private var songSearch: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(theme.sub.color)
                 TextField(draft.songs.isEmpty && currentSong == nil ? "Search for any song" : "Search for another song", text: $query)
                     .textFieldStyle(.plain).onSubmit { runSearch(debounce: false) }.accessibilityIdentifier("memory.songSearch")
                 if searching { ProgressView().controlSize(.small) }
                 else if !query.isEmpty { Button { query = ""; results = [] } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }.buttonStyle(.plain).help("Clear search") }
-            }.padding(12).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
+            }.padding(12).background(theme.well.color, in: RoundedRectangle(cornerRadius: 14))
                 .onChange(of: query) { _, _ in runSearch(debounce: true) }
-            if let searchError { Text(searchError).font(.caption).foregroundStyle(.secondary) }
+            if let searchError { Text(searchError).font(JukeFont.body(12)).foregroundStyle(theme.sub.color) }
             ForEach(results.prefix(8)) { result in
                 let song = MemorySong(track: result.recognizedTrack)
                 Button { add(song, duration: result.durationMs.map { Double($0) / 1_000 }); query = ""; results = [] } label: {
@@ -375,7 +374,7 @@ struct MemoryComposerView: View {
                         artworkThumb(result.resolvedArtworkURL, size: 40)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(result.name).lineLimit(1)
-                            Text([result.artistNames, result.durationMs.map { MemorySong.timestamp(Double($0) / 1_000) }].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text([result.artistNames, result.durationMs.map { MemorySong.timestamp(Double($0) / 1_000) }].compactMap { $0 }.joined(separator: " · ")).font(JukeFont.body(12)).foregroundStyle(theme.sub.color).lineLimit(1)
                         }
                         Spacer()
                         Image(systemName: hasSong(song) ? "checkmark" : "plus.circle").foregroundStyle(accent)
@@ -420,14 +419,14 @@ struct MemoryComposerView: View {
                 ZStack(alignment: .topLeading) {
                     if draft.text.isEmpty { Text("I remember…").font(.system(size: 23, design: .serif)).foregroundStyle(.tertiary).padding(15).allowsHitTesting(false) }
                     TextEditor(text: $draft.text).font(.system(size: 23, design: .serif)).scrollContentBackground(.hidden).padding(10).accessibilityLabel("Memory description").accessibilityIdentifier("memory.body")
-                }.frame(height: 185).background(.background.opacity(0.65), in: RoundedRectangle(cornerRadius: 22))
+                }.frame(height: 185).background(theme.well.color, in: RoundedRectangle(cornerRadius: 22))
                 storyTagChips
                 HStack {
-                    Text("No perfect words needed. Type #anything to tag it.").font(.caption).foregroundStyle(.secondary)
+                    Text("No perfect words needed. Type #anything to tag it.").font(JukeFont.body(12)).foregroundStyle(theme.sub.color)
                     Spacer()
                     if storyQuestions.count > 1 {
                         Button { withAnimation(reduceMotion ? nil : .snappy) { promptIndex += 1 } } label: { Label("Ask me something else", systemImage: "shuffle") }
-                            .buttonStyle(.plain).font(.caption).foregroundStyle(accent).accessibilityIdentifier("memory.nextQuestion")
+                            .buttonStyle(.plain).font(JukeFont.body(12)).foregroundStyle(accent).accessibilityIdentifier("memory.nextQuestion")
                     }
                 }
             }.frame(maxWidth: 470)
@@ -464,7 +463,7 @@ struct MemoryComposerView: View {
                         else { LinearGradient(colors: [accent.opacity(0.55), .pink.opacity(0.25), .purple.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing) }
                     }.frame(width: 210, height: 200).clipped().clipShape(RoundedRectangle(cornerRadius: 5))
                     HStack { Spacer(); if mediaCount > 1 { Text("+\(mediaCount - 1)").font(.caption2.weight(.semibold)).foregroundStyle(.black.opacity(0.45)) } }.frame(height: 22)
-                }.padding(10).background(.white, in: RoundedRectangle(cornerRadius: 10))
+                }.padding(10).background(theme.print.color, in: RoundedRectangle(cornerRadius: 4))
                     .shadow(color: .black.opacity(0.12), radius: 12, y: 6).rotationEffect(.degrees(-3))
                 if featuredSong != nil {
                     SpinningRecord(artwork: featuredArtwork, spinning: isPlaying(featuredSong)).frame(width: 96, height: 96).offset(x: 38, y: 26)
@@ -478,7 +477,7 @@ struct MemoryComposerView: View {
                 }
                 Text(draft.songs.first?.title ?? "A little piece of your life").font(.system(size: 26, weight: .semibold, design: .rounded)).lineLimit(2)
                 if let song = draft.songs.first {
-                    Text([song.artist, draft.songs.count > 1 ? "+\(draft.songs.count - 1) more" : nil, song.segmentDescription].compactMap { $0 }.joined(separator: " · ")).foregroundStyle(.secondary)
+                    Text([song.artist, draft.songs.count > 1 ? "+\(draft.songs.count - 1) more" : nil, song.segmentDescription].compactMap { $0 }.joined(separator: " · ")).foregroundStyle(theme.sub.color)
                 }
                 if !draft.text.isEmpty { Text(draft.text).font(.system(size: 17, design: .serif)).lineLimit(5).foregroundStyle(.primary.opacity(0.8)) }
                 FlowLayout(spacing: 6) {
@@ -490,8 +489,8 @@ struct MemoryComposerView: View {
                 }.opacity(interactive ? 1 : 0.85)
             }.frame(maxWidth: 360, alignment: .leading)
         }.padding(26)
-            .background(.background.opacity(0.8), in: RoundedRectangle(cornerRadius: 26))
-            .overlay(RoundedRectangle(cornerRadius: 26).stroke(accent.opacity(0.25)))
+            .background(theme.card.color, in: RoundedRectangle(cornerRadius: JukeRadius.card, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: JukeRadius.card, style: .continuous).stroke(theme.line))
             .shadow(color: .black.opacity(0.06), radius: 20, y: 10)
             .rotationEffect(.degrees(reduceMotion ? 0 : -0.8))
     }
@@ -544,23 +543,23 @@ struct MemoryComposerView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Label(date.formatted(date: .abbreviated, time: .omitted), systemImage: "sun.max")
-                    .font(.headline).padding(.horizontal, 14).padding(.vertical, 10).background(accent.opacity(0.14), in: Capsule()).accessibilityIdentifier("memory.date")
-                Text(moment.isPhotoDate(metadata) ? "from your photo" : moment.manualDate == nil ? "today, unless you say otherwise" : "your chosen day").font(.caption).foregroundStyle(.secondary)
+                    .font(JukeFont.body(15, weight: .semibold)).padding(.horizontal, 14).padding(.vertical, 10).background(accent.opacity(0.14), in: Capsule()).accessibilityIdentifier("memory.date")
+                Text(moment.isPhotoDate(metadata) ? "from your photo" : moment.manualDate == nil ? "today, unless you say otherwise" : "your chosen day").font(JukeFont.body(12)).foregroundStyle(theme.sub.color)
                 Spacer()
                 Button(showCalendar ? "Done" : "Time travel") { showCalendar.toggle() }.buttonStyle(.plain).foregroundStyle(accent)
             }
             if showCalendar {
                 HStack(alignment: .top, spacing: 24) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("When does this take you back to?").font(.headline)
+                        Text("When does this take you back to?").font(JukeFont.body(15, weight: .semibold))
                         Button("Today") { moment.manualDate = Calendar.current.startOfDay(for: Date()); reviewed = false }
                         Button("Yesterday") { moment.manualDate = Calendar.current.date(byAdding: .day, value: -1, to: Calendar.current.startOfDay(for: Date())); reviewed = false }.accessibilityIdentifier("memory.yesterday")
                         if metadata.contains(where: { $0.date != nil }) { Button("Use the photo’s date") { moment.manualDate = nil; reviewed = false } }
-                        Text("No need to remember the hour.").font(.caption).foregroundStyle(.secondary)
+                        Text("No need to remember the hour.").font(JukeFont.body(12)).foregroundStyle(theme.sub.color)
                     }.buttonStyle(.bordered)
                     Spacer()
                     MemoryDayPicker(selection: Binding(get: { date }, set: { moment.manualDate = $0; reviewed = false }))
-                }.padding(20).background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 20))
+                }.padding(20).background(theme.well.color, in: RoundedRectangle(cornerRadius: 20))
             }
             if let place = inferredPlace {
                 Button {
@@ -574,8 +573,8 @@ struct MemoryComposerView: View {
 
     private var peopleChips: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("A familiar face?").font(.headline)
-            Text("People from your memories. Add anyone who was there.").font(.caption).foregroundStyle(.secondary)
+            Text("A familiar face?").font(JukeFont.body(15, weight: .semibold))
+            Text("People from your memories. Add anyone who was there.").font(JukeFont.body(12)).foregroundStyle(theme.sub.color)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], alignment: .leading) {
                 ForEach(knownPeople, id: \.self) { person in
                     Button { if draft.people.contains(person) { draft.people.removeAll { $0 == person } } else { draft.people.append(person) }; reviewed = false } label: { Label(person, systemImage: draft.people.contains(person) ? "checkmark" : "plus") }.buttonStyle(.bordered)
@@ -591,13 +590,13 @@ struct MemoryComposerView: View {
                 ForEach(suggestedTags.prefix(40), id: \.self) { value in
                     let selected = draft.tags.contains { $0.caseInsensitiveCompare(value) == .orderedSame }
                     Button { toggleTag(value) } label: {
-                        HStack { Text(value).lineLimit(1); Spacer(minLength: 3); Image(systemName: selected ? "checkmark" : "plus").font(.caption) }.padding(.horizontal, 12).padding(.vertical, 10)
+                        HStack { Text(value).lineLimit(1); Spacer(minLength: 3); Image(systemName: selected ? "checkmark" : "plus").font(JukeFont.body(12)) }.padding(.horizontal, 12).padding(.vertical, 10)
                             .background(selected ? accent.opacity(0.2) : Color.primary.opacity(0.04), in: Capsule())
                             .overlay(Capsule().stroke(selected ? accent.opacity(0.45) : .clear))
                     }.buttonStyle(.plain).accessibilityIdentifier("memory.reuseTag.\(value)").accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
-            Text("Make your own with a #tag in your story. It’ll be here next time.").font(.caption).foregroundStyle(.secondary)
+            Text("Make your own with a #tag in your story. It’ll be here next time.").font(JukeFont.body(12)).foregroundStyle(theme.sub.color)
         }.disabled(working)
     }
 
@@ -605,9 +604,9 @@ struct MemoryComposerView: View {
 
     private var footer: some View {
         HStack {
-            if working { ProgressView().controlSize(.small); Text(workingMessage).font(.caption).foregroundStyle(.secondary) }
-            else if !uploadingIDs.isEmpty { ProgressView().controlSize(.small); Text("Bringing \(uploadingIDs.count) \(uploadingIDs.count == 1 ? "photo" : "photos") along in the background…").font(.caption).foregroundStyle(.secondary) }
-            else { Text(step == .story && !draft.canSave ? "A few words make this a memory." : "Just for you.").font(.caption).foregroundStyle(.secondary) }
+            if working { ProgressView().controlSize(.small); Text(workingMessage).font(JukeFont.body(12)).foregroundStyle(theme.sub.color) }
+            else if !uploadingIDs.isEmpty { ProgressView().controlSize(.small); Text("Bringing \(uploadingIDs.count) \(uploadingIDs.count == 1 ? "photo" : "photos") along in the background…").font(JukeFont.body(12)).foregroundStyle(theme.sub.color) }
+            else { Text(step == .story && !draft.canSave ? "A few words make this a memory." : "Just for you.").font(JukeFont.body(12)).foregroundStyle(theme.sub.color) }
             Spacer()
             Button { advance() } label: {
                 HStack(spacing: 12) {
@@ -831,7 +830,7 @@ struct MemoryComposerView: View {
 }
 
 /// Wraps chips onto new lines at the available width.
-private struct FlowLayout: Layout {
+struct FlowLayout: Layout {
     var spacing: CGFloat = 6
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let rows = rows(for: proposal.width ?? .infinity, subviews: subviews)

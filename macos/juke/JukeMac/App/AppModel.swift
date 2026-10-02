@@ -48,6 +48,14 @@ final class AppModel {
     /// Typed client for the Juke REST API, authenticated as the signed-in user.
     /// Radio endpoints are in `JukeAPI+Radio.swift`.
     let api: JukeAPI
+    /// Turns songs played elsewhere into `recognized` taste events while
+    /// Settings > Listening allows it (S5). Radio sets `isRadioPlaying`.
+    let backgroundRecognition: BackgroundRecognizer
+    /// Artwork a section wants the theme to follow instead of the playing
+    /// track (Memories: the current memory's song). `nil` follows the track.
+    var artworkOverride: URL? {
+        didSet { if oldValue != artworkOverride { syncArtwork() } }
+    }
 
     private let context: ModelContext
     private let auth = JukeAuthenticationService()
@@ -69,6 +77,12 @@ final class AppModel {
         #else
         isUITesting = false
         #endif
+        backgroundRecognition = .live(
+            api: api,
+            settings: settings,
+            token: { [accessToken] in accessToken.get() },
+            allowed: { [isUITesting] in !isUITesting }
+        )
         context = ModelContext(container)
         let savedTextSize = UserDefaults.standard.object(forKey: Self.chatTextSizeKey) as? Double
         chatTextSize = min(
@@ -111,6 +125,7 @@ final class AppModel {
             Task { await restoreSession() }
         }
         settings.onBackendURLChange = { [weak self] _ in self?.backendChanged() }
+        backgroundRecognition.follow(detection)
     }
 
     /// A token belongs to the server that issued it, so changing the backend
@@ -167,6 +182,7 @@ final class AppModel {
         replyTask?.cancel()
         replyTask = nil
         detection.revokeAccess()
+        backgroundRecognition.cancelPending()
         session = nil
         memories.reset()
         messages = []
@@ -241,7 +257,7 @@ final class AppModel {
 
     /// Points the theme at the current track's artwork.
     func syncArtwork() {
-        artwork.update(artworkURL: detection.track?.artworkURL, enabled: settings.artworkTintEnabled)
+        artwork.update(artworkURL: artworkOverride ?? detection.track?.artworkURL, enabled: settings.artworkTintEnabled)
     }
 
     private func restoreSession() async {
