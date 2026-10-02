@@ -92,6 +92,11 @@ JSON, camelCase keys (matches the Vibe memories API).
 
 Types:
 - `Track`: `{spotifyId, uri, title, artist, artistId, album, albumId, artworkUrl, durationMs}`
+  Additive fields (clients may ignore them): `artistIds`/`artistNames` (every credited
+  artist) and, on `next`/`play` picks, `sources: [string]` — a debug trail of detailed source
+  labels (`mlcore`, `mlcore:hop2`, `metadata`, `artist:seed`, `artist:cooccur`, `search:genre`,
+  `search:text`, `search:artist`, `seed`); the first entry supplied the track. The batch's
+  top-level `source` is the majority of those first entries, reduced to the part before `:`.
 - `Seed`: `{kind: "track"|"artist"|"album", spotifyId, title, subtitle, artworkUrl}`
 - `Exclusion`: `{id, scope: "station"|"everywhere", kind: "track"|"artist"|"genre"|"text", value, label}`
 - `Station`: `{id, name, kind: "personal"|"custom", frequency (float, odd tenths 88.1–107.9),

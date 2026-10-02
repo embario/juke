@@ -80,6 +80,9 @@ class StubSpotify:
     def artist(self, artist_id):
         return spotify_stub.artist_detail(f'spotify:artist:{artist_id}')
 
+    def artists(self, artists):
+        return {'artists': [self.artist(artist_id) for artist_id in artists]}
+
     def artist_top_tracks(self, artist_id, country=MARKET):
         album = spotify_stub.album_detail('spotify:album:stub-album-0')
         album['artists'] = [{'id': artist_id, 'name': f'Stub Artist {artist_id[-4:]}'}]
@@ -94,7 +97,7 @@ class StubSpotify:
     def album_tracks(self, album_id, limit=50, market=None):
         return spotify_stub.album_tracks(album_id)
 
-    def search(self, q, limit=SEARCH_LIMIT, type='track', market=None):
+    def search(self, q, limit=SEARCH_LIMIT, type='track', market=None, offset=0):
         key = f'{type}s'
         payload = spotify_stub.search_response(type)
         payload['items'] = payload['items'][:limit]
@@ -257,6 +260,53 @@ def artist_name(artist_id: str) -> str:
     return name
 
 
+ARTIST_BATCH = 50
+
+
+ARTISTS_REFUSED_KEY = f'{_CACHE_PREFIX}:artists-refused'
+ARTISTS_REFUSED_SECONDS = 3600
+ARTIST_GENRES_NEGATIVE_SECONDS = 600
+
+
+def artist_genres(artist_ids: Iterable[str]) -> Dict[str, List[str]]:
+    """artist id → Spotify genres via ``GET /v1/artists?ids=`` batches (cached, budget-bound).
+
+    Failures are cheap to repeat-avoid: a 403 marks the endpoint refused for an hour, and ids
+    from any failed batch are negative-cached (as "no genres") for ten minutes. Transport
+    errors, 5xx and 429 also trip the shared circuit breaker in ``_call``.
+    """
+    ids = [artist_id for artist_id in dict.fromkeys(artist_ids) if artist_id]
+    keys = {artist_id: f'{_CACHE_PREFIX}:artist-genres:{artist_id}' for artist_id in ids}
+    found = cache.get_many(list(keys.values()))
+    result = {artist_id: found[key] for artist_id, key in keys.items() if key in found}
+    missing = [artist_id for artist_id in ids if artist_id not in result]
+    if not missing or cache.get(ARTISTS_REFUSED_KEY):
+        return result
+    fresh: Dict[str, List[str]] = {}
+    failed: List[str] = []
+    for start in range(0, len(missing), ARTIST_BATCH):
+        batch = missing[start:start + ARTIST_BATCH]
+        failures: list = []
+        payload = _call('artists batch', lambda client, batch=batch: client.artists(batch), failures=failures)
+        if payload is None:
+            if failures:
+                failed += batch
+                if http_status(failures[0]) == 403:
+                    cache.set(ARTISTS_REFUSED_KEY, True, ARTISTS_REFUSED_SECONDS)
+                    logger.info('Spotify refused the artists endpoint; skipping genre lookups for %ss', ARTISTS_REFUSED_SECONDS)
+                    break
+            continue
+        for item in payload.get('artists') or []:
+            if isinstance(item, dict) and item.get('id'):
+                fresh[item['id']] = [genre for genre in item.get('genres') or [] if isinstance(genre, str)]
+    if fresh:
+        cache.set_many({keys[artist_id]: genres for artist_id, genres in fresh.items() if artist_id in keys}, TRACK_CACHE_TTL)
+        result.update(fresh)
+    if failed:
+        cache.set_many({keys[artist_id]: [] for artist_id in failed}, ARTIST_GENRES_NEGATIVE_SECONDS)
+    return result
+
+
 def artist_top_tracks(artist_id: str) -> List[Dict[str, Any]]:
     if not artist_id:
         return []
@@ -288,25 +338,28 @@ def album_track_ids(album_id: str, limit: int = 10) -> List[str]:
 SEARCH_TYPES = {'tracks': 'track', 'artists': 'artist', 'albums': 'album'}
 
 
-def search(query: str, kind: str = 'tracks', limit: int = SEARCH_LIMIT) -> List[Dict[str, Any]]:
+def search(query: str, kind: str = 'tracks', limit: int = SEARCH_LIMIT, offset: int = 0) -> List[Dict[str, Any]]:
     """Raw Spotify search items for ``kind`` (tracks|artists|albums)."""
     spotify_type = SEARCH_TYPES[kind]
     query = (query or '').strip()
     if not query:
         return []
     digest = hashlib.sha1(query.casefold().encode()).hexdigest()
-    key = f'{_CACHE_PREFIX}:search:{spotify_type}:{limit}:{digest}'
+    key = f'{_CACHE_PREFIX}:search:{spotify_type}:{limit}:{offset}:{digest}'
     cached = cache.get(key)
     if cached is not None:
         return cached
-    payload = _call('search', lambda client: client.search(q=query, limit=limit, type=spotify_type, market=MARKET))
+    search_kwargs = {'q': query, 'limit': limit, 'type': spotify_type, 'market': MARKET}
+    if offset:
+        search_kwargs['offset'] = offset
+    payload = _call('search', lambda client: client.search(**search_kwargs))
     items = [item for item in ((payload or {}).get(f'{spotify_type}s') or {}).get('items') or [] if isinstance(item, dict)]
     if payload is not None:
         cache.set(key, items, 3600)
     return items
 
 
-def search_tracks(query: str, limit: int = SEARCH_LIMIT) -> List[Dict[str, Any]]:
-    tracks = [track for track in (track_payload(item) for item in search(query, 'tracks', limit)) if track]
+def search_tracks(query: str, limit: int = SEARCH_LIMIT, offset: int = 0) -> List[Dict[str, Any]]:
+    tracks = [track for track in (track_payload(item) for item in search(query, 'tracks', limit, offset)) if track]
     remember_tracks(tracks)
     return tracks
