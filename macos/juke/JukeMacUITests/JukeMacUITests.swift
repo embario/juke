@@ -81,7 +81,7 @@ final class JukeMacUITests: XCTestCase {
         XCTAssertEqual(composer.value as? String, "A follow-up")
     }
 
-    func testDiscoveryLibraryNowPlayingAndSettingsAreReachable() {
+    func testLibraryCrateNowPlayingAndSettingsAreReachable() {
         launch(arguments: ["--uitesting-authenticated"])
 
         XCTAssertTrue(element("radio.card").waitForExistence(timeout: 4))
@@ -93,16 +93,19 @@ final class JukeMacUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 2))
 
         open("library")
-        let search = element("discover.query")
-        XCTAssertTrue(search.waitForExistence(timeout: 3))
+        XCTAssertTrue(element("crate").waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["library.startRadio"].waitForExistence(timeout: 3))
+        let search = element("crate.search")
         search.click()
-        search.typeText("Miles Davis")
-        app.buttons["discover.search"].click()
+        search.typeText("Miles")
         XCTAssertTrue(app.staticTexts["Blue in Green"].waitForExistence(timeout: 4))
-        XCTAssertFalse(app.buttons["Ask Juke about this"].exists)
-        element("discover.result.1959").click()
-        XCTAssertTrue(element("catalog.albumDetail").waitForExistence(timeout: 4))
-        XCTAssertTrue(element("catalog.track.highlighted").exists)
+        element("crate").click()
+        app.typeKey(.rightArrow, modifierFlags: [])
+        XCTAssertTrue(app.staticTexts["So What"].waitForExistence(timeout: 3))
+        app.buttons["crate.flip.frontToBack"].click()
+        app.buttons["crate.kind.album"].click()
+        XCTAssertTrue(app.staticTexts["Kind of Blue"].waitForExistence(timeout: 3))
+        app.buttons["crate.flip.sideToSide"].click()
 
         XCTAssertTrue(element("miniPlayer").exists)
 
@@ -172,15 +175,7 @@ final class JukeMacUITests: XCTestCase {
         launchAuthenticated(additionalArguments: ["--uitesting-spectator"])
 
         open("library")
-        XCTAssertTrue(element("discover.spectatorMode").waitForExistence(timeout: 3))
-        let search = element("discover.query")
-        search.click()
-        search.typeText("Miles Davis")
-        app.buttons["discover.search"].click()
-        XCTAssertTrue(app.staticTexts["Blue in Green"].waitForExistence(timeout: 4))
-        element("discover.result.1959").click()
-        XCTAssertTrue(element("catalog.albumDetail").waitForExistence(timeout: 4))
-        XCTAssertTrue(element("catalog.spectatorHint").exists)
+        XCTAssertTrue(element("crate").waitForExistence(timeout: 3))
         XCTAssertFalse(app.buttons["Pause"].exists)
     }
 
