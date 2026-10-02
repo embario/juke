@@ -74,6 +74,11 @@ class PlaybackProvider(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def queue(self, *, track_uri: str, device_id: Optional[str]) -> None:
+        """Append a track to the user's playback queue without interrupting the current song."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def state(self) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -150,6 +155,10 @@ class PlaybackService:
 
     def seek(self, *, position_ms: int, device_id: Optional[str]) -> Optional[Dict[str, Any]]:
         self.provider.seek(position_ms=position_ms, device_id=device_id)
+        return self.provider.state()
+
+    def queue(self, *, track_uri: str, device_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        self.provider.queue(track_uri=track_uri, device_id=device_id)
         return self.provider.state()
 
     def state(self) -> Optional[Dict[str, Any]]:
@@ -256,6 +265,10 @@ class SpotifyPlaybackProvider(PlaybackProvider):
         if device_id:
             kwargs['device_id'] = device_id
         self._execute(lambda client: client.seek_track(**kwargs))
+
+    def queue(self, *, track_uri: str, device_id: Optional[str]) -> None:
+        kwargs = {'device_id': device_id} if device_id else {}
+        self._execute(lambda client: client.add_to_queue(track_uri, **kwargs))
 
     def state(self) -> Optional[Dict[str, Any]]:
         playback = self._execute(lambda client: client.current_playback())

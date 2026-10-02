@@ -270,3 +270,15 @@ class ResolveEndpointTests(SimpleTestCase):
 
         self.assertEqual(len(response.unresolved_exclude_items), 1)
         self.assertEqual(response.unresolved_exclude_items[0].source_id, self.missing_spotify_id)
+
+
+@skipIf(engine_main is None, 'recommender engine serving dependencies are not installed')
+class StatementTimeoutTests(SimpleTestCase):
+
+    def test_pool_connections_cap_statement_time(self):
+        with mock.patch.object(engine_main, 'DB_STATEMENT_TIMEOUT_MS', 30000):
+            self.assertEqual(engine_main._connection_kwargs(), {'options': '-c statement_timeout=30000'})
+
+    def test_zero_disables_the_cap(self):
+        with mock.patch.object(engine_main, 'DB_STATEMENT_TIMEOUT_MS', 0):
+            self.assertEqual(engine_main._connection_kwargs(), {})
