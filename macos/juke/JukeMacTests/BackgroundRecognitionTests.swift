@@ -264,6 +264,19 @@ final class BackgroundRecognizerTests: XCTestCase {
         XCTAssertEqual(box.events.map(\.spotifyTrackId), ["sp1"])
     }
 
+    func testFollowingDetectionPostsWhatPlaysAndRearmsAfterChanges() async {
+        let box = Box()
+        let recognizer = makeRecognizer(box)
+        let detection = MusicDetectionController()
+        recognizer.follow(detection)
+        detection.track = track(namespace: "spotify", id: "first")
+        detection.isPlaying = true
+        for _ in 0..<20 where box.events.isEmpty { await Task.yield() }
+        detection.track = track(title: "Pink Moon", artist: "Nick Drake", namespace: "spotify", id: "second")
+        for _ in 0..<20 where box.events.count < 2 { await Task.yield() }
+        XCTAssertEqual(box.events.map(\.spotifyTrackId), ["first", "second"])
+    }
+
     func testPostsThroughTheRadioEventsEndpoint() async throws {
         let api = JukeAPI(baseURL: URL(string: "https://recognition-tests.example/")!, session: RecognitionURLProtocol.session(), token: { "tkn" })
         RecognitionURLProtocol.reset()

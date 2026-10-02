@@ -156,7 +156,6 @@ final class BackgroundRecognizer {
     @ObservationIgnored private var latest: (track: RecognizedTrack?, isAudible: Bool) = (nil, false)
     @ObservationIgnored private(set) var pending: Task<Void, Never>?
     @ObservationIgnored private var silence: Task<Void, Never>?
-    @ObservationIgnored private var observation: Task<Void, Never>?
 
     init(
         policy: RecognitionEventPolicy = RecognitionEventPolicy(),
@@ -175,28 +174,22 @@ final class BackgroundRecognizer {
     }
 
     /// Follows the detection controller's current song (and the setting) for
-    /// the app's lifetime.
+    /// the app's lifetime: `withObservationTracking`, re-armed after each change.
     func follow(_ detection: MusicDetectionController) {
-        observation?.cancel()
-        observation = Task { [weak self, weak detection] in
-            let changes = Observations { @MainActor [weak self, weak detection] in
-                Snapshot(
-                    track: detection?.track,
-                    isAudible: (detection?.isPlaying ?? false) || (detection?.isAudioPresent ?? false),
-                    enabled: self?.isEnabled() ?? false
-                )
-            }
-            for await snapshot in changes {
-                guard let self, detection != nil else { return }
-                self.observe(snapshot.track, isAudible: snapshot.isAudible)
-            }
-        }
+        followed = detection
+        track()
     }
 
-    private struct Snapshot: Sendable, Equatable {
-        let track: RecognizedTrack?
-        let isAudible: Bool
-        let enabled: Bool
+    @ObservationIgnored private weak var followed: MusicDetectionController?
+
+    private func track() {
+        guard let detection = followed else { return }
+        let current = withObservationTracking {
+            (detection.track, detection.isPlaying || detection.isAudioPresent, isEnabled())
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in self?.track() }
+        }
+        observe(current.0, isAudible: current.1)
     }
 
     /// Call when the current song or its playing state changes.

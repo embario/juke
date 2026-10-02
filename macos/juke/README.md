@@ -96,6 +96,13 @@ background recognition, and the backend URL (default
   (status line, station sheet, lyrics).
   Memories is one card per memory (`MemoryBrowser` holds the ‹ n of N ›
   state); Chat is one card with the song on top and the composer as a well.
+- `JukeMac/Views/Library`: `CrateView` (side-to-side coverflow or front-to-back
+  bin, drag with momentum, scroll/swipe stepping, keyboard, VoiceOver adjustable),
+  `CrateLayout` (the prototype's transform maths), `CrateBrowser` (kind, debounced
+  `GET radio/crate/` search, focus, `coordinator.libraryFocus`), `CrateServices`
+  (live API or the `--uitesting` fixture) and `LibraryScreen` ("Start radio").
+- `JukeMac/Views/NewStation`: `NewStationFlow` (Records/Feelings steps, up to three
+  records with swap, emoji or phrase feelings) and `NewStationScreen`.
 - `JukeMac/Views/Settings`, `Views/Shared`.
 
 ## Music memories (macOS first)
