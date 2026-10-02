@@ -48,6 +48,8 @@ final class AppModel {
     /// Typed client for the Juke REST API, authenticated as the signed-in user.
     /// Radio endpoints are in `JukeAPI+Radio.swift`.
     let api: JukeAPI
+    /// Radio stations, the tuned station and the continuous-play loop.
+    let radio: RadioController
 
     private let context: ModelContext
     private let auth = JukeAuthenticationService()
@@ -70,6 +72,32 @@ final class AppModel {
         isUITesting = false
         #endif
         context = ModelContext(container)
+        let isRadioFixture = arguments.contains("--uitesting")
+        let radioPreferences: RadioPreferences
+        if isRadioFixture {
+            // UI tests get a fresh, in-memory radio: first run only when asked for.
+            let defaults = UserDefaults(suiteName: "juke.radio.uitests.\(UUID().uuidString)") ?? .standard
+            radioPreferences = RadioPreferences(defaults: defaults)
+            let accounts = [JukeAccount.localPreview.id, ProcessInfo.processInfo.environment["VIBE_MEMORY_E2E_ACCOUNT_ID"]].compactMap { $0 }
+            for account in accounts {
+                let preferences = radioPreferences.scoped(to: account)
+                preferences.hasTunedIn = !arguments.contains("--uitesting-radio-first-run")
+                preferences.wasPlaying = preferences.hasTunedIn
+                // The fixture Spotify is mid-way through a radio song.
+                preferences.recentRadioTrackIDs = [RadioFixturePlayback.initialTrackID]
+            }
+            let playback = RadioFixturePlayback()
+            radio = RadioController(backend: RadioFixtureBackend(playback: playback), playback: playback,
+                                    preferences: radioPreferences, coordinator: coordinator)
+        } else {
+            radioPreferences = RadioPreferences()
+            radio = RadioController(
+                backend: api,
+                playback: SpotifyRadioPlayback(token: { [accessToken] in accessToken.get() }),
+                preferences: radioPreferences,
+                coordinator: coordinator
+            )
+        }
         let savedTextSize = UserDefaults.standard.object(forKey: Self.chatTextSizeKey) as? Double
         chatTextSize = min(
             Self.chatTextSizeRange.upperBound,
@@ -111,6 +139,12 @@ final class AppModel {
             Task { await restoreSession() }
         }
         settings.onBackendURLChange = { [weak self] _ in self?.backendChanged() }
+        radio.onTrackChange = { [weak self] _ in self?.syncArtwork() }
+        // One Spotify poller while radio is on the air: radio's snapshots feed the recognition helper.
+        detection.suspendsSpotifyPolling = { [weak radio] in radio?.isOnAir ?? false }
+        radio.onSnapshot = { [weak detection] snapshot in
+            if let state = snapshot.raw { detection?.apply(state) }
+        }
     }
 
     /// A token belongs to the server that issued it, so changing the backend
@@ -174,6 +208,7 @@ final class AppModel {
         chatVaultAccountID = nil
         section = .radio
         coordinator.reset()
+        radio.stop()
     }
 
     private func finishSignOut() async {
@@ -241,7 +276,8 @@ final class AppModel {
 
     /// Points the theme at the current track's artwork.
     func syncArtwork() {
-        artwork.update(artworkURL: detection.track?.artworkURL, enabled: settings.artworkTintEnabled)
+        let url = radio.isOnAir || radio.isPutAway ? radio.track?.artworkURL : detection.track?.artworkURL
+        artwork.update(artworkURL: url, enabled: settings.artworkTintEnabled)
     }
 
     private func restoreSession() async {

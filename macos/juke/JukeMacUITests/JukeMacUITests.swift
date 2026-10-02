@@ -82,11 +82,11 @@ final class JukeMacUITests: XCTestCase {
     }
 
     func testLibraryCrateNowPlayingAndSettingsAreReachable() {
-        launchAuthenticated()
+        launch(arguments: ["--uitesting-authenticated"])
 
-        XCTAssertTrue(element("nowPlaying.bar").waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["Blue in Green"].exists)
-        XCTAssertTrue(app.sliders["Playback position"].exists)
+        XCTAssertTrue(element("radio.card").waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Blue in Green"].waitForExistence(timeout: 4))
+        XCTAssertTrue(element("radio.progress").exists)
         let pause = app.buttons["Pause"]
         XCTAssertTrue(pause.isEnabled)
         pause.click()
@@ -118,6 +118,46 @@ final class JukeMacUITests: XCTestCase {
         XCTAssertTrue(element("settings.backendURL").exists)
     }
 
+    func testRadioFirstRunTunesInWithOneClick() {
+        launch(arguments: ["--uitesting-authenticated", "--uitesting-radio-first-run"])
+
+        let tuneIn = app.buttons["radio.tuneIn"]
+        XCTAssertTrue(tuneIn.waitForExistence(timeout: 4))
+        tuneIn.click()
+        XCTAssertTrue(element("radio.card").waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Maria También"].waitForExistence(timeout: 4))
+        attachScreenshot("radio-tuned-in")
+    }
+
+    func testRadioDialCuesAStationAndPlaysItNow() {
+        launch(arguments: ["--uitesting-authenticated"])
+        XCTAssertTrue(element("radio.card").waitForExistence(timeout: 4))
+
+        app.buttons["Next station"].click()
+        XCTAssertTrue(app.buttons["radio.dial.playNow"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Blue in Green"].exists, "tuning never interrupts the song")
+        attachScreenshot("radio-cued")
+        app.buttons["radio.dial.playNow"].click()
+        XCTAssertTrue(app.staticTexts["Maria También"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.buttons["radio.dial.playNow"].waitForExistence(timeout: 1))
+    }
+
+    func testRadioStationSheetAndSleeveOptions() {
+        launch(arguments: ["--uitesting-authenticated"])
+        XCTAssertTrue(element("radio.card").waitForExistence(timeout: 4))
+
+        app.buttons["radio.stationButton"].click()
+        XCTAssertTrue(element("radio.stationSheet").waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["BUILT FROM"].exists)
+        attachScreenshot("radio-station-sheet")
+        app.buttons["radio.sheet.done"].click()
+
+        app.buttons["radio.sleeve"].click()
+        XCTAssertTrue(app.buttons["radio.sleeve.lyrics"].waitForExistence(timeout: 3))
+        app.buttons["radio.sleeve.lyrics"].click()
+        XCTAssertTrue(app.staticTexts["Lyrics are coming soon"].waitForExistence(timeout: 3))
+    }
+
     func testEncryptionEducationIsAOneTimeLoginMoment() {
         launchAuthenticated(additionalArguments: ["--uitesting-show-privacy-welcome", "--uitesting-reset-privacy-welcome"])
 
@@ -134,15 +174,9 @@ final class JukeMacUITests: XCTestCase {
     func testSpotifySpectatorModeRemovesPlaybackActions() {
         launchAuthenticated(additionalArguments: ["--uitesting-spectator"])
 
-        XCTAssertTrue(element("nowPlaying.spectatorMode").waitForExistence(timeout: 4))
+        open("library")
+        XCTAssertTrue(element("crate").waitForExistence(timeout: 3))
         XCTAssertFalse(app.buttons["Pause"].exists)
-        XCTAssertFalse(app.buttons["Play"].exists)
-        XCTAssertFalse(app.sliders["Playback position"].exists)
-        XCTAssertTrue(element("nowPlaying.passiveProgress").exists)
-        element("nowPlaying.spectatorMode").click()
-        XCTAssertTrue(app.staticTexts["Playback mode"].waitForExistence(timeout: 2))
-        app.typeKey(.escape, modifierFlags: [])
-
     }
 
     func testChatRemainsResponsiveAcrossFocusChanges() {

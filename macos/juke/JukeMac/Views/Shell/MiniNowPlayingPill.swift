@@ -31,7 +31,9 @@ struct MiniNowPlayingPill: View {
             }
             if model.detection.track != nil, model.detection.canControlPlayback {
                 Button {
-                    Task { await model.detection.togglePlayback() }
+                    Task {
+                        if model.radio.isOnAir { await model.radio.togglePlayPause() } else { await model.detection.togglePlayback() }
+                    }
                 } label: {
                     Image(systemName: model.detection.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 16, weight: .semibold))
@@ -61,6 +63,11 @@ struct MiniNowPlayingPill: View {
     }
 
     private var note: String? {
-        model.detection.providerName ?? model.detection.playbackDeviceName
+        let radio = model.radio
+        if radio.isPutAway { return "Put away" }
+        if radio.isOnAir, let station = radio.currentStation {
+            return radio.pendingStation.map { "Next: \($0.name)" } ?? station.name
+        }
+        return model.detection.providerName ?? model.detection.playbackDeviceName
     }
 }
