@@ -699,7 +699,7 @@ final class RadioController {
     /// Commits a station moved on the dial. The server snaps and spaces the
     /// frequency; the returned value wins.
     @discardableResult
-    func moveStation(_ id: Radio.ID, to frequency: Double, preferring direction: Int = 1) async -> Double? {
+    func moveStation(_ id: Radio.ID, to frequency: Double, preferring direction: Int = 0) async -> Double? {
         guard let station = station(id) else { return nil }
         let others = stations.filter { $0.id != id }.map(\.frequency)
         let proposal = FMDial.freeSlot(near: frequency, others: others, preferring: direction)

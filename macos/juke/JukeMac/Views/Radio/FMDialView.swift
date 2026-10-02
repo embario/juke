@@ -392,8 +392,8 @@ struct FMDialView: View {
         edgeTask?.cancel()
         guard let held = hold else { return }
         let others = stations.filter { $0.id != held.id }.map(\.frequency)
-        let original = stations.first { $0.id == held.id }?.frequency ?? held.frequency
-        let direction = held.frequency >= original ? 1 : -1
+        // Dropped onto a neighbour: the nearest free slot, as the reference.
+        let direction = 0
         let proposal = FMDial.freeSlot(near: held.frequency, others: others, preferring: direction)
         overrides[held.id] = proposal
         withAnimation(reduceMotion ? nil : JukeMotion.easeOutSoft(0.52)) {
