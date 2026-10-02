@@ -184,13 +184,14 @@ class PipelineTests(RadioTestCase):
             result = recommend.next_tracks(self.user, self.station(), count=1)
         self.assertEqual((result.source, result.tracks[0]['spotifyId']), ('artist', 'top-1'))
 
-    def test_falls_back_to_feeling_keyword_search(self):
-        self.fake.search_results['late night'] = [sp_track('night-1')]
+    def test_feeling_only_station_searches_by_sound(self):
+        self.fake.search_results['genre:chillwave'] = [sp_track('night-1')]
         station = self.station(seeds=[], feelings=['🌙'])
         with mock.patch(ENGINE, side_effect=ConnectionError('down')):
             result = recommend.next_tracks(self.user, station, count=1)
         self.assertEqual((result.source, result.tracks[0]['spotifyId']), ('search', 'night-1'))
-        self.assertIn(('search', 'late night', 'track'), self.fake.calls)
+        self.assertIn(('search', 'genre:chillwave', 'track'), self.fake.calls)
+        self.assertNotIn(('search', 'late night', 'track'), self.fake.calls)
 
     def test_free_text_feelings_are_search_terms(self):
         self.fake.search_results['sunday cleaning'] = [sp_track('clean-1')]
@@ -374,12 +375,13 @@ class BudgetedPipelineTests(RadioTestCase):
         clock = [0.0]
         with mock.patch('radio.services.spotify.time.monotonic', side_effect=lambda: clock[0]), \
                 mock.patch(ENGINE, return_value={'items': []}) as engine:
-            with spotify.budget(2.5):
+            with spotify.budget(4):
                 recommend.mlcore_track_ids('cooccurrence', ['seed'], [], 5)
-                clock[0] += 2.4
+                clock[0] += 2.3
                 recommend.mlcore_track_ids('cooccurrence', ['seed'], [], 5)
-        self.assertEqual(engine.call_args_list[0].kwargs['timeout'], 2.5)
-        self.assertEqual(engine.call_count, 1)  # <0.3 s left: engine not called
+        # The engine gets the budget minus the Spotify reserve…
+        self.assertEqual(engine.call_args_list[0].kwargs['timeout'], 4 - recommend.MLCORE_RESERVE_SECONDS)
+        self.assertEqual(engine.call_count, 1)  # …and is skipped once less than 0.3 s of it is left
 
     def test_engine_exclusions_keep_most_recent(self):
         for idx in range(120):

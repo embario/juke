@@ -19,13 +19,14 @@ def sp_track(track_id, artist_id='artist-a', artist_name='Artist A', album_id='a
 
 
 class FakeSpotify:
-    def __init__(self, tracks=(), top=None, search=None, album_tracks=None, fail_batch=False, artists=None):
+    def __init__(self, tracks=(), top=None, search=None, album_tracks=None, fail_batch=False, artists=None, genres=None):
         self.db = {track['id']: track for track in tracks}
         self.top = top or {}
         self.search_results = search or {}
         self.albums = album_tracks or {}
         self.fail_batch = fail_batch  # True → 403 refusal, or an exception instance to raise
-        self.artists = artists or {}
+        self.artist_names = artists or {}
+        self.genres = genres or {}  # artist id → Spotify genres
         self.calls = []
 
     def add(self, *tracks):
@@ -48,9 +49,14 @@ class FakeSpotify:
 
     def artist(self, artist_id):
         self.calls.append(('artist', artist_id))
-        if artist_id not in self.artists:
+        if artist_id not in self.artist_names:
             raise SpotifyException(404, -1, 'no such artist')
-        return {'id': artist_id, 'name': self.artists[artist_id]}
+        return {'id': artist_id, 'name': self.artist_names[artist_id]}
+
+    def artists(self, artist_ids):
+        self.calls.append(('artists', list(artist_ids)))
+        return {'artists': [{'id': artist_id, 'name': self.artist_names.get(artist_id, artist_id), 'genres': self.genres.get(artist_id, [])}
+                            for artist_id in artist_ids]}
 
     def artist_top_tracks(self, artist_id, country=None):
         self.calls.append(('top', artist_id))
@@ -60,8 +66,10 @@ class FakeSpotify:
         self.calls.append(('album', album_id))
         return {'items': [{'id': track_id} for track_id in self.albums.get(album_id, [])]}
 
-    def search(self, q, limit=10, type='track', market=None):
-        self.calls.append(('search', q, type))
+    def search(self, q, limit=10, type='track', market=None, offset=0):
+        self.calls.append(('search_page2', q, type) if offset else ('search', q, type))
+        if offset:
+            return {f'{type}s': {'items': self.search_results.get((q, type, offset), [])}}
         return {f'{type}s': {'items': self.search_results.get((q, type), self.search_results.get(q, []))}}
 
     def called(self, kind):
