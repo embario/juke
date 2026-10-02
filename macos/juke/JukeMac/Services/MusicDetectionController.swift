@@ -314,6 +314,10 @@ final class MusicDetectionController {
         }
     }
 
+    /// The song last started from Memories, so background recognition does
+    /// not count replaying a memory as listening elsewhere.
+    @ObservationIgnored private(set) var lastMemoryPlayback: MemoryPlaybackMark?
+
     /// Plays a deliberately saved song; no catalog search or inferred match is performed.
     func playMemorySong(
         provider: String,
@@ -327,6 +331,7 @@ final class MusicDetectionController {
         cancelMemorySegment()
         guard !isPlaybackBusy else { return }
         errorMessage = nil
+        lastMemoryPlayback = MemoryPlaybackMark(providerID: providerID, title: title, artist: artist, startedAt: .now)
         let operationID = UUID()
         memoryPlaybackID = operationID
         isPlaybackBusy = true

@@ -50,6 +50,14 @@ final class AppModel {
     let api: JukeAPI
     /// Radio stations, the tuned station and the continuous-play loop.
     let radio: RadioController
+    /// Turns songs played elsewhere into `recognized` taste events while
+    /// Settings > Listening allows it (S5). Radio sets `isRadioPlaying`.
+    let backgroundRecognition: BackgroundRecognizer
+    /// Artwork a section wants the theme to follow instead of the playing
+    /// track (Memories: the current memory's song). `nil` follows the track.
+    var artworkOverride: URL? {
+        didSet { if oldValue != artworkOverride { syncArtwork() } }
+    }
 
     private let context: ModelContext
     private let auth = JukeAuthenticationService()
@@ -71,6 +79,12 @@ final class AppModel {
         #else
         isUITesting = false
         #endif
+        backgroundRecognition = .live(
+            api: api,
+            settings: settings,
+            token: { [accessToken] in accessToken.get() },
+            allowed: { [isUITesting] in !isUITesting }
+        )
         context = ModelContext(container)
         let isRadioFixture = arguments.contains("--uitesting")
         let radioPreferences: RadioPreferences
@@ -139,12 +153,20 @@ final class AppModel {
             Task { await restoreSession() }
         }
         settings.onBackendURLChange = { [weak self] _ in self?.backendChanged() }
-        radio.onTrackChange = { [weak self] _ in self?.syncArtwork() }
+        radio.onTrackChange = { [weak self] track in
+            self?.syncArtwork()
+            self?.backgroundRecognition.noteRadioTrack(track?.spotifyId)
+        }
+        // Radio's own songs and memory replays are never "recognized" listening.
+        backgroundRecognition.isRadioPlaying = { [weak radio] in (radio?.isOnAir ?? false) && (radio?.isPlaying ?? false) }
+        backgroundRecognition.isRadioTrack = { [weak radio] id in radio?.track?.spotifyId == id || radio?.queuedTrack?.spotifyId == id }
+        backgroundRecognition.memoryPlayback = { [weak detection] in detection?.lastMemoryPlayback }
         // One Spotify poller while radio is on the air: radio's snapshots feed the recognition helper.
         detection.suspendsSpotifyPolling = { [weak radio] in radio?.isOnAir ?? false }
         radio.onSnapshot = { [weak detection] snapshot in
             if let state = snapshot.raw { detection?.apply(state) }
         }
+        backgroundRecognition.follow(detection)
     }
 
     /// A token belongs to the server that issued it, so changing the backend
@@ -187,6 +209,7 @@ final class AppModel {
             loadMessages()
             await refreshOpeningQuestion()
             await detection.start(token: session?.accessToken)
+            backgroundRecognition.reevaluate()
         } catch { banner = error.localizedDescription }
     }
 
@@ -201,6 +224,7 @@ final class AppModel {
         replyTask?.cancel()
         replyTask = nil
         detection.revokeAccess()
+        backgroundRecognition.reset()
         session = nil
         memories.reset()
         messages = []
@@ -276,7 +300,7 @@ final class AppModel {
 
     /// Points the theme at the current track's artwork.
     func syncArtwork() {
-        let url = radio.isOnAir || radio.isPutAway ? radio.track?.artworkURL : detection.track?.artworkURL
+        let url = artworkOverride ?? (radio.isOnAir || radio.isPutAway ? radio.track?.artworkURL : detection.track?.artworkURL)
         artwork.update(artworkURL: url, enabled: settings.artworkTintEnabled)
     }
 
@@ -287,6 +311,7 @@ final class AppModel {
                 await synchronizeEncryptedHistory()
                 loadMessages()
                 await detection.start(token: session?.accessToken)
+                backgroundRecognition.reevaluate()
                 await refreshOpeningQuestion()
             }
         } catch { banner = error.localizedDescription }

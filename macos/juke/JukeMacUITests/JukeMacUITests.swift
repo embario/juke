@@ -73,6 +73,8 @@ final class JukeMacUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Why does this recording feel so spacious?"].waitForExistence(timeout: 2))
         XCTAssertTrue(element("chat.typingIndicator").waitForExistence(timeout: 2))
+        XCTAssertTrue(element("chat.nowPlaying").exists, "the current song shows small at the top of the chat card")
+        XCTAssertTrue(app.buttons["chat.textLarger"].exists)
         XCTAssertFalse(app.staticTexts["Juke is typing"].exists)
         XCTAssertTrue(app.staticTexts["That muted trumpet opens a spacious conversation. What part of the performance draws you back in?"].waitForExistence(timeout: 4))
         XCTAssertFalse(element("chat.typingIndicator").exists)
@@ -228,6 +230,12 @@ final class JukeMacUITests: XCTestCase {
         XCTAssertTrue(app.buttons["memory.openSaved"].waitForExistence(timeout: 4))
         app.buttons["memory.openSaved"].click()
         XCTAssertTrue(app.staticTexts["#Our song"].waitForExistence(timeout: 4))
+        // One memory per card: flip between the two with ‹ and ›.
+        XCTAssertTrue(app.staticTexts["1 of 2"].waitForExistence(timeout: 3))
+        app.buttons["memory.following"].click()
+        XCTAssertTrue(app.staticTexts["2 of 2"].waitForExistence(timeout: 3))
+        app.buttons["memory.previous"].click()
+        XCTAssertTrue(app.staticTexts["1 of 2"].waitForExistence(timeout: 3))
     }
 
     func testMemoryComposerRequiresContentBeforeReview() {

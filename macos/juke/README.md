@@ -65,6 +65,20 @@ background recognition, and the backend URL (default
   `VinylDisc`). Bricolage Grotesque is not bundled yet; the system rounded
   design stands in.
 - `JukeMac/Services/ArtworkPalette.swift`: dominant album-art colour feeding the theme.
+  A section can point it at its own artwork with `AppModel.artworkOverride`
+  (Memories follows the current memory's song).
+- `JukeMac/Services/BackgroundRecognition.swift`: background recognition. While
+  Settings > Listening is on and Juke radio is not playing, a song that stays on
+  for 30 s becomes `POST radio/events/ {event: "recognized", source:
+  "metadata"|"shazam"}` (same track at most once per 30 min, 40 per hour).
+  Spotify metadata carries the track ID; Apple Music and Shazam songs are
+  resolved through catalog search and skipped unless title and artist match.
+  It only reads `MusicDetectionController` and never starts audio capture.
+  Nothing is posted while radio is playing, for songs radio played or queued,
+  or for songs replayed from Memories. Shazam songs need two matches, the
+  last within 60 s. Settings > Listening also picks the source (Spotify &
+  Apple Music, This Mac's Audio, Around Me); only an explicit choice starts
+  capture, with macOS's usual permission prompt.
 - `JukeMac/Services/API`: `JukeServer`, `JukeAPI` (typed requests, token auth,
   error mapping), `RadioModels.swift` (`Radio.Track`, `Radio.Station`, ...),
   `JukeAPI+Radio.swift` (every `/api/v1/radio/` endpoint).
@@ -80,6 +94,8 @@ background recognition, and the backend URL (default
   Radio: `RadioScreen` (Tune in card, record card, New Station route),
   `RadioHero` (sleeve flip, vinyl gestures), `FMDialView`, `RadioPanels`
   (status line, station sheet, lyrics).
+  Memories is one card per memory (`MemoryBrowser` holds the ‹ n of N ›
+  state); Chat is one card with the song on top and the composer as a well.
 - `JukeMac/Views/Library`: `CrateView` (side-to-side coverflow or front-to-back
   bin, drag with momentum, scroll/swipe stepping, keyboard, VoiceOver adjustable),
   `CrateLayout` (the prototype's transform maths), `CrateBrowser` (kind, debounced
