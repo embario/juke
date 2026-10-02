@@ -148,6 +148,30 @@ Endpoints:
 
 ## Handoff
 
-- Completed: S0.
-- Next: S1, S2, S6 in parallel; then S3, S4, S5; then S7.
-- Blockers: none.
+- Completed (all merged into `integration/juke-app`, each with an independent review
+  round and fixes):
+  - S0 spec, design reference, CI on integration branches (incl. a macOS unit-test job).
+  - S6 #168 iOS Juke Vibe → Juke (`mobile/ios/jukeapp`, `com.juke.app`).
+  - S1 #169 backend `radio` app; #171 recommender-engine `statement_timeout`;
+    #173 pick quality (artist-led fill, genre-based feelings, `sources`).
+  - S2 #170 macOS foundation (`macos/juke`, `com.juke.mac`, settings, theme, shell,
+    typed API client, `JukeCoordinator`).
+  - S3 #172 Radio card + `RadioController` (continuous play via Spotify queue).
+  - S4 #174 Library crate + New Station.
+  - S5 #175 Memories/Chat restyle + background recognition (Settings › Listening).
+- Neptune: integration backend runs as an extra stack at `/srv/juke-extra/juke-app`
+  (container `juke-app-juke-app-backend-1`, `http://100.110.159.98:8200`), sharing the
+  juke-dev Postgres/Redis/engine; only `radio` migrations were applied there. Test user
+  `juke-app-e2e` exists for API checks. HTTPS on the tailnet needs one manual
+  `sudo tailscale serve --bg --https=8443 http://100.110.159.98:8200`.
+- Known gaps / follow-ups:
+  - Spotify's queue cannot be cleared; a pick queued before a station switch is skipped
+    past when it starts (a brief blip is possible).
+  - Lyrics show a "coming soon" sheet until a licensed provider is chosen.
+  - Co-occurrence coverage varies by seed; variety then comes from seed-artist top tracks.
+  - Local `xcodebuild test` was wedged on the dev Mac (stuck testmanagerd); GitHub's
+    `macos_tests_juke` job is the test bar. UI automation needs a one-time local approval.
+  - Bricolage Grotesque is not bundled (system rounded font stands in).
+- Next: S7 — end-to-end pass with a Spotify-linked account against the extra stack,
+  then the final PR from `integration/juke-app` to `master` (left open for the owner).
+- Blockers: none in code; see the manual steps above.
