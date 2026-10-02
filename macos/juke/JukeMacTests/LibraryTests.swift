@@ -193,6 +193,73 @@ final class CrateBrowserTests: XCTestCase {
         XCTAssertEqual(browser.focusedItem?.spotifyId, "found")
     }
 
+    func testSwitchingKindCancelsAPendingSearch() async {
+        let source = FakeCrateSource()
+        let browser = CrateBrowser(source: source, debounce: .milliseconds(80))
+        browser.setQuery("miles")
+        await browser.select(kind: .album)
+        await browser.settle()
+        XCTAssertEqual(source.calls, [.init(kind: .album, query: nil)])
+        XCTAssertEqual(browser.items.first?.kind, .album)
+    }
+
+    /// Drives focus the way `LibraryScreen` does: `.task(id: libraryFocus)`
+    /// running `appear(coordinator:)`. The focus must stay set while the
+    /// reveal is in flight (clearing it would cancel the task) and be cleared
+    /// once the record is in front.
+    func testFocusFromTheSleeveSurvivesTheTaskThatHandlesIt() async throws {
+        let coordinator = JukeCoordinator()
+        let source = FakeCrateSource()
+        source.delay = .milliseconds(150)
+        let browser = CrateBrowser(source: source, debounce: .zero)
+        coordinator.focusInLibrary(.init(kind: .album, spotifyId: "album-3", title: "Album 3"))
+
+        let task = Task { await browser.appear(coordinator: coordinator) }
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertNotNil(coordinator.libraryFocus, "Still pending while the crate loads")
+        await task.value
+
+        XCTAssertNil(coordinator.libraryFocus)
+        XCTAssertEqual(browser.phase, .loaded)
+        XCTAssertEqual(browser.kind, .album)
+        XCTAssertEqual(browser.focusedItem?.spotifyId, "album-3")
+    }
+
+    func testCancelledRevealKeepsTheRequestAndLoadsAgainNextTime() async throws {
+        let coordinator = JukeCoordinator()
+        let source = FakeCrateSource()
+        source.delay = .milliseconds(300)
+        let browser = CrateBrowser(source: source, debounce: .zero)
+        coordinator.focusInLibrary(.init(kind: .album, spotifyId: "album-1", title: "Album 1"))
+
+        let first = Task { await browser.appear(coordinator: coordinator) }
+        try await Task.sleep(for: .milliseconds(40))
+        first.cancel()
+        await first.value
+        XCTAssertEqual(browser.phase, .idle, "A cancelled load is not left loading")
+        XCTAssertNotNil(coordinator.libraryFocus, "The request waits for the next appearance")
+
+        source.delay = nil
+        await browser.appear(coordinator: coordinator)
+        XCTAssertNil(coordinator.libraryFocus)
+        XCTAssertEqual(browser.focusedItem?.spotifyId, "album-1")
+
+        // Plain appearance after a cancelled load reloads instead of spinning forever.
+        let other = CrateBrowser(source: FakeCrateSource(), debounce: .zero)
+        let slow = FakeCrateSource(); slow.delay = .milliseconds(300)
+        let cancelled = CrateBrowser(source: slow, debounce: .zero)
+        let load = Task { await cancelled.appear(coordinator: JukeCoordinator()) }
+        try await Task.sleep(for: .milliseconds(40))
+        load.cancel()
+        await load.value
+        XCTAssertEqual(cancelled.phase, .idle)
+        slow.delay = nil
+        await cancelled.appear(coordinator: JukeCoordinator())
+        XCTAssertEqual(cancelled.phase, .loaded)
+        await other.appear(coordinator: JukeCoordinator())
+        XCTAssertEqual(other.phase, .loaded)
+    }
+
     func testCoordinatorFocusIsConsumedOnce() async {
         let coordinator = JukeCoordinator()
         let source = FakeCrateSource()
@@ -229,6 +296,37 @@ final class NewStationFlowTests: XCTestCase {
         XCTAssertEqual(flow.seeds.map(\.spotifyId), ["s2", "s4"])
         XCTAssertFalse(flow.isPulled(seed(3)))
         XCTAssertEqual(flow.pullLabel(for: nil), "Pull this record")
+        XCTAssertEqual(flow.pullAccessibilityLabel(for: seed(2)), "Pulled")
+        XCTAssertEqual(flow.pullActionName(for: seed(2)), "Put back this record")
+        XCTAssertEqual(flow.pullActionName(for: seed(9)), "Pull this record")
+    }
+
+    func testFeelingsStopAtTheServerLimit() {
+        let flow = NewStationFlow(draft: .init(feelings: (1...15).map { "word \($0)" }))
+        XCTAssertEqual(flow.feelings.count, NewStationFlow.maxFeelings)
+        XCTAssertTrue(flow.feelingsFull)
+        flow.toggleFeeling("🌙")
+        XCTAssertFalse(flow.isChosen("🌙"))
+        flow.wordsDraft = "one more"
+        XCTAssertNil(flow.addWords())
+        flow.toggleFeeling("word 1")
+        XCTAssertFalse(flow.feelingsFull)
+        flow.toggleFeeling("🌙")
+        XCTAssertTrue(flow.isChosen("🌙"))
+        XCTAssertEqual(flow.createRequest.feelings.count, 12)
+    }
+
+    func testPhrasesAreLimitedByCodePointsWithoutSplittingCharacters() {
+        let base = String(repeating: "a", count: 39)
+        XCTAssertEqual(NewStationFlow.normalizedFeeling(base + "☀️"), base, "☀️ is two code points; it does not fit")
+        XCTAssertEqual(NewStationFlow.normalizedFeeling(base + "b"), base + "b")
+        let family = "👨‍👩‍👧"   // five code points, one character
+        let limited = NewStationFlow.limitedPhrase(String(repeating: family, count: 9))
+        XCTAssertEqual(limited, String(repeating: family, count: 8))
+        XCTAssertLessThanOrEqual(limited.unicodeScalars.count, 40)
+        XCTAssertEqual(NewStationFlow.normalizedFeeling("🔥🔥"), "🔥🔥", "Repeated emoji are kept")
+        XCTAssertEqual(NewStationPick.feeling("🔥🔥").text, "🔥🔥")
+        XCTAssertEqual(NewStationPick.feeling("rainy 🌧️").text, "“rainy 🌧️”", "Phrases with emoji keep their quotes")
     }
 
     func testSameIdDifferentKindAreDifferentRecords() {
@@ -380,6 +478,8 @@ private final class FakeCrateSource: CrateSource, @unchecked Sendable {
     var failure: Error?
     var count = 5
     var searchExtra: Radio.CrateItem?
+    /// Simulated latency; honours task cancellation like URLSession does.
+    var delay: Duration?
 
     var calls: [Call] { lock.withLock { recorded } }
 
@@ -389,6 +489,7 @@ private final class FakeCrateSource: CrateSource, @unchecked Sendable {
             return (self.failure, self.count, self.searchExtra)
         }
         if let failure { throw failure }
+        if let delay = lock.withLock({ self.delay }) { try await Task.sleep(for: delay) }
         var items = (0..<count).map { n in
             Radio.CrateItem(id: Radio.ID("\(kind.rawValue)-\(n)"), kind: kind, spotifyId: "\(kind.rawValue)-\(n)", title: "\(kind.rawValue.capitalized) \(n)", subtitle: nil, artworkUrl: nil, track: nil)
         }

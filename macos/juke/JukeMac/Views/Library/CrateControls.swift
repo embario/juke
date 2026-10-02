@@ -147,6 +147,7 @@ struct CratePanel: View {
     var pulledIDs: Set<String> = []
     var onActivateFront: ((Radio.CrateItem) -> Void)?
     var activateLabel: (Radio.CrateItem) -> String = { _ in "Pull this record" }
+    var onReturn: ((Radio.CrateItem) -> Void)?
     @Environment(JukeSettings.self) private var settings
     @Environment(\.jukeTheme) private var theme
 
@@ -157,7 +158,8 @@ struct CratePanel: View {
             mode: CrateMode(settings.crateFlipDirection),
             pulledIDs: pulledIDs,
             onActivateFront: onActivateFront,
-            activateLabel: activateLabel
+            activateLabel: activateLabel,
+            onReturn: onReturn
         )
         .overlay { stateOverlay }
     }
@@ -165,7 +167,7 @@ struct CratePanel: View {
     @ViewBuilder
     private var stateOverlay: some View {
         switch browser.phase {
-        case .loading where browser.items.isEmpty, .idle:
+        case .loading where browser.items.isEmpty, .idle where browser.items.isEmpty:
             ProgressView().controlSize(.small).accessibilityLabel("Loading the crate")
         case .failed(let message):
             VStack(spacing: 10) {
@@ -216,12 +218,13 @@ struct CrateFocusCaption: View {
 }
 
 extension View {
-    /// Tints the theme towards the record in front, cross-fading, and hands
-    /// the colour back to the playing track when the crate goes away.
+    /// Tints the theme towards the record in front, cross-fading; with no
+    /// record or no artwork it falls back to neutral rather than keeping the
+    /// previous record's colour. Hands the colour back to the playing track
+    /// when the crate goes away.
     func crateArtworkTint(_ item: Radio.CrateItem?, model: AppModel) -> some View {
         onChange(of: item?.artworkUrl, initial: true) { _, _ in
-            guard let url = item?.artworkURL else { return }
-            model.artwork.update(artworkURL: url, enabled: model.settings.artworkTintEnabled)
+            model.artwork.update(artworkURL: item?.artworkURL, enabled: model.settings.artworkTintEnabled)
         }
         .onDisappear { model.syncArtwork() }
     }

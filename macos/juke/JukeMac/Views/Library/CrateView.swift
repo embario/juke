@@ -22,6 +22,9 @@ struct CrateView: View {
     var onActivateFront: ((Radio.CrateItem) -> Void)?
     /// VoiceOver name for `onActivateFront` ("Pull this record").
     var activateLabel: (Radio.CrateItem) -> String = { _ in "Pull this record" }
+    /// Return on the front record. Defaults to `onActivateFront`; the Library
+    /// uses it to start radio (a click there only focuses).
+    var onReturn: ((Radio.CrateItem) -> Void)?
 
     @Environment(\.jukeTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -41,8 +44,10 @@ struct CrateView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            ForEach(Array(CrateLayout.visibleIndices(focus: focus, count: items.count)), id: \.self) { index in
-                sleeve(at: index)
+            // Keyed by record, so a sleeve keeps its identity (and animates) when
+            // the list around it changes.
+            ForEach(CrateLayout.visibleIndices(focus: focus, count: items.count).map { VisibleSleeve(index: $0, id: items[$0].id) }) { visible in
+                sleeve(at: visible.index)
             }
         }
         .frame(maxWidth: .infinity, minHeight: CrateLayout.wellHeight, maxHeight: CrateLayout.wellHeight, alignment: .top)
@@ -54,11 +59,9 @@ struct CrateView: View {
         }
         .contentShape(Rectangle())
         .simultaneousGesture(drag)
-        .onContinuousHover { phase in
-            switch phase {
-            case .active: startWheel()
-            case .ended: wheelMonitor.stop()
-            }
+        .onHover { inside in
+            // Installed once on entering, removed on leaving.
+            if inside { startWheel() } else { wheelMonitor.stop() }
         }
         .onChange(of: mode) { _, _ in if wheelMonitor.isActive { startWheel() } }
         .onChange(of: items.count) { _, _ in if wheelMonitor.isActive { startWheel() } }
@@ -71,8 +74,8 @@ struct CrateView: View {
             case .leftArrow, .upArrow: move(by: -1)
             case .rightArrow, .downArrow: move(by: 1)
             default:
-                guard let onActivateFront, items.indices.contains(focus) else { return .ignored }
-                onActivateFront(items[focus])
+                guard let action = onReturn ?? onActivateFront, items.indices.contains(focus) else { return .ignored }
+                action(items[focus])
             }
             return .handled
         }
@@ -120,11 +123,11 @@ struct CrateView: View {
             .clipShape(RoundedRectangle(cornerRadius: JukeRadius.sleeve, style: .continuous))
             .shadow(color: .black.opacity(0.28), radius: 18, y: 18)
             .scaleEffect(t.scale, anchor: anchor)
-            // SwiftUI's rotation sense is the mirror of CSS `rotateY`/`rotateX`, so the
-            // prototype's angles are negated (side records: inner edge back; the
-            // front record in the bin tips towards you).
-            .rotation3DEffect(.degrees(-t.rotationY), axis: (x: 0, y: 1, z: 0), anchor: anchor, perspective: 0.3)
-            .rotation3DEffect(.degrees(-t.rotationX), axis: (x: 1, y: 0, z: 0), anchor: anchor, perspective: 0.3)
+            // SwiftUI's rotation sense matches CSS `rotateY`/`rotateX` (checked with
+            // renders: +40° Y recedes the right edge, -40° X brings the top forward),
+            // so the prototype's angles are used as they are.
+            .rotation3DEffect(.degrees(t.rotationY), axis: (x: 0, y: 1, z: 0), anchor: anchor, perspective: 0.3)
+            .rotation3DEffect(.degrees(t.rotationX), axis: (x: 1, y: 0, z: 0), anchor: anchor, perspective: 0.3)
             .offset(x: t.x, y: mode.sleeveTop + t.y)
             .opacity(t.opacity)
             .zIndex(t.zIndex)
@@ -179,13 +182,21 @@ struct CrateView: View {
     private func startWheel() {
         let mode = mode
         wheelMonitor.start { event in
+            // Trackpad momentum would keep flipping long after the fingers lift;
+            // swallow it so the crate stops where the swipe ended.
+            if !event.momentumPhase.isEmpty { return true }
             let delta = CrateWheelAccumulator.axisDelta(deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY, mode: mode)
-            guard delta != 0 else { return true }
+            guard delta != 0 else { return false }
             let step = wheel.add(delta, precise: event.hasPreciseScrollingDeltas)
             if step != 0 { withAnimation(settle) { move(by: step) } }
             return true
         }
     }
+}
+
+private struct VisibleSleeve: Identifiable {
+    let index: Int
+    let id: Radio.ID
 }
 
 /// One record: the artwork, or a colour field with the title when there is none,

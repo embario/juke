@@ -60,6 +60,7 @@ final class CrateBrowser {
     /// Switches Songs / Artists / Albums. Clears the search, like the prototype.
     func select(kind newKind: Radio.SeedKind) async {
         guard newKind != kind || !trimmedQuery.isEmpty else { return }
+        searchTask?.cancel()
         kind = newKind
         query = ""
         await reload()
@@ -102,7 +103,9 @@ final class CrateBrowser {
             focus = query.isEmpty ? min(2, max(0, loaded.count - 1)) : 0
             phase = .loaded
         } catch is CancellationError {
-            if ticket == generation { phase = items.isEmpty ? .idle : .loaded }
+            // Whatever is on screen may belong to another kind or query now; go
+            // back to idle so the next `loadIfNeeded()` loads again.
+            if ticket == generation { phase = .idle }
         } catch {
             guard ticket == generation else { return }
             items = []
@@ -129,6 +132,7 @@ final class CrateBrowser {
             if !trimmedQuery.isEmpty || phase != .loaded || items.first?.kind != kind {
                 query = ""
                 await reload()
+                guard !Task.isCancelled else { return }
             }
             if let index = index(of: spotifyId) {
                 focus = index
@@ -137,6 +141,7 @@ final class CrateBrowser {
         }
         query = title
         await reload()
+        guard !Task.isCancelled else { return }
         let byID = hasID ? index(of: spotifyId) : nil
         focus = byID ?? items.firstIndex { $0.title.localizedCaseInsensitiveCompare(title) == .orderedSame } ?? 0
     }
@@ -146,14 +151,25 @@ final class CrateBrowser {
     }
 
     /// Consumes `coordinator.libraryFocus` (set by the radio sleeve's "Open the
-    /// album/artist"), clearing it so it only applies once. Returns whether
-    /// there was one.
+    /// album/artist"). It is cleared only once the record is in front: the view
+    /// runs this from `.task(id: libraryFocus)`, so clearing it earlier would
+    /// cancel the very task doing the work. If the task is cancelled (the
+    /// screen went away, or a newer focus arrived), the request stays for the
+    /// next run. Returns whether there was one.
     @discardableResult
     func consumeFocus(from coordinator: JukeCoordinator) async -> Bool {
         guard let target = coordinator.libraryFocus else { return false }
-        coordinator.libraryFocus = nil
         await reveal(kind: target.kind, spotifyId: target.spotifyId, title: target.title)
+        guard !Task.isCancelled else { return true }
+        if coordinator.libraryFocus == target { coordinator.libraryFocus = nil }
         return true
+    }
+
+    /// What the Library runs whenever it appears or `libraryFocus` changes:
+    /// a pending focus wins, otherwise the personal crate loads once.
+    func appear(coordinator: JukeCoordinator) async {
+        if await consumeFocus(from: coordinator) { return }
+        await loadIfNeeded()
     }
 
     private func index(of spotifyId: String) -> Int? {

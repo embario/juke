@@ -29,6 +29,20 @@ struct CrateServices: Sendable {
     }
 }
 
+/// Builds `CrateServices` once per screen (held in `@State`), so a body pass
+/// never rebuilds it.
+@MainActor
+final class CrateServicesCache {
+    private var services: CrateServices?
+
+    func services(api: JukeAPI) -> CrateServices {
+        if let services { return services }
+        let made = CrateServices.make(api: api)
+        services = made
+        return made
+    }
+}
+
 /// Creates a station and hands it to the radio: it starts after the current
 /// song, so whatever is playing is never cut off.
 @MainActor

@@ -8,9 +8,10 @@ import SwiftUI
 /// (searching by its title when it is not in the personal crate) and clears it.
 struct LibraryScreen: View {
     @Environment(AppModel.self) private var model
+    @State private var cache = CrateServicesCache()
 
     var body: some View {
-        LibraryContent(services: CrateServices.make(api: model.api))
+        LibraryContent(services: cache.services(api: model.api))
     }
 }
 
@@ -44,7 +45,8 @@ private struct LibraryContent: View {
                         .foregroundStyle(theme.sub.color)
                 }
                 CrateToolbar(browser: browser)
-                CratePanel(browser: browser)
+                // Return on the front record starts radio from it.
+                CratePanel(browser: browser, onReturn: { _ in Task { await startRadio() } })
                 focusRow
             }
         }
@@ -53,8 +55,7 @@ private struct LibraryContent: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .crateArtworkTint(browser.focusedItem, model: model)
         .task(id: model.coordinator.libraryFocus) {
-            if await browser.consumeFocus(from: model.coordinator) { return }
-            await browser.loadIfNeeded()
+            await browser.appear(coordinator: model.coordinator)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("library.screen")

@@ -8,6 +8,7 @@ import SwiftUI
 /// asks the radio to play it after the current song.
 struct NewStationScreen: View {
     @Environment(AppModel.self) private var model
+    @State private var cache = CrateServicesCache()
     let draft: JukeCoordinator.NewStationDraft
 
     init(draft: JukeCoordinator.NewStationDraft) {
@@ -15,7 +16,7 @@ struct NewStationScreen: View {
     }
 
     var body: some View {
-        NewStationContent(draft: draft, services: CrateServices.make(api: model.api))
+        NewStationContent(draft: draft, services: cache.services(api: model.api))
     }
 }
 
@@ -138,7 +139,7 @@ private struct NewStationContent: View {
                 browser: browser,
                 pulledIDs: Set(flow.seeds.map(\.id)),
                 onActivateFront: { item in withAnimation(gentle) { flow.togglePull(item.seed) } },
-                activateLabel: { flow.pullLabel(for: $0.seed) }
+                activateLabel: { flow.pullActionName(for: $0.seed) }
             )
             HStack(spacing: 14) {
                 Spacer(minLength: 0)
@@ -155,6 +156,7 @@ private struct NewStationContent: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(focusedSeed == nil)
+                .accessibilityLabel(flow.pullAccessibilityLabel(for: focusedSeed))
                 .accessibilityAddTraits(focusedIsPulled ? .isSelected : [])
                 .accessibilityIdentifier("newStation.pull")
                 Spacer(minLength: 0)
@@ -190,13 +192,14 @@ private struct NewStationContent: View {
                     .overlay(Capsule().strokeBorder(theme.line, lineWidth: 1))
                     .onSubmit { withAnimation(gentle) { _ = flow.addWords() } }
                     .onChange(of: flow.wordsDraft) { _, text in
-                        if text.count > NewStationFlow.maxPhraseLength { flow.wordsDraft = String(text.prefix(NewStationFlow.maxPhraseLength)) }
+                        let limited = NewStationFlow.limitedPhrase(text)
+                        if limited != text { flow.wordsDraft = limited }
                     }
                     .accessibilityLabel("Or in your words")
                     .accessibilityIdentifier("newStation.words")
                 Button("Add") { withAnimation(gentle) { _ = flow.addWords() } }
                     .buttonStyle(JukeWellButtonStyle())
-                    .disabled(NewStationFlow.normalizedFeeling(flow.wordsDraft) == nil)
+                    .disabled(NewStationFlow.normalizedFeeling(flow.wordsDraft) == nil || flow.feelingsFull)
                     .accessibilityIdentifier("newStation.addWords")
             }
             previewTiles
@@ -210,7 +213,7 @@ private struct NewStationContent: View {
 
     private func feelingToken(_ feeling: String) -> some View {
         let chosen = flow.isChosen(feeling)
-        let emoji = NewStationFlow.isEmoji(feeling)
+        let emoji = NewStationFlow.isEmojiOnly(feeling)
         let name = NewStationFlow.feelingNames[feeling] ?? feeling
         return Button {
             withAnimation(reduceMotion ? nil : JukeMotion.easeOutSoft(0.3)) { flow.toggleFeeling(feeling) }
@@ -225,6 +228,8 @@ private struct NewStationContent: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .disabled(!chosen && flow.feelingsFull)
+        .help(!chosen && flow.feelingsFull ? "Up to \(NewStationFlow.maxFeelings) feelings. Remove one to add another." : "")
         .accessibilityLabel(chosen ? "Remove \(name)" : "Feels \(name)")
         .accessibilityAddTraits(chosen ? .isSelected : [])
         .accessibilityIdentifier("newStation.feeling.\(feeling)")

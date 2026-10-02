@@ -17,7 +17,7 @@ enum NewStationPick: Identifiable, Hashable, Sendable {
     var text: String {
         switch self {
         case .record(let seed): seed.title
-        case .feeling(let feeling): NewStationFlow.isEmoji(feeling) ? feeling : "“\(feeling)”"
+        case .feeling(let feeling): NewStationFlow.isEmojiOnly(feeling) ? feeling : "“\(feeling)”"
         }
     }
 }
@@ -31,8 +31,10 @@ final class NewStationFlow {
     typealias Step = JukeCoordinator.NewStationDraft.Start
 
     static let maxRecords = StationStarter.maxRecords
-    /// Same limit as reactions.
+    /// Same limit as reactions; the server counts Unicode code points.
     nonisolated static let maxPhraseLength = Radio.ReactionsRequest.maxPhraseLength
+    /// The server's `MAX_FEELINGS` (`backend/radio/serializers.py`).
+    nonisolated static let maxFeelings = 12
     /// Emoji tokens offered on the Feelings step (the prototype's first 16).
     nonisolated static let vocabulary = ["😌", "🔥", "🌙", "☀️", "💃", "🥹", "🧘", "🚗", "🌧️", "✨", "☕", "🤘", "😭", "🥰", "😎", "🤯"]
     /// VoiceOver names for the emoji.
@@ -56,7 +58,7 @@ final class NewStationFlow {
         path = draft.start
         step = draft.start
         seeds = Array(Self.unique(draft.seeds, by: { $0.id }).prefix(Self.maxRecords))
-        feelings = Self.unique(draft.feelings.compactMap(Self.normalizedFeeling), by: { $0 })
+        feelings = Array(Self.unique(draft.feelings.compactMap(Self.normalizedFeeling), by: { $0 }).prefix(Self.maxFeelings))
         customFeelings = feelings.filter { !Self.vocabulary.contains($0) }
     }
 
@@ -74,6 +76,17 @@ final class NewStationFlow {
         if seeds.count > Self.maxRecords { seeds.removeFirst(seeds.count - Self.maxRecords) }
     }
 
+    /// The pull button's VoiceOver label (no check glyph).
+    func pullAccessibilityLabel(for seed: Radio.Seed?) -> String {
+        guard let seed, isPulled(seed) else { return pullLabel(for: seed) }
+        return "Pulled"
+    }
+
+    /// The crate's VoiceOver action for the front record.
+    func pullActionName(for seed: Radio.Seed) -> String {
+        isPulled(seed) ? "Put back this record" : pullLabel(for: seed)
+    }
+
     func pullLabel(for seed: Radio.Seed?) -> String {
         guard let seed else { return "Pull this record" }
         if isPulled(seed) { return "Pulled ✓" }
@@ -87,10 +100,13 @@ final class NewStationFlow {
 
     func isChosen(_ feeling: String) -> Bool { feelings.contains(feeling) }
 
+    /// At the server's limit: unchosen tokens and "Add" are disabled.
+    var feelingsFull: Bool { feelings.count >= Self.maxFeelings }
+
     func toggleFeeling(_ feeling: String) {
         if let index = feelings.firstIndex(of: feeling) {
             feelings.remove(at: index)
-        } else {
+        } else if !feelingsFull {
             feelings.append(feeling)
         }
     }
@@ -100,7 +116,10 @@ final class NewStationFlow {
     @discardableResult
     func addWords() -> String? {
         guard let feeling = Self.normalizedFeeling(wordsDraft) else { return nil }
-        if !feelings.contains(feeling) { feelings.append(feeling) }
+        if !feelings.contains(feeling) {
+            guard !feelingsFull else { return nil }
+            feelings.append(feeling)
+        }
         if !Self.vocabulary.contains(feeling), !customFeelings.contains(feeling) { customFeelings.append(feeling) }
         wordsDraft = ""
         return feeling
@@ -179,13 +198,33 @@ final class NewStationFlow {
 
     // MARK: Helpers
 
-    /// Trims, collapses spaces and limits to 40 characters. A lone emoji (or
-    /// one followed by up to a couple of characters) becomes that emoji.
+    /// Trims, collapses spaces and limits to 40 code points (the server's
+    /// measure) without splitting a character. Emoji and phrases are kept as
+    /// typed, so "🔥🔥" stays "🔥🔥".
     nonisolated static func normalizedFeeling(_ text: String) -> String? {
         let collapsed = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !collapsed.isEmpty else { return nil }
-        if let first = collapsed.first, isEmoji(String(first)), collapsed.count <= 2 { return String(first) }
-        return String(collapsed.prefix(maxPhraseLength))
+        let limited = limitedPhrase(collapsed).trimmingCharacters(in: .whitespaces)
+        return limited.isEmpty ? nil : limited
+    }
+
+    /// The longest prefix of whole characters within `maxPhraseLength` code points.
+    nonisolated static func limitedPhrase(_ text: String) -> String {
+        var result = ""
+        var scalars = 0
+        for character in text {
+            let count = character.unicodeScalars.count
+            guard scalars + count <= maxPhraseLength else { break }
+            result.append(character)
+            scalars += count
+        }
+        return result
+    }
+
+    /// Only emoji (no letters or spaces): shown bare; anything else is a
+    /// phrase and shown in quotes.
+    nonisolated static func isEmojiOnly(_ text: String) -> Bool {
+        !text.isEmpty && text.allSatisfy { isEmoji(String($0)) }
     }
 
     nonisolated static func isEmoji(_ text: String) -> Bool {
