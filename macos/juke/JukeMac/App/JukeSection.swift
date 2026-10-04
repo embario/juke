@@ -1,4 +1,4 @@
-/// The four top-level sections in the header's segmented nav.
+/// The four top-level sections in the Mac sidebar.
 ///
 /// Each section's screen lives in its own folder under `Views/`
 /// (`Views/Radio/RadioScreen.swift`, `Views/Library/LibraryScreen.swift`,
@@ -14,6 +14,15 @@ enum JukeSection: String, CaseIterable, Identifiable, Sendable {
         case .library: "Library"
         case .memories: "Memories"
         case .chat: "Chat"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .radio: "dot.radiowaves.left.and.right"
+        case .library: "square.stack"
+        case .memories: "photo.on.rectangle.angled"
+        case .chat: "bubble.left.and.bubble.right"
         }
     }
 

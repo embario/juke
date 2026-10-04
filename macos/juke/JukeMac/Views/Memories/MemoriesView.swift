@@ -73,7 +73,7 @@ struct MemoriesView: View {
                 JukeCard(padding: EdgeInsets(top: 22, leading: 32, bottom: 26, trailing: 32)) {
                     browserCard
                 }
-                .frame(width: JukeMetrics.memoriesCardWidth)
+                .frame(maxWidth: JukeMetrics.memoriesCardWidth)
                 .frame(maxHeight: 620)
                 .transition(.opacity)
             }

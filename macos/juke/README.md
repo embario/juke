@@ -30,7 +30,7 @@ Accessibility access; Juke does not bypass those protections.
 | | |
 | --- | --- |
 | App / tests / UI tests | `com.juke.mac`, `com.juke.mac.tests`, `com.juke.mac.uitests` |
-| Sign-in client | `juke-app-mac`, callback `juke-app://auth/callback` |
+| Sign-in client | `juke-vibe-mac`, callback `juke-vibe://auth/callback` via ASWebAuthenticationSession (deployed Neptune compatibility) |
 | Session token (Keychain) | service `com.juke.mac.authentication` |
 | Keychain group | `com.juke.vibe.shared` (shared with Juke for iPhone) |
 | Chat key (iCloud Keychain) | service `com.juke.vibe.shared.chat-vault`, AAD `juke-vibe-chat:v1:<id>` |
@@ -82,7 +82,8 @@ background recognition, and the backend URL (default
 - `JukeMac/Services/API`: `JukeServer`, `JukeAPI` (typed requests, token auth,
   error mapping), `RadioModels.swift` (`Radio.Track`, `Radio.Station`, ...),
   `JukeAPI+Radio.swift` (every `/api/v1/radio/` endpoint).
-- `JukeMac/Views/Shell`: root window, header, `SectionStage` transitions, mini player.
+- `JukeMac/Views/Shell`: root window, Mac sidebar with section navigation,
+  appearance and Settings, `SectionStage` transitions, and mini player in the detail pane.
 - `JukeMac/Services/Radio`: `RadioController` (stations, tuned/pending station,
   Spotify state polling, queues the next pick 20 s before a song ends, listening
   events, first-run and resume-on-launch flags in `RadioPreferences`),

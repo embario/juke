@@ -172,6 +172,17 @@ Endpoints:
   - Local `xcodebuild test` was wedged on the dev Mac (stuck testmanagerd); GitHub's
     `macos_tests_juke` job is the test bar. UI automation needs a one-time local approval.
   - Bricolage Grotesque is not bundled (system rounded font stands in).
+- Folded in from the Codex worktree (`codex/juke-radio-listening-room`, PR
+  "Bring in Codex sign-in fixes and the Mac sidebar"): sidebar navigation (as the
+  owner originally asked), `ASWebAuthenticationSession` sign-in, a Swift 6 actor fix
+  for the sign-in callback, and the web StrictMode sign-in fix. Sign-in deliberately
+  uses the legacy wire client `juke-vibe-mac` / `juke-vibe://auth/callback` because
+  neptune's deployed web still only knows that contract; switch to `juke-app-mac`
+  once neptune runs this branch. Neptune's `/srv/juke-dev/web/.../LoginRoute.tsx` was
+  hand-patched with the same web fix (original at
+  `/tmp/juke-login-route-20261001.before.tsx` on neptune); a deploy from master makes
+  that patch redundant. Wide cards (Library, New Station, Memories) now shrink to fit
+  beside the sidebar at the 1000 pt minimum window width.
 - Next: S7 — end-to-end pass with a Spotify-linked account against the extra stack,
   then the final PR from `integration/juke-app` to `master` (left open for the owner).
 - Blockers: none in code; see the manual steps above.

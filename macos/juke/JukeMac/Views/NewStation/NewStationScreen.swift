@@ -55,7 +55,7 @@ private struct NewStationContent: View {
                 footer
             }
         }
-        .frame(width: cardWidth)
+        .frame(maxWidth: cardWidth)
         .animation(reduceMotion ? nil : JukeMotion.easeOutSoft(0.55), value: cardWidth)
         .animation(gentle, value: flow.step)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
