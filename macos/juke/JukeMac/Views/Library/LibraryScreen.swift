@@ -50,7 +50,7 @@ private struct LibraryContent: View {
                 focusRow
             }
         }
-        .frame(width: mode.cardWidth)
+        .frame(maxWidth: mode.cardWidth)
         .animation(reduceMotion ? nil : JukeMotion.easeOutSoft(0.55), value: mode)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .crateArtworkTint(browser.focusedItem, model: model)
