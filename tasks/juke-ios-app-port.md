@@ -134,3 +134,17 @@ on the integration branch.
   neptune's deployed web may not know the `juke-app-ios` client yet (same caveat as the Mac).
 - Not yet: touch interactions (vinyl, FM dial, crate gestures), theme tokens/artwork palette, Memories
   media, "play after this song" from the crate. Next slice: Radio/New Station touch.
+
+### Slice 3: touch interactions (branch `juke-app/ios-touch`, stacked on #183)
+
+- Vinyl (`VinylDisc`): outer ring drag seeks (14 s per turn, past the end skips, bubble preview), centre label
+  slides left to put the record away and right to bring it back; idle spin follows Reduce Motion; VoiceOver
+  adjustable action steps the seek. Uses the shared `VinylSeek`/`VinylLabelSlide` math.
+- FM dial (`FMDialView`): drag the band under the needle, settle on the nearest station or "+ New" (opens New
+  Station), tap a station to tune, haptic ticks. Shared `FMDial` math.
+- Sleeve: long-press menu: start radio from this song, open the album/artist (focuses the Library crate).
+- Crate (`CrateView`): shared `CrateLayout` (moved with `CrateFlipDirection`); drag to flip, tap the front record,
+  grid/crate toggle, flip direction in Settings (same `juke.settings.crateFlipDirection` key as the Mac).
+- Not done: hold-to-move a station on the dial, fling velocity on the vinyl, "play after this song" from the
+  crate, lyrics sheet. Gestures were built against the shared, unit-tested math and rendered on the iOS 27.0
+  simulator, but not driven by touch (no touch injection available here); a human pass on a device is wanted.
