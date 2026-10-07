@@ -51,6 +51,7 @@ private struct NowPlayingCard: View {
         ScrollView {
             VStack(spacing: 14) {
                 StationHeader()
+                if radio.isPutAway { PutAwayCard() }
                 SleeveAndRecord(track: radio.track)
                 VStack(spacing: 4) {
                     Text(radio.track?.title ?? "Nothing playing").font(.title2.bold()).multilineTextAlignment(.center).lineLimit(2)
@@ -72,20 +73,24 @@ private struct NowPlayingCard: View {
 
 private struct StationHeader: View {
     @Environment(VibeAppModel.self) private var model
+    @State private var showingStation = false
 
     var body: some View {
         let station = model.radio.currentStation
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(station?.name ?? "Radio").font(.headline)
-                if let station { Text("FM \(station.frequencyLabel)").font(.caption.monospaced()).foregroundStyle(.secondary) }
-            }
+            Button { showingStation = station != nil } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) { Text(station?.name ?? "Radio").font(.headline); if station != nil { Image(systemName: "chevron.right").font(.caption2) } }
+                    if let station { Text("FM \(station.frequencyLabel)").font(.caption.monospaced()).foregroundStyle(.secondary) }
+                }.foregroundStyle(.primary)
+            }.buttonStyle(.plain).accessibilityHint("Shows what this station is made of")
             Spacer()
             if let pending = model.radio.pendingStation, pending.id != station?.id {
                 Button("Switch to \(pending.name)") { Task { await model.radio.switchNow() } }
                     .buttonStyle(.bordered).controlSize(.small)
             }
         }
+        .sheet(isPresented: $showingStation) { if let id = station?.id { StationSheet(stationID: id) } }
     }
 }
 
@@ -156,6 +161,7 @@ private struct ProgressScrubber: View {
 
 private struct Transport: View {
     @Environment(VibeAppModel.self) private var model
+    @State private var lyricsSoon = false
 
     var body: some View {
         let radio = model.radio
@@ -163,6 +169,7 @@ private struct Transport: View {
             Menu {
                 Button("Save this moment", systemImage: "bookmark") { Task { await radio.saveMoment() } }
                 Button("Put the record away", systemImage: "tray.and.arrow.down") { Task { await radio.putAway() } }
+                Button("Lyrics", systemImage: "text.quote") { lyricsSoon = true }
             } label: { Image(systemName: "ellipsis.circle").font(.title2) }
             Button { Task { await radio.togglePlayPause() } } label: {
                 Image(systemName: radio.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 64))
@@ -170,9 +177,15 @@ private struct Transport: View {
             .accessibilityLabel(radio.isPlaying ? "Pause" : "Play")
             Button { Task { await radio.skip() } } label: { Image(systemName: "forward.fill").font(.title2) }
                 .accessibilityLabel("Next song")
+                .contextMenu {
+                    Button("Not on this station", systemImage: "minus.circle") { Task { await radio.keepOut(.notOnStation) } }
+                    Button("Less of this artist", systemImage: "person.crop.circle.badge.minus") { Task { await radio.keepOut(.lessArtist) } }
+                    Button("Never this artist", systemImage: "nosign") { Task { await radio.keepOut(.neverArtist) } }
+                }
         }
         .foregroundStyle(model.atmosphere.primary)
         .disabled(radio.isBusy)
+        .alert("Lyrics are coming soon", isPresented: $lyricsSoon) { Button("OK", role: .cancel) {} } message: { Text("Juke will show lyrics once a licensed provider is chosen.") }
     }
 }
 

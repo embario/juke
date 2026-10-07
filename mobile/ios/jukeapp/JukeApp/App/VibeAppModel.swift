@@ -41,6 +41,9 @@ final class VibeAppModel {
         #else
         let fixtures = false
         #endif
+        let store = fixtures ? MemoryStore(client: MemoryClient(fixtures: true)) : MemoryStore()
+        memories = store
+        let saveMemory: @MainActor (MemoryDraft) async throws -> Void = { draft in _ = try await store.save(draft) }
         if fixtures {
             // Fresh in-memory radio and memories for UI checks; no network.
             let defaults = UserDefaults(suiteName: "juke.radio.uitests.\(UUID().uuidString)") ?? .standard
@@ -51,15 +54,14 @@ final class VibeAppModel {
             scoped.recentRadioTrackIDs = [RadioFixturePlayback.initialTrackID]
             let playback = RadioFixturePlayback()
             radio = RadioController(backend: RadioFixtureBackend(playback: playback), playback: playback,
-                                    preferences: preferences, coordinator: coordinator)
-            memories = MemoryStore(client: MemoryClient(fixtures: true))
+                                    preferences: preferences, coordinator: coordinator, saveMemory: saveMemory)
         } else {
             radio = RadioController(
                 backend: api,
                 playback: SpotifyRadioPlayback(token: { accessToken.get() }),
-                coordinator: coordinator
+                coordinator: coordinator,
+                saveMemory: saveMemory
             )
-            memories = MemoryStore()
         }
         radio.onTrackChange = { [weak self] track in self?.radioTrackChanged(track) }
         #if DEBUG

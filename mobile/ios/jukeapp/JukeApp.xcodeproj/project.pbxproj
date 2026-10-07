@@ -23,6 +23,7 @@
 		4AC98C0DFF8412F697AAB101 /* PlaybackClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FE559BAC09BB81E1E8FE02 /* PlaybackClient.swift */; };
 		51C1AA76A9E7B6C6DC9F70CE /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232321C24A61172302B65A98 /* LibraryScreen.swift */; };
 		549DBA54BE005F15E2E66A6B /* AppConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE582E003D53E3852308ECD5 /* AppConfigurationTests.swift */; };
+		5ECC130493F920D5AAAD21A3 /* StationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352AD2D41149E314BCF53B22 /* StationSheet.swift */; };
 		6A1597151175F2E7FF5762AA /* NowPlayingObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3B28E1738FD3C142DE10D3 /* NowPlayingObserver.swift */; };
 		6D415674CB2DDE9EFE322B03 /* JukeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6383544D37932CFD215F77A /* JukeCoordinator.swift */; };
 		6D96BA3019B1C50EE594A0BD /* FMDialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF764F2CA5B5785D08B7D0D7 /* FMDialView.swift */; };
@@ -77,6 +78,7 @@
 		2F7BD6ADAE5DF7268A1A1E8F /* RadioMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioMath.swift; sourceTree = "<group>"; };
 		340D8CE112C887D7B4CB781B /* JukeAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeAPI.swift; sourceTree = "<group>"; };
 		348525BA5E911FB5DB78D848 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		352AD2D41149E314BCF53B22 /* StationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationSheet.swift; sourceTree = "<group>"; };
 		3743EB7858F99F2D0EF4A0C1 /* CrateLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrateLayout.swift; sourceTree = "<group>"; };
 		38EE2CF7AB19F90E21A2AE8E /* JukeAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeAppTests.swift; sourceTree = "<group>"; };
 		3946D6403AFCC34DEEC77302 /* RecognizedTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognizedTrack.swift; sourceTree = "<group>"; };
@@ -182,6 +184,7 @@
 			children = (
 				BF764F2CA5B5785D08B7D0D7 /* FMDialView.swift */,
 				1E86866E5F50638D1FCDE22A /* RadioScreen.swift */,
+				352AD2D41149E314BCF53B22 /* StationSheet.swift */,
 				E8FEA42EF9468EFBD6362AC5 /* VinylDisc.swift */,
 			);
 			path = Radio;
@@ -413,6 +416,7 @@
 				D17527B7F652191AF9260A0C /* RecognizedTrack.swift in Sources */,
 				AB8B5BB7F2CFB2904EA0926C /* RootView.swift in Sources */,
 				AD1CB833B29F5ADD9AF84D17 /* SettingsView.swift in Sources */,
+				5ECC130493F920D5AAAD21A3 /* StationSheet.swift in Sources */,
 				1B1D65CAF628ECD7BAF765A9 /* VibeAPI.swift in Sources */,
 				06879E0C5ADC4F19E36FEE1B /* VibeAppModel.swift in Sources */,
 				C9D24912E75D5E85022C8B8D /* VibeAtmosphere.swift in Sources */,
