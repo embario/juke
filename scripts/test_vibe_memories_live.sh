@@ -12,7 +12,7 @@ swiftc -parse-as-library \
   "$VIBE_ROOT/mobile/shared/JukeRadio/RecognizedTrack.swift" \
   "$VIBE_ROOT/mobile/shared/JukeRadio/MusicMemory.swift" \
   "$VIBE_ROOT/mobile/shared/JukeRadio/JukeServer.swift" \
-  "$VIBE_ROOT/macos/juke/JukeMac/Services/MemoryClient.swift" \
+  "$VIBE_ROOT/mobile/shared/JukeRadio/MemoryClient.swift" \
   "$VIBE_ROOT/macos/juke/IntegrationTests/MemoryLiveCheck.swift" \
   -o /tmp/vibe-memory-live-check
 /tmp/vibe-memory-live-check
