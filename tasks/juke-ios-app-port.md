@@ -78,7 +78,17 @@ on the integration branch.
 ## Handoff
 
 - Completed: spec written; worktree created at `66a8f5f`; playback investigation (below).
-- Next: shared package extraction (slice 1), then iOS shell.
+- Slice 1 done (`juke-app/s8-ios-port`): Foundation-only radio layer moved to
+  `mobile/shared/JukeRadio` (JukeAPI, JukeServer, RadioModels, JukeAPI+Radio, RadioController,
+  RadioServices, RadioMath, RadioFixtures, PlaybackClient, JukeCoordinator, MusicMemory,
+  RecognizedTrack) and compiled into JukeMac and JukeApp via XcodeGen `sources`. macOS
+  (build-for-testing) and iOS simulator builds pass.
+- Decision: shared *source folder*, not a Swift package. `Packages/JukeKit` already has
+  colliding public names (`JukeAPIError`, `JukePlaybackState`), and the radio layer is ~2.5k
+  lines of internal API that would need `public` everywhere. Same one-copy result with no
+  API churn; it can be wrapped as a package later.
+- Next: iOS shell (Radio, Library, New Station, Memories, Chat, Settings) and theme tokens
+  (Design/*.swift need AppKit->UIKit shims before they can be shared).
 
 ### Playback investigation (2026-10-07)
 

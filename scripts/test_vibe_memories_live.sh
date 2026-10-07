@@ -11,7 +11,7 @@ ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=indigo:s=320x240:d=1 -c:
 swiftc -parse-as-library \
   "$VIBE_ROOT/macos/juke/JukeMac/Models/RecognizedTrack.swift" \
   "$VIBE_ROOT/macos/juke/JukeMac/Models/MusicMemory.swift" \
-  "$VIBE_ROOT/macos/juke/JukeMac/Services/API/JukeServer.swift" \
+  "$VIBE_ROOT/mobile/shared/JukeRadio/JukeServer.swift" \
   "$VIBE_ROOT/macos/juke/JukeMac/Services/MemoryClient.swift" \
   "$VIBE_ROOT/macos/juke/IntegrationTests/MemoryLiveCheck.swift" \
   -o /tmp/vibe-memory-live-check
