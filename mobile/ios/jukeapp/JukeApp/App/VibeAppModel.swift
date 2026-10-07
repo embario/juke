@@ -47,6 +47,8 @@ final class VibeAppModel {
             let preferences = RadioPreferences(defaults: defaults)
             let scoped = preferences.scoped(to: JukeAccount.localPreview.id)
             scoped.hasTunedIn = !ProcessInfo.processInfo.arguments.contains("--uitesting-radio-first-run")
+            scoped.wasPlaying = scoped.hasTunedIn
+            scoped.recentRadioTrackIDs = [RadioFixturePlayback.initialTrackID]
             let playback = RadioFixturePlayback()
             radio = RadioController(backend: RadioFixtureBackend(playback: playback), playback: playback,
                                     preferences: preferences, coordinator: coordinator)

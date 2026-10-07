@@ -49,9 +49,9 @@ private struct NowPlayingCard: View {
     var body: some View {
         let radio = model.radio
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 14) {
                 StationHeader()
-                Sleeve(track: radio.track)
+                SleeveAndRecord(track: radio.track)
                 VStack(spacing: 4) {
                     Text(radio.track?.title ?? "Nothing playing").font(.title2.bold()).multilineTextAlignment(.center).lineLimit(2)
                     Text(radio.track?.artist ?? "Press play to start your station").foregroundStyle(.secondary).lineLimit(1)
@@ -62,7 +62,7 @@ private struct NowPlayingCard: View {
                 ReactionStrip()
                 IssueView()
                 if let notice = radio.notice { Text(notice).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
-                StationStrip()
+                FMDialView()
             }
             .padding(.horizontal, 20).padding(.vertical, 12)
         }
@@ -89,17 +89,44 @@ private struct StationHeader: View {
     }
 }
 
-struct Sleeve: View {
+/// The sleeve with the record sliding out behind it. Long-press the sleeve for
+/// "start radio from this song" and links into the Library.
+struct SleeveAndRecord: View {
+    @Environment(VibeAppModel.self) private var model
     let track: Radio.Track?
+    private let side: CGFloat = 196
+    /// How far the record slides out; its label must stay mostly clear of the sleeve to be grabbable.
+    private let discOffset: CGFloat = 130
+
     var body: some View {
-        AsyncImage(url: track?.artworkURL) { $0.resizable().scaledToFill() } placeholder: {
-            ZStack { Color.secondary.opacity(0.14); Image(systemName: "music.note").font(.system(size: 44)).foregroundStyle(.secondary) }
+        ZStack(alignment: .leading) {
+            VinylDisc(track: track, size: side).offset(x: discOffset)
+            AsyncImage(url: track?.artworkURL) { $0.resizable().scaledToFill() } placeholder: {
+                ZStack { Color(.secondarySystemBackground); Image(systemName: "music.note").font(.system(size: 44)).foregroundStyle(.secondary) }
+            }
+            .frame(width: side, height: side)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
+            .contextMenu {
+                if let track {
+                    Button("Start radio from this song", systemImage: "dot.radiowaves.left.and.right") { Task { await model.radio.startRadioFromCurrentTrack() } }
+                    if let albumID = track.albumId {
+                        Button("Open the album", systemImage: "square.stack") { open(.album, albumID, track.album ?? track.title) }
+                    }
+                    if let artistID = track.artistId {
+                        Button("Open the artist", systemImage: "person") { open(.artist, artistID, track.artist) }
+                    }
+                }
+            }
+            .accessibilityLabel(track.map { "\($0.title) by \($0.artist)" } ?? "No song playing")
         }
-        .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: 280)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: .black.opacity(0.25), radius: 18, y: 10)
-        .accessibilityLabel(track.map { "\($0.title) by \($0.artist)" } ?? "No song playing")
+        .frame(width: side + discOffset, height: side, alignment: .leading)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func open(_ kind: Radio.SeedKind, _ id: String, _ title: String) {
+        model.coordinator.focusInLibrary(.init(kind: kind, spotifyId: id, title: title))
+        model.tab = .library
     }
 }
 
@@ -184,36 +211,6 @@ private struct ReactionStrip: View {
             TextField("A few words", text: $words)
             Button("Add") { let text = words; words = ""; Task { await radio.addWords(text) } }
             Button("Cancel", role: .cancel) { words = "" }
-        }
-    }
-}
-
-private struct StationStrip: View {
-    @Environment(VibeAppModel.self) private var model
-
-    var body: some View {
-        let radio = model.radio
-        VStack(alignment: .leading, spacing: 8) {
-            Text("STATIONS").font(.caption.bold()).tracking(1.4).foregroundStyle(.secondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(radio.stations) { station in
-                        let tuned = station.id == radio.tunedStation?.id
-                        Button { Task { await radio.tune(to: station.id) } } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(station.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                Text(station.frequencyLabel).font(.caption.monospaced()).foregroundStyle(.secondary)
-                            }
-                            .padding(12).frame(minWidth: 108, alignment: .leading)
-                            .background(tuned ? model.atmosphere.primary.opacity(0.28) : Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-                        }.buttonStyle(.plain)
-                    }
-                    Button { model.coordinator.openNewStation() } label: {
-                        Label("New", systemImage: "plus").padding(12)
-                            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-                    }.buttonStyle(.plain)
-                }
-            }
         }
     }
 }

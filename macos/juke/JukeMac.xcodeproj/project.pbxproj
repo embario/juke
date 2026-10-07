@@ -17,6 +17,7 @@
 		10861E398DDF098EAFD61163 /* ShazamRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A308AA24CEF86992E090F87 /* ShazamRecognizer.swift */; };
 		124D6E91A163F2BBFF997B27 /* RecognizedTrackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81F428EF8F2ACADCAA275CE1 /* RecognizedTrackTests.swift */; };
 		125BCD9EA980B330E4557AEA /* CrateControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 779B7B9BAA5DAD45D44E363E /* CrateControls.swift */; };
+		13ED32A5FC56D1485DE8C4C7 /* CrateLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 974AEF9130BDA008AFBCE709 /* CrateLayout.swift */; };
 		144076703D193162A52AC012 /* MemoriesScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418598041EAA5F8E1348B790 /* MemoriesScreen.swift */; };
 		17C8026D03FC0C3B93013A66 /* RadioServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDE4F7916EC1F1190A865854 /* RadioServices.swift */; };
 		18F0DEA51D9A7888C707A212 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4F5D1473FC91CB5DD887566 /* ChatMessage.swift */; };
@@ -92,11 +93,11 @@
 		E42200448BA9424A6CBEEF5F /* NeptuneVibeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20FA691EB290A34DFB0A6740 /* NeptuneVibeClient.swift */; };
 		E629F01674F8FD4640F92B7F /* RecognizedTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 485466AAFAFF0AE72FE09416 /* RecognizedTrack.swift */; };
 		E62D245EB95D3806388FBF44 /* ArtworkPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9805F0860E2332BCBAF6D33 /* ArtworkPalette.swift */; };
+		E68F41DDA7C71CD7434EF84F /* CrateFlipDirection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B366CF610F1D1B86DC5AB24 /* CrateFlipDirection.swift */; };
 		E76CC800AA26EC0BD0048CF1 /* CrateServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81B3BF3570CF7903C98ACD4D /* CrateServices.swift */; };
 		E93246230C08241FCE2B8B39 /* JukeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B854E80D9D08207C3BFF357B /* JukeCoordinator.swift */; };
 		EBD556D7A00B6B327CEF8A9A /* JukeFoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715D27259400E3BE5E230327 /* JukeFoundationTests.swift */; };
 		EE602A335162962DBE64F501 /* JukeAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA34127EB68E4023A1D3E0A8 /* JukeAPI.swift */; };
-		F6734E3F3045DB057881715C /* CrateLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96247296681E00F898ED6154 /* CrateLayout.swift */; };
 		F6FB8A898B8A1065DE8FF87C /* PlayerMetadataMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9B905B776448D67D1BD9A18 /* PlayerMetadataMonitor.swift */; };
 		F94AA7FD7FD490F9F9CD4190 /* BackgroundRecognitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBB1DAC0B740A68C57318BA9 /* BackgroundRecognitionTests.swift */; };
 /* End PBXBuildFile section */
@@ -152,6 +153,7 @@
 		481049841A942BB369025936 /* JukeAPI+Radio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JukeAPI+Radio.swift"; sourceTree = "<group>"; };
 		485466AAFAFF0AE72FE09416 /* RecognizedTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognizedTrack.swift; sourceTree = "<group>"; };
 		4A4A99ED8CDCB25EB05C231B /* CrateBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrateBrowser.swift; sourceTree = "<group>"; };
+		4B366CF610F1D1B86DC5AB24 /* CrateFlipDirection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrateFlipDirection.swift; sourceTree = "<group>"; };
 		4E2BF23683BD4B133A06EA3E /* SectionStage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionStage.swift; sourceTree = "<group>"; };
 		51044B5F11349DAF26E70683 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5517D8F0321C6BC187AD6DA1 /* RadioFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioFixtures.swift; sourceTree = "<group>"; };
@@ -175,7 +177,7 @@
 		8A308AA24CEF86992E090F87 /* ShazamRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamRecognizer.swift; sourceTree = "<group>"; };
 		8A98A53C2911A8C10AC242F9 /* MemoryPhotoLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPhotoLibrary.swift; sourceTree = "<group>"; };
 		9362A6B3B5353DD4D0A760C1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		96247296681E00F898ED6154 /* CrateLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrateLayout.swift; sourceTree = "<group>"; };
+		974AEF9130BDA008AFBCE709 /* CrateLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrateLayout.swift; sourceTree = "<group>"; };
 		98CCC8B5714C63463401E96D /* NewStationScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewStationScreen.swift; sourceTree = "<group>"; };
 		991A73B7F1308E3E69AE5FCF /* JukeMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JukeMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2BE0D3AD19036BBAF3CB5C7 /* JukeHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeHeader.swift; sourceTree = "<group>"; };
@@ -452,7 +454,6 @@
 			children = (
 				4A4A99ED8CDCB25EB05C231B /* CrateBrowser.swift */,
 				779B7B9BAA5DAD45D44E363E /* CrateControls.swift */,
-				96247296681E00F898ED6154 /* CrateLayout.swift */,
 				81B3BF3570CF7903C98ACD4D /* CrateServices.swift */,
 				1BEC25BAB5855A85B9B4D92A /* CrateView.swift */,
 				039C54098D8B6D33F4D1C456 /* LibraryScreen.swift */,
@@ -463,6 +464,8 @@
 		DB483F7017008B448AFBBF0D /* JukeRadio */ = {
 			isa = PBXGroup;
 			children = (
+				4B366CF610F1D1B86DC5AB24 /* CrateFlipDirection.swift */,
+				974AEF9130BDA008AFBCE709 /* CrateLayout.swift */,
 				C5E2BA092C1A59BFA26BD490 /* JukeAccount.swift */,
 				BA34127EB68E4023A1D3E0A8 /* JukeAPI.swift */,
 				481049841A942BB369025936 /* JukeAPI+Radio.swift */,
@@ -676,7 +679,8 @@
 				47437C814A6D76C2F0C34136 /* ChatVault.swift in Sources */,
 				C0A1FEFF40C1D79EC89AA89A /* CrateBrowser.swift in Sources */,
 				125BCD9EA980B330E4557AEA /* CrateControls.swift in Sources */,
-				F6734E3F3045DB057881715C /* CrateLayout.swift in Sources */,
+				E68F41DDA7C71CD7434EF84F /* CrateFlipDirection.swift in Sources */,
+				13ED32A5FC56D1485DE8C4C7 /* CrateLayout.swift in Sources */,
 				E76CC800AA26EC0BD0048CF1 /* CrateServices.swift in Sources */,
 				085D685A6DEFC260ADE61E6A /* CrateView.swift in Sources */,
 				5A11C23A409E26409DD168C2 /* FMDialView.swift in Sources */,

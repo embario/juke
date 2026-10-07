@@ -5,6 +5,7 @@ struct SettingsView: View {
     @State private var serverText = ""
     @State private var serverError: String?
     @State private var loaded = false
+    @AppStorage("juke.settings.crateFlipDirection") private var flipRaw = CrateFlipDirection.sideToSide.rawValue
 
     var body: some View {
         Form {
@@ -20,6 +21,11 @@ struct SettingsView: View {
                 }
             } header: { Text("Juke server") } footer: {
                 Text("HTTPS is required (plain HTTP only for localhost). Changing the server signs you out, because a sign-in belongs to the server that issued it.")
+            }
+            Section("Library") {
+                Picker("Crate flips", selection: $flipRaw) {
+                    ForEach(CrateFlipDirection.allCases) { Text($0.label).tag($0.rawValue) }
+                }
             }
             Section("Visual atmosphere") {
                 Toggle("Respond to the music", isOn: Bindable(model.atmosphere).enabled)

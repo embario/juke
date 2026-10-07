@@ -9,6 +9,10 @@ struct LibraryScreen: View {
     @State private var loading = false
     @State private var error: String?
     @State private var selected: Radio.CrateItem?
+    @State private var focus = 0
+    @State private var loadTask: Task<Void, Never>?
+    @AppStorage("juke.library.crateView") private var showsCrate = true
+    @AppStorage("juke.settings.crateFlipDirection") private var flipRaw = CrateFlipDirection.sideToSide.rawValue
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
 
@@ -22,9 +26,19 @@ struct LibraryScreen: View {
                 }.pickerStyle(.segmented)
                 if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
                 if loading { ProgressView().frame(maxWidth: .infinity) }
-                LazyVGrid(columns: columns, spacing: 14) {
-                    ForEach(items) { item in
-                        Button { selected = item } label: { CrateCard(item: item) }.buttonStyle(.plain)
+                if showsCrate, !items.isEmpty {
+                    CrateView(items: items, mode: CrateMode(CrateFlipDirection(rawValue: flipRaw) ?? .sideToSide), onSelect: { selected = $0 }, focus: $focus)
+                    if items.indices.contains(focus) {
+                        VStack(spacing: 2) {
+                            Text(items[focus].title).font(.headline).lineLimit(1)
+                            if let subtitle = items[focus].subtitle { Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+                        }.frame(maxWidth: .infinity)
+                    }
+                } else {
+                    LazyVGrid(columns: columns, spacing: 14) {
+                        ForEach(items) { item in
+                            Button { selected = item } label: { CrateCard(item: item) }.buttonStyle(.plain)
+                        }
                     }
                 }
                 if !loading, items.isEmpty, error == nil {
@@ -34,11 +48,20 @@ struct LibraryScreen: View {
         }
         .navigationTitle("Library")
         .background(VibeBackground(atmosphere: model.atmosphere))
+        .toolbar { ToolbarItem(placement: .primaryAction) {
+            Button { showsCrate.toggle() } label: { Image(systemName: showsCrate ? "square.grid.2x2" : "rectangle.stack") }
+                .accessibilityLabel(showsCrate ? "Show as grid" : "Show as crate")
+        } }
         .searchable(text: $query, prompt: "Search Spotify")
-        .onSubmit(of: .search) { Task { await load() } }
-        .onChange(of: kind) { _, _ in Task { await load() } }
-        .onChange(of: query) { _, value in if value.isEmpty { Task { await load() } } }
+        .onSubmit(of: .search) { reload(resetFocus: true) }
+        .onChange(of: kind) { _, _ in reload(resetFocus: true) }
+        .onChange(of: query) { _, value in if value.isEmpty { reload(resetFocus: true) } }
         .task(id: model.session?.account.id) { await load() }
+        .onChange(of: model.coordinator.libraryFocus) { _, request in
+            guard let request else { return }
+            kind = request.kind
+            reload(resetFocus: true)
+        }
         .confirmationDialog(selected?.title ?? "", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } }), presenting: selected) { item in
             Button("Start a station from this") {
                 model.coordinator.openNewStation(.init(start: .records, seeds: [item.seed], feelings: []))
@@ -47,11 +70,41 @@ struct LibraryScreen: View {
         } message: { Text($0.subtitle ?? "") }
     }
 
+    /// "Open the album/artist" from the sleeve: search for it and bring it to the front.
+    private func applyFocusRequest() {
+        guard let request = model.coordinator.libraryFocus, request.kind == kind else { return }
+        if let index = items.firstIndex(where: { $0.spotifyId == request.spotifyId }) {
+            focus = index
+            model.coordinator.libraryFocus = nil
+        } else if query != request.title {
+            query = request.title
+            reload(resetFocus: true)
+        } else {
+            model.coordinator.libraryFocus = nil
+        }
+    }
+
+    /// One load at a time: a newer request replaces the one in flight.
+    private func reload(resetFocus: Bool) {
+        loadTask?.cancel()
+        if resetFocus { focus = 0 }
+        loadTask = Task { await load() }
+    }
+
     private func load() async {
         guard model.session != nil else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--uitesting") {
+            items = (1...9).map { Radio.CrateItem(id: Radio.ID("\($0)"), kind: kind, spotifyId: "fixture\($0)", title: "Record \($0)", subtitle: "Fixture artist", artworkUrl: nil, track: nil) }
+            return
+        }
+        #endif
         loading = true; error = nil
-        defer { loading = false }
-        do { items = try await model.api.crate(kind: kind, query: query) }
+        defer { if !Task.isCancelled { loading = false } }
+        do {
+            items = try await model.api.crate(kind: kind, query: query)
+            applyFocusRequest()
+        }
         catch is CancellationError { return }
         catch { items = []; self.error = (error as? LocalizedError)?.errorDescription ?? "The crate could not be loaded." }
     }
