@@ -18,6 +18,8 @@ targets:
     platform: macOS
     sources:
       - path: JukeMac
+      - path: ../../mobile/shared/JukeRadio
+        group: Shared
       - path: Config/PrivacyInfo.xcprivacy
         buildPhase: resources
     settings:

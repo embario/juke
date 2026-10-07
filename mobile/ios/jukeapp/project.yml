@@ -17,6 +17,8 @@ targets:
     platform: iOS
     sources:
       - path: JukeApp
+      - path: ../../shared/JukeRadio
+        group: Shared
       - path: PrivacyInfo.xcprivacy
         buildPhase: resources
     settings:

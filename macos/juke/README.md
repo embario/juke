@@ -79,12 +79,12 @@ background recognition, and the backend URL (default
   last within 60 s. Settings > Listening also picks the source (Spotify &
   Apple Music, This Mac's Audio, Around Me); only an explicit choice starts
   capture, with macOS's usual permission prompt.
-- `JukeMac/Services/API`: `JukeServer`, `JukeAPI` (typed requests, token auth,
+- `mobile/shared/JukeRadio` (compiled into both JukeMac and the iOS JukeApp; edit once, builds on both): `JukeServer`, `JukeAPI` (typed requests, token auth,
   error mapping), `RadioModels.swift` (`Radio.Track`, `Radio.Station`, ...),
   `JukeAPI+Radio.swift` (every `/api/v1/radio/` endpoint).
 - `JukeMac/Views/Shell`: root window, Mac sidebar with section navigation,
   appearance and Settings, `SectionStage` transitions, and mini player in the detail pane.
-- `JukeMac/Services/Radio`: `RadioController` (stations, tuned/pending station,
+- `mobile/shared/JukeRadio` (radio): `RadioController` (stations, tuned/pending station,
   Spotify state polling, queues the next pick 20 s before a song ends, listening
   events, first-run and resume-on-launch flags in `RadioPreferences`),
   `RadioMath` (vinyl seek: 14 s per turn; FM dial: 56 pt per MHz, snapping,
