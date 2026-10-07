@@ -174,3 +174,12 @@ on the integration branch.
 - Locally, `xcodebuild test-without-building -only-testing:JukeAppTests` ran in ~20 s on iOS 27.0 (10 tests pass).
 - Still open: shared theme tokens + artwork palette on iOS, background recognition helper, app lock, chat restyle in
   the single-card language, Memory song replay, touch-driven verification on a device, physical-iPhone signing.
+
+### Slice 6: shared theme (branch `juke-app/ios-theme`, stacked on #186)
+
+- `JukeColor` (RGB), `JukeTheme` (light/dark palette + artwork tint, WCAG-checked), `JukeMotion` and
+  `ArtworkPalette` moved to `mobile/shared/JukeRadio`; AppKit-only bits (`RGB.nsColor`, `NSImage` average colour)
+  stay in `*+AppKit.swift` files on the Mac. `JukeMotion.systemPrefersReducedMotion` is platform-conditional.
+- iOS: `ThemedRoot` injects `\.jukeTheme` and tints controls with the accent; `VibeBackground` draws the theme
+  background; `atmosphere.primary` follows the accent so older views stay consistent. The artwork colour follows
+  the radio track (or the detected track when radio is off). Checked in light and dark on the iOS 27.0 simulator.

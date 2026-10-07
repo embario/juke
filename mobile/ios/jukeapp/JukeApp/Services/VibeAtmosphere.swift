@@ -34,13 +34,14 @@ final class VibeAtmosphere {
 
 struct VibeBackground: View {
     let atmosphere: VibeAtmosphere
+    @Environment(\.jukeTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ZStack {
-            Color(.systemBackground)
-            LinearGradient(colors: [atmosphere.secondary.opacity(0.55), atmosphere.primary.opacity(0.24), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+            theme.bg.color
             // An overlay, so the 430 pt glow never widens the layout past the screen.
-            Color.clear.overlay { Circle().fill(atmosphere.primary.opacity(0.12 + atmosphere.intensity * 0.14)).frame(width: 430, height: 430).blur(radius: 90).offset(x: 150, y: -260) }
-        }.clipped().animation(reduceMotion ? nil : .easeInOut(duration: 1.5), value: atmosphere.primary).ignoresSafeArea()
+            Color.clear.overlay { Circle().fill(theme.accent.color.opacity(0.10 + atmosphere.intensity * 0.10)).frame(width: 430, height: 430).blur(radius: 90).offset(x: 150, y: -260) }
+        }.clipped()
+        .animation(reduceMotion ? nil : .easeInOut(duration: 1.2), value: theme.bg).ignoresSafeArea()
     }
 }

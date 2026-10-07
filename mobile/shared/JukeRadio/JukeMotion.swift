@@ -1,5 +1,9 @@
-import AppKit
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// Motion constants from the design reference. Every helper takes
 /// `reduceMotion` (read `@Environment(\.accessibilityReduceMotion)`) and
@@ -54,6 +58,10 @@ enum JukeMotion {
     /// The system Reduce Motion preference, for code outside a view.
     @MainActor
     static var systemPrefersReducedMotion: Bool {
+        #if canImport(AppKit)
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #else
+        UIAccessibility.isReduceMotionEnabled
+        #endif
     }
 }

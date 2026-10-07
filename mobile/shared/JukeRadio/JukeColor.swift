@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// An sRGB colour with 8-bit channels, matching the prototype's hex maths.
@@ -97,10 +96,4 @@ struct RGB: Hashable, Sendable, CustomStringConvertible {
 
     var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: 1) }
     func color(opacity: Double) -> Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: opacity) }
-    var nsColor: NSColor { NSColor(srgbRed: red, green: green, blue: blue, alpha: 1) }
-
-    init?(nsColor: NSColor) {
-        guard let srgb = nsColor.usingColorSpace(.sRGB) else { return nil }
-        self.init(red: srgb.redComponent, green: srgb.greenComponent, blue: srgb.blueComponent)
-    }
 }
