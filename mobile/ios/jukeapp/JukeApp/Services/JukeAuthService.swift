@@ -9,15 +9,14 @@ final class JukeAuthService: NSObject, ASWebAuthenticationPresentationContextPro
     nonisolated static let clientID = "juke-app-ios"
     nonisolated static let callbackScheme = "juke-app"
     nonisolated static let redirectURI = "juke-app://auth/callback"
-    private let configuration = AppConfiguration.shared
-    private let keychainService = "com.juke.app.ios.authentication"
+        private let keychainService = "com.juke.app.ios.authentication"
     private var webSession: ASWebAuthenticationSession?
 
     func signIn(path: String = "accounts/login") async throws -> JukeSession {
         let state = randomString(24)
         let verifier = randomString(32)
         let challenge = base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
-        var components = URLComponents(url: configuration.frontendURL.appending(path: path), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(url: AppConfiguration.currentFrontendURL.appending(path: path), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             .init(name: "client", value: Self.clientID), .init(name: "redirect_uri", value: Self.redirectURI),
             .init(name: "state", value: state), .init(name: "code_challenge", value: challenge), .init(name: "code_challenge_method", value: "S256"),
@@ -35,7 +34,7 @@ final class JukeAuthService: NSObject, ASWebAuthenticationPresentationContextPro
               returned.first(where: { $0.name == "state" })?.value == state,
               let code = returned.first(where: { $0.name == "code" })?.value else { throw CocoaError(.validationMissingMandatoryProperty) }
         struct Body: Encodable { let code: String; let code_verifier: String; let redirect_uri: String }
-        var request = URLRequest(url: configuration.apiBaseURL.appending(path: "auth/vibe/exchange"))
+        var request = URLRequest(url: AppConfiguration.currentAPIBaseURL.appending(path: "auth/vibe/exchange"))
         request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(Body(code: code, code_verifier: verifier, redirect_uri: Self.redirectURI))
         let (data, response) = try await URLSession.shared.data(for: request)

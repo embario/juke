@@ -115,3 +115,22 @@ on the integration branch.
 - Owner-visible limit: radio on iOS requires a Spotify-linked Juke account and Spotify Premium
   (Web API playback control), the same as macOS.
 - Blockers: none yet. Lead to add this task to `tasks/_index.md` (lead-only).
+
+### Slice 2: iOS shell (branch `juke-app/ios-shell`, stacked on #181)
+
+- Tabs: Radio, Library, Memories, Chat, Settings. New Station is a route inside Radio (same
+  `JukeCoordinator` as the Mac), also opened from the Library "Start a station from this" action.
+- `VibeAppModel` now owns `JukeAPI`, `RadioController`, `MemoryStore` and `JukeCoordinator`
+  (shared sources). `JukeAccount`/`JukeSession`, `MemoryClient` and `MemoryStore` moved to
+  `mobile/shared/JukeRadio`; the iOS duplicates were deleted.
+- Backend URL: Settings field stored under `JukeServer.backendURLKey`; precedence is Settings, then
+  `BACKEND_URL` launch env / Info.plist (`JukeServer.fallbackBaseURL`), then neptune. Changing it signs out.
+- Fixed a layout bug inherited from the old app: the 430 pt glow circle in `VibeBackground` widened every
+  screen to 430 pt on a 402 pt iPhone, so content hugged the edges. It is now an overlay and clipped.
+- DEBUG-only fixture mode for simulator checks: `xcrun simctl launch booted com.juke.app --uitesting
+  --uitesting-authenticated [--uitesting-tab=radio|library|memories|chat|settings] [--uitesting-radio-first-run]`.
+- Verified with `scripts/build_and_run_ios.sh -p jukeapp -s "iPhone 18 Pro"` on iOS 27.0 (sign-in screen and
+  fixture-mode Radio, Library, Settings render correctly). Live sign-in against neptune is not verified:
+  neptune's deployed web may not know the `juke-app-ios` client yet (same caveat as the Mac).
+- Not yet: touch interactions (vinyl, FM dial, crate gestures), theme tokens/artwork palette, Memories
+  media, "play after this song" from the crate. Next slice: Radio/New Station touch.
