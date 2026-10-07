@@ -95,10 +95,12 @@ struct SleeveAndRecord: View {
     @Environment(VibeAppModel.self) private var model
     let track: Radio.Track?
     private let side: CGFloat = 196
+    /// How far the record slides out; its label must stay mostly clear of the sleeve to be grabbable.
+    private let discOffset: CGFloat = 130
 
     var body: some View {
         ZStack(alignment: .leading) {
-            VinylDisc(track: track, size: side).offset(x: 78)
+            VinylDisc(track: track, size: side).offset(x: discOffset)
             AsyncImage(url: track?.artworkURL) { $0.resizable().scaledToFill() } placeholder: {
                 ZStack { Color(.secondarySystemBackground); Image(systemName: "music.note").font(.system(size: 44)).foregroundStyle(.secondary) }
             }
@@ -118,7 +120,7 @@ struct SleeveAndRecord: View {
             }
             .accessibilityLabel(track.map { "\($0.title) by \($0.artist)" } ?? "No song playing")
         }
-        .frame(width: side + 78, height: side)
+        .frame(width: side + discOffset, height: side)
         .frame(maxWidth: .infinity)
     }
 

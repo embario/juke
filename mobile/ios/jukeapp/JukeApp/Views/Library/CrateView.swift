@@ -7,12 +7,13 @@ struct CrateView: View {
     let mode: CrateMode
     let onSelect: (Radio.CrateItem) -> Void
     @Binding var focus: Int
-    @State private var dragDelta: CGFloat = 0
+    /// Resets by itself if the system cancels the gesture.
+    @GestureState private var dragDelta: CGFloat = 0
 
     var body: some View {
         let position = CrateLayout.position(focus: focus, dragDelta: dragDelta, mode: mode)
         ZStack {
-            ForEach(CrateLayout.visibleIndices(focus: focus, count: items.count), id: \.self) { index in
+            ForEach(CrateLayout.visibleIndices(focus: Int(position.rounded()), count: items.count), id: \.self) { index in
                 let t = CrateLayout.transform(index: index, position: position, mode: mode)
                 Sleeve(item: items[index])
                     .frame(width: mode.sleeveSize, height: mode.sleeveSize)
@@ -29,11 +30,11 @@ struct CrateView: View {
         .frame(maxWidth: .infinity).frame(height: CrateLayout.wellHeight + 40)
         .contentShape(Rectangle())
         .gesture(DragGesture(minimumDistance: CrateLayout.dragThreshold)
-            .onChanged { value in dragDelta = axis(value.translation) }
+            .updating($dragDelta) { value, state, _ in state = axis(value.translation) }
             .onEnded { value in
                 let velocity = axis(CGSize(width: value.velocity.width, height: value.velocity.height)) / 1000
                 let next = CrateLayout.releasedFocus(focus: focus, count: items.count, dragDelta: axis(value.translation), velocity: velocity, mode: mode)
-                withAnimation(.smooth(duration: CrateLayout.settleDuration)) { focus = next; dragDelta = 0 }
+                withAnimation(.smooth(duration: CrateLayout.settleDuration)) { focus = next }
             })
         .sensoryFeedback(.selection, trigger: focus)
         .accessibilityElement(children: .ignore)

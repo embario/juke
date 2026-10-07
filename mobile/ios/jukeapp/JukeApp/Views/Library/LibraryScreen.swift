@@ -10,6 +10,7 @@ struct LibraryScreen: View {
     @State private var error: String?
     @State private var selected: Radio.CrateItem?
     @State private var focus = 0
+    @State private var loadTask: Task<Void, Never>?
     @AppStorage("juke.library.crateView") private var showsCrate = true
     @AppStorage("juke.settings.crateFlipDirection") private var flipRaw = CrateFlipDirection.sideToSide.rawValue
 
@@ -52,14 +53,14 @@ struct LibraryScreen: View {
                 .accessibilityLabel(showsCrate ? "Show as grid" : "Show as crate")
         } }
         .searchable(text: $query, prompt: "Search Spotify")
-        .onSubmit(of: .search) { Task { await load() } }
-        .onChange(of: kind) { _, _ in Task { await load() } }
-        .onChange(of: query) { _, value in if value.isEmpty { Task { await load() } } }
+        .onSubmit(of: .search) { reload(resetFocus: true) }
+        .onChange(of: kind) { _, _ in reload(resetFocus: true) }
+        .onChange(of: query) { _, value in if value.isEmpty { reload(resetFocus: true) } }
         .task(id: model.session?.account.id) { await load() }
         .onChange(of: model.coordinator.libraryFocus) { _, request in
             guard let request else { return }
             kind = request.kind
-            Task { await load() }
+            reload(resetFocus: true)
         }
         .confirmationDialog(selected?.title ?? "", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } }), presenting: selected) { item in
             Button("Start a station from this") {
@@ -77,10 +78,17 @@ struct LibraryScreen: View {
             model.coordinator.libraryFocus = nil
         } else if query != request.title {
             query = request.title
-            Task { await load() }
+            reload(resetFocus: true)
         } else {
             model.coordinator.libraryFocus = nil
         }
+    }
+
+    /// One load at a time: a newer request replaces the one in flight.
+    private func reload(resetFocus: Bool) {
+        loadTask?.cancel()
+        if resetFocus { focus = 0 }
+        loadTask = Task { await load() }
     }
 
     private func load() async {
@@ -92,10 +100,9 @@ struct LibraryScreen: View {
         }
         #endif
         loading = true; error = nil
-        defer { loading = false }
+        defer { if !Task.isCancelled { loading = false } }
         do {
             items = try await model.api.crate(kind: kind, query: query)
-            focus = CrateLayout.clamp(focus, count: items.count)
             applyFocusRequest()
         }
         catch is CancellationError { return }
