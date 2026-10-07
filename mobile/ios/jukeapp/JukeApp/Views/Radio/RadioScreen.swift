@@ -120,7 +120,7 @@ struct SleeveAndRecord: View {
             }
             .accessibilityLabel(track.map { "\($0.title) by \($0.artist)" } ?? "No song playing")
         }
-        .frame(width: side + discOffset, height: side)
+        .frame(width: side + discOffset, height: side, alignment: .leading)
         .frame(maxWidth: .infinity)
     }
 
