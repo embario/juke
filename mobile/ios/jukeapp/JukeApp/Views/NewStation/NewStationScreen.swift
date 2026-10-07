@@ -56,6 +56,10 @@ struct NewStationScreen: View {
         }
         .scrollContentBackground(.hidden)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { model.coordinator.closeNewStation() } } }
+        .onChange(of: model.coordinator.radioRoute) { _, route in
+            // A new draft pushed while this screen is showing (for example "Pull more records").
+            if case .newStation(let next) = route, next != draft { draft = next }
+        }
         .task { if draft.start == .records, !query.isEmpty { await search() } }
         .onChange(of: kind) { _, _ in if !query.isEmpty { Task { await search() } } }
     }

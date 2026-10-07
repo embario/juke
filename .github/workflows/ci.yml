@@ -14,6 +14,7 @@ jobs:
       ios_tunetrivia: ${{ steps.filter.outputs.ios_tunetrivia }}
       ios_shotclock: ${{ steps.filter.outputs.ios_shotclock }}
       ios_jukekit: ${{ steps.filter.outputs.ios_jukekit }}
+      ios_jukeapp: ${{ steps.filter.outputs.ios_jukeapp }}
       android_juke: ${{ steps.filter.outputs.android_juke }}
       android_shotclock: ${{ steps.filter.outputs.android_shotclock }}
       macos_juke: ${{ steps.filter.outputs.macos_juke }}
@@ -36,12 +37,16 @@ jobs:
               - 'mobile/ios/Packages/JukeKit/**'
             ios_jukekit:
               - 'mobile/ios/Packages/JukeKit/**'
+            ios_jukeapp:
+              - 'mobile/ios/jukeapp/**'
+              - 'mobile/shared/**'
             android_juke:
               - 'mobile/android/juke/**'
             android_shotclock:
               - 'mobile/android/shotclock/**'
             macos_juke:
               - 'macos/**'
+              - 'mobile/shared/**'
 
   build:
     runs-on: ubuntu-latest
@@ -144,6 +149,16 @@ jobs:
         uses: actions/checkout@v4
       - name: Run iOS tests
         run: bash scripts/test_mobile.sh --ios-only -p shotclock
+
+  ios_tests_jukeapp:
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.ios_jukeapp == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run iOS tests
+        run: bash scripts/test_mobile.sh --ios-only -p jukeapp
 
   ios_tests_jukekit:
     needs: changes
