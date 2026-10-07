@@ -5,13 +5,17 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("juke.settings.appearance") private var appearanceRaw = AppearanceChoice.system.rawValue
     var body: some View {
+        ThemedRoot(content: content)
+            .preferredColorScheme((AppearanceChoice(rawValue: appearanceRaw) ?? .system).colorScheme)
+            .alert("Juke", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("OK") { model.errorMessage = nil } } message: { Text(model.errorMessage ?? "") }
+    }
+
+    private var content: some View {
         ZStack {
             VibeBackground(atmosphere: model.atmosphere)
             if model.session == nil { SignInView() } else { main }
         }
         .onChange(of: model.nowPlaying.track?.id) { _, _ in model.trackChanged() }
-        .preferredColorScheme((AppearanceChoice(rawValue: appearanceRaw) ?? .system).colorScheme)
-        .alert("Juke", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("OK") { model.errorMessage = nil } } message: { Text(model.errorMessage ?? "") }
     }
 
     private var main: some View {
@@ -23,7 +27,7 @@ struct RootView: View {
                     .tabItem { Label(tab.title, systemImage: tab.symbol) }
                     .tag(tab)
             }
-        }.tint(model.atmosphere.primary)
+        }
     }
 
     @ViewBuilder private func content(for tab: JukeTab) -> some View {
@@ -51,5 +55,29 @@ private struct SignInView: View {
             Text("Conversation history is encrypted on this iPhone and is never uploaded as readable history.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 34)
             Spacer()
         }.padding()
+    }
+}
+
+/// Builds the design-reference palette (light/dark plus the artwork colour) and
+/// hands it to every screen through `\.jukeTheme`; the accent also tints controls.
+private struct ThemedRoot<Content: View>: View {
+    @Environment(VibeAppModel.self) private var model
+    @Environment(\.colorScheme) private var scheme
+    let content: Content
+
+    var body: some View {
+        let theme = JukeTheme.palette(dark: scheme == .dark, base: model.artwork.base)
+        content
+            .environment(\.jukeTheme, theme)
+            .tint(theme.accent.color)
+            .onAppear { sync(theme) }
+            .onChange(of: model.artwork.base) { _, _ in sync(JukeTheme.palette(dark: scheme == .dark, base: model.artwork.base)) }
+            .onChange(of: scheme) { _, _ in sync(JukeTheme.palette(dark: scheme == .dark, base: model.artwork.base)) }
+    }
+
+    /// Screens that still read `atmosphere.primary` follow the themed accent.
+    private func sync(_ theme: JukeTheme) {
+        model.atmosphere.primary = theme.accent.color
+        model.atmosphere.secondary = theme.card.color
     }
 }

@@ -25,6 +25,8 @@ final class VibeAppModel {
     /// Radio stations, the tuned station and the continuous-play loop.
     let radio: RadioController
     let memories: MemoryStore
+    /// Album-art colour feeding `JukeTheme`.
+    let artwork = ArtworkPalette()
     @ObservationIgnored private let accessToken = AccessTokenStore()
     private let context: ModelContext
     private let auth = JukeAuthService()
@@ -90,6 +92,7 @@ final class VibeAppModel {
     }
 
     private func radioTrackChanged(_ track: Radio.Track?) {
+        artwork.update(artworkURL: track?.artworkURL, enabled: atmosphere.enabled)
         guard let track else { return }
         atmosphere.update(for: NowPlayingTrack(id: track.spotifyId, title: track.title, artist: track.artist, album: track.album, artworkURL: track.artworkURL, localArtwork: nil, source: "Juke Radio"))
     }
@@ -127,6 +130,7 @@ final class VibeAppModel {
 
     func trackChanged() {
         atmosphere.update(for: nowPlaying.track)
+        if !radio.isOnAir { artwork.update(artworkURL: nowPlaying.track?.artworkURL, enabled: atmosphere.enabled) }
         Task { await refreshQuestion() }
     }
 
