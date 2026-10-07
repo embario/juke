@@ -3,28 +3,7 @@ import Foundation
 import Observation
 import SwiftUI
 
-/// Light, Dark, or follow macOS.
-enum AppearanceChoice: String, CaseIterable, Identifiable, Sendable {
-    case system, light, dark
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .system: "Match system"
-        case .light: "Light"
-        case .dark: "Dark"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .system: "circle.lefthalf.filled"
-        case .light: "sun.max"
-        case .dark: "moon"
-        }
-    }
-
+extension AppearanceChoice {
     /// The AppKit appearance applied to every window; `nil` follows the system.
     var nsAppearance: NSAppearance? {
         switch self {

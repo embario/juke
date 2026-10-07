@@ -3,12 +3,14 @@ import SwiftUI
 struct RootView: View {
     @Environment(VibeAppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("juke.settings.appearance") private var appearanceRaw = AppearanceChoice.system.rawValue
     var body: some View {
         ZStack {
             VibeBackground(atmosphere: model.atmosphere)
             if model.session == nil { SignInView() } else { main }
         }
         .onChange(of: model.nowPlaying.track?.id) { _, _ in model.trackChanged() }
+        .preferredColorScheme((AppearanceChoice(rawValue: appearanceRaw) ?? .system).colorScheme)
         .alert("Juke", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) { Button("OK") { model.errorMessage = nil } } message: { Text(model.errorMessage ?? "") }
     }
 
