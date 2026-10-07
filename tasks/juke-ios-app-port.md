@@ -157,5 +157,6 @@ on the integration branch.
 - Found while wiring: `RadioController.saveMemory` defaults to a no-op and neither app passed it, so "Save this
   moment" / "Save as a memory" claimed success without saving. Both JukeMac (`AppModel`) and JukeApp now pass
   `memories.save`. This changes macOS behaviour (it now really saves); flagged in the PR.
-- Remaining parity gaps: hold-to-move a station on the dial, Memories media/photos/journey composer, chat text-size
+- Added: hold-to-move a station on the dial (long-press then drag; VoiceOver actions), appearance + chat text size settings.
+- Remaining parity gaps: Memories media/photos/journey composer, chat text-size
   and restyle, theme tokens/artwork palette shared, background recognition, app lock.
