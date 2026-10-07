@@ -160,3 +160,17 @@ on the integration branch.
 - Added: hold-to-move a station on the dial (long-press then drag; VoiceOver actions), appearance + chat text size settings.
 - Remaining parity gaps: Memories media/photos/journey composer, chat text-size
   and restyle, theme tokens/artwork palette shared, background recognition, app lock.
+
+### Slice 5: Memories parity (branch `juke-app/ios-memories`, stacked on #185)
+
+- Insights "thought" card, memory detail with photo thumbnails, editable tags and suggested tags; composer with
+  PhotosPicker (images/videos upload through `MemoryStore.upload`), people, place, "use the song on air", and
+  reusable tag chips. `NSPhotoLibraryUsageDescription` added.
+- Review fixes applied across the stack: live-script path, New Station re-draft, vinyl keeps its angle, reachable
+  label, one crate load at a time, cancel-safe crate drag, poll-loop handle fix in shared `RadioController`.
+  Not fixed (pre-existing in shared code, macOS too): `startNow` returns false when only deferred, so the
+  auto-restart back-off counts a deferral as a failure. Worth a follow-up task.
+- CI: added `ios_tests_jukeapp` and made `mobile/shared/**` trigger both the macOS and JukeApp jobs.
+- Locally, `xcodebuild test-without-building -only-testing:JukeAppTests` ran in ~20 s on iOS 27.0 (10 tests pass).
+- Still open: shared theme tokens + artwork palette on iOS, background recognition helper, app lock, chat restyle in
+  the single-card language, Memory song replay, touch-driven verification on a device, physical-iPhone signing.
