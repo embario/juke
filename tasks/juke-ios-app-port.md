@@ -77,6 +77,31 @@ on the integration branch.
 
 ## Handoff
 
-- Completed: spec written; worktree created at `66a8f5f`.
-- Next: worker runs the playback investigation and reports before building playback.
+- Completed: spec written; worktree created at `66a8f5f`; playback investigation (below).
+- Next: shared package extraction (slice 1), then iOS shell.
+
+### Playback investigation (2026-10-07)
+
+- macOS never plays audio itself. `RadioController` asks the backend: `POST /api/v1/radio/play`
+  `{stationId, mode: now|queue, deviceId?}` makes the backend call Spotify's Web API (start
+  playback / add to queue) with the user's linked Spotify account. Transport (pause, resume, next,
+  seek) and state polling go through `/api/v1/playback/{state,pause,resume,next,seek}/` via
+  `SpotifyRadioPlayback` -> `PlaybackClient`. The only device knowledge is `deviceID`, learned
+  from `state().device.id` and echoed back.
+- Spotify's Web API only controls an *active* Spotify Connect device. The backend has no
+  device-transfer or "list devices" logic. With no active device Spotify answers NO_ACTIVE_DEVICE,
+  which surfaces as `RadioIssue.noActiveDevice` ("Open Spotify on any device, then press play").
+- Therefore iOS needs no new backend or SDK to match macOS: the radio/playback client is
+  platform-neutral and moves into the shared package as is. The iPhone's own Spotify app counts as a
+  Connect device once it has been opened and played something recently; iOS suspends it in the
+  background and drops it from Connect after a while, so the first tap may need "Open Spotify".
+- Decision (small tradeoff): v1 iOS = Web API + Connect, same as macOS, plus an "Open Spotify"
+  button on the no-active-device card (`spotify://` via `UIApplication.open`, needs
+  `LSApplicationQueriesSchemes: spotify` in Info.plist). No Spotify iOS SDK in v1.
+- Spotify iOS SDK (App Remote) is the alternative for a self-activating device: it needs a
+  Spotify app client ID + redirect URI registered in the Spotify dashboard (owner-held), the
+  Spotify app installed, and an `authorizeAndPlayURI` hop each session, and it only controls the
+  local phone. Not needed for parity; revisit only if the owner finds the Connect handoff too rough.
+- Owner-visible limit: radio on iOS requires a Spotify-linked Juke account and Spotify Premium
+  (Web API playback control), the same as macOS.
 - Blockers: none yet. Lead to add this task to `tasks/_index.md` (lead-only).
