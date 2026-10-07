@@ -4,7 +4,7 @@ from django.http import HttpResponseRedirect
 from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
-from social_core.exceptions import AuthConnectionError
+from juke_auth.social_exceptions import AuthConnectionError
 
 
 class SocialAuthCompleteTests(APITestCase):
@@ -39,6 +39,10 @@ class SocialAuthCompleteTests(APITestCase):
             None,
             'Spotify /v1/me returned 429 QUOTA_EXCEEDED',
         )
+
+        # 6.x keeps provider diagnostics out of str(exc), exposing a reason code.
+        if hasattr(mock_do_complete.side_effect, 'code'):
+            mock_do_complete.side_effect = AuthConnectionError(None, code='rate_limited')
 
         resp = self.client.get(self.complete_url)
 
