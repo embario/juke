@@ -5,7 +5,11 @@ import SwiftData
 @MainActor
 @Observable
 final class VibeAppModel {
-    var session: JukeSession?
+    var session: JukeSession? {
+        didSet { accessToken.set(session?.accessToken) }
+    }
+    var tab: JukeTab = .radio
+    var banner: String?
     var messages: [ChatLine] = []
     var draft = ""
     var question = "What are you hearing differently right now?"
@@ -14,26 +18,95 @@ final class VibeAppModel {
     let nowPlaying = NowPlayingObserver()
     let atmosphere = VibeAtmosphere()
 
+    /// Cross-section requests (New Station route, Library focus, station starts).
+    let coordinator = JukeCoordinator()
+    /// Typed client for the Juke REST API, authenticated as the signed-in user.
+    let api: JukeAPI
+    /// Radio stations, the tuned station and the continuous-play loop.
+    let radio: RadioController
+    let memories: MemoryStore
+    @ObservationIgnored private let accessToken = AccessTokenStore()
     private let context: ModelContext
     private let auth = JukeAuthService()
-    private let api = VibeAPI()
+    private let vibe = VibeAPI()
     private let local = LocalVibeIntelligence()
 
     init(container: ModelContainer) {
         context = ModelContext(container)
-        if let restored = try? auth.restore() { session = restored; Task { await synchronize(); load() }; if let token = restored.accessToken { nowPlaying.start(token: token) } }
+        AppConfiguration.installLaunchFallback()
+        let accessToken = accessToken
+        api = JukeAPI(token: { accessToken.get() })
+        #if DEBUG
+        let fixtures = ProcessInfo.processInfo.arguments.contains("--uitesting")
+        #else
+        let fixtures = false
+        #endif
+        if fixtures {
+            // Fresh in-memory radio and memories for UI checks; no network.
+            let defaults = UserDefaults(suiteName: "juke.radio.uitests.\(UUID().uuidString)") ?? .standard
+            let preferences = RadioPreferences(defaults: defaults)
+            let scoped = preferences.scoped(to: JukeAccount.localPreview.id)
+            scoped.hasTunedIn = !ProcessInfo.processInfo.arguments.contains("--uitesting-radio-first-run")
+            let playback = RadioFixturePlayback()
+            radio = RadioController(backend: RadioFixtureBackend(playback: playback), playback: playback,
+                                    preferences: preferences, coordinator: coordinator)
+            memories = MemoryStore(client: MemoryClient(fixtures: true))
+        } else {
+            radio = RadioController(
+                backend: api,
+                playback: SpotifyRadioPlayback(token: { accessToken.get() }),
+                coordinator: coordinator
+            )
+            memories = MemoryStore()
+        }
+        radio.onTrackChange = { [weak self] track in self?.radioTrackChanged(track) }
+        #if DEBUG
+        if fixtures, ProcessInfo.processInfo.arguments.contains("--uitesting-authenticated") {
+            let preview = JukeSession(account: .localPreview, accessToken: "ui-test-token", authenticatedAt: .now)
+            session = preview
+            if let name = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-tab=") })?.dropFirst(16), let value = JukeTab(rawValue: String(name)) { tab = value }
+            beginSession(preview, polling: false)
+            return
+        }
+        #endif
+        if let restored = try? auth.restore() {
+            session = restored
+            beginSession(restored)
+            Task { await synchronize(); load() }
+        }
     }
 
-    var trackLabel: String? { nowPlaying.track?.label }
+    private func beginSession(_ value: JukeSession, polling: Bool = true) {
+        accessToken.set(value.accessToken)
+        if polling, let token = value.accessToken { nowPlaying.start(token: token) }
+        Task {
+            await memories.configure(session: value)
+            await radio.start(accountID: value.account.id)
+        }
+    }
+
+    private func radioTrackChanged(_ track: Radio.Track?) {
+        guard let track else { return }
+        atmosphere.update(for: NowPlayingTrack(id: track.spotifyId, title: track.title, artist: track.artist, album: track.album, artworkURL: track.artworkURL, localArtwork: nil, source: "Juke Radio"))
+    }
+
+    /// The server changed in Settings: a token belongs to the server that issued it.
+    func backendChanged() {
+        guard session != nil else { return }
+        logout()
+        banner = "The Juke server changed. Sign in again to continue."
+    }
+
+    var trackLabel: String? { radio.isOnAir ? radio.track.map { "\($0.title) — \($0.artist)" } : nowPlaying.track?.label }
 
     func signIn(create: Bool = false) async {
         do {
             let value = try await auth.signIn(path: create ? "accounts/signup" : "accounts/login")
-            session = value; await synchronize(); load(); if let token = value.accessToken { nowPlaying.start(token: token) }; await refreshQuestion()
+            session = value; beginSession(value); await synchronize(); load(); await refreshQuestion()
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func logout() { nowPlaying.stopPolling(); auth.logout(); session = nil; messages = [] }
+    func logout() { nowPlaying.stopPolling(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; messages = [] }
 
     func send() async {
         guard let session, let token = session.accessToken else { return }
@@ -42,7 +115,7 @@ final class VibeAppModel {
         do {
             try await store(text, role: "user")
             let reply = session.account.cloudAIEnabled
-                ? try await api.chat(text, currentTrack: trackLabel, token: token)
+                ? try await vibe.chat(text, currentTrack: trackLabel, token: token)
                 : try await local.respond(text, track: trackLabel, history: messages.map { "\($0.role): \($0.content)" })
             try await store(reply, role: "assistant")
         } catch { errorMessage = error.localizedDescription }
@@ -64,7 +137,7 @@ final class VibeAppModel {
         context.insert(EncryptedChatMessage(id: id, accountID: accountID, role: role, encryptedContent: sealed, trackIdentity: trackLabel, createdAt: createdAt)); try context.save()
         messages.append(ChatLine(id: id, role: role, content: text, createdAt: createdAt))
         if let token = session?.accessToken {
-            do { try await api.upload(.init(recordID: id, accountID: accountID, kind: "chatMessage", ciphertext: sealed, modifiedAt: createdAt, encryptionVersion: 1), token: token) }
+            do { try await vibe.upload(.init(recordID: id, accountID: accountID, kind: "chatMessage", ciphertext: sealed, modifiedAt: createdAt, encryptionVersion: 1), token: token) }
             catch { errorMessage = "This message is safe on this iPhone; encrypted sync will retry when Neptune is reachable." }
         }
     }
@@ -82,7 +155,7 @@ final class VibeAppModel {
     private func synchronize() async {
         guard let session, let token = session.accessToken else { return }
         do {
-            let incoming = try await api.encryptedChanges(token: token)
+            let incoming = try await vibe.encryptedChanges(token: token)
             let existing = try context.fetch(FetchDescriptor<EncryptedChatMessage>())
             let ids = Set(existing.map(\.id)); let vault = ChatVault(accountID: session.account.id)
             for envelope in incoming where !ids.contains(envelope.recordID) && envelope.accountID == session.account.id {

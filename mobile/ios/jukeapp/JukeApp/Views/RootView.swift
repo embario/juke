@@ -13,11 +13,25 @@ struct RootView: View {
     }
 
     private var main: some View {
-        TabView {
-            NavigationStack { ChatView().safeAreaInset(edge: .bottom) { NowPlayingPill() } }.tabItem { Label("Vibe", systemImage: "sparkles") }
-            NavigationStack { DiscoverView().safeAreaInset(edge: .bottom) { NowPlayingPill() } }.tabItem { Label("Discover", systemImage: "safari") }
-            NavigationStack { SettingsView() }.tabItem { Label("Settings", systemImage: "gearshape") }
+        @Bindable var model = model
+        return TabView(selection: $model.tab) {
+            ForEach(JukeTab.allCases) { tab in
+                NavigationStack { content(for: tab) }
+                    .safeAreaInset(edge: .bottom) { if tab != .radio { MiniPlayerPill() } }
+                    .tabItem { Label(tab.title, systemImage: tab.symbol) }
+                    .tag(tab)
+            }
         }.tint(model.atmosphere.primary)
+    }
+
+    @ViewBuilder private func content(for tab: JukeTab) -> some View {
+        switch tab {
+        case .radio: RadioScreen()
+        case .library: LibraryScreen()
+        case .memories: MemoriesScreen()
+        case .chat: ChatView()
+        case .settings: SettingsView()
+        }
     }
 }
 
@@ -28,9 +42,10 @@ private struct SignInView: View {
             Spacer()
             Image(systemName: "waveform.path.ecg.rectangle.fill").font(.system(size: 58)).foregroundStyle(model.atmosphere.primary)
             Text("Juke").font(.largeTitle.bold())
-            Text("A private music companion that listens along.").font(.title3).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text("A private music companion that listens along.").font(.title3).padding(.horizontal, 24).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button("Sign in with Juke") { Task { await model.signIn() } }.buttonStyle(.borderedProminent).controlSize(.large).tint(model.atmosphere.primary)
             Button("Create an account") { Task { await model.signIn(create: true) } }
+            if let banner = model.banner { Text(banner).font(.callout).foregroundStyle(.orange).multilineTextAlignment(.center) }
             Text("Conversation history is encrypted on this iPhone and is never uploaded as readable history.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 34)
             Spacer()
         }.padding()

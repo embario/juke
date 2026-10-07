@@ -2,19 +2,6 @@ import Foundation
 import SwiftData
 import UIKit
 
-struct JukeAccount: Codable, Equatable, Sendable, Identifiable {
-    let id: String
-    let displayName: String
-    let email: String?
-    let cloudAIEnabled: Bool
-}
-
-struct JukeSession: Codable, Equatable, Sendable {
-    let account: JukeAccount
-    let accessToken: String?
-    let authenticatedAt: Date
-}
-
 @Model
 final class EncryptedChatMessage {
     @Attribute(.unique) var id: UUID

@@ -10,7 +10,7 @@ actor VibeAPI {
         let encryptionVersion: Int
     }
     private struct ChangeSet: Decodable { let envelopes: [EncryptedEnvelope]; let cursor: String? }
-    private let baseURL = AppConfiguration.shared.apiBaseURL
+    private var baseURL: URL { AppConfiguration.currentAPIBaseURL }
 
     func chat(_ message: String, currentTrack: String?, token: String) async throws -> String {
         struct Body: Encodable { let message: String; let currentTrack: String? }

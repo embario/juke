@@ -15,6 +15,20 @@ struct AppConfiguration: Sendable {
 
     var apiBaseURL: URL { backendURL.appending(path: "api/v1/") }
 
+    /// The server in use right now: the Settings value when the listener chose one,
+    /// otherwise the build/launch value above. Read per request, never cached.
+    static var currentBackendURL: URL { JukeServer.baseURL() }
+    static var currentAPIBaseURL: URL { JukeServer.apiURL() }
+    /// Sign-in page host: the chosen server when set in Settings, else `FRONTEND_URL`.
+    static var currentFrontendURL: URL {
+        UserDefaults.standard.string(forKey: JukeServer.backendURLKey).flatMap(JukeServer.normalizedBaseURL) ?? shared.frontendURL
+    }
+
+    /// Call once at launch so the shared radio/memory clients fall back to `BACKEND_URL`.
+    static func installLaunchFallback() {
+        JukeServer.fallbackBaseURL = shared.backendURL == defaultBackendURL ? nil : shared.backendURL
+    }
+
     init(environment: [String: String] = ProcessInfo.processInfo.environment, bundle: Bundle = .main) {
         func lookup(_ key: String) -> URL? {
             let candidates = [environment[key], bundle.object(forInfoDictionaryKey: key) as? String]

@@ -10,9 +10,13 @@ enum JukeServer {
     static let defaultBaseURL = URL(string: "https://neptune.tail647b75.ts.net/")!
     static let backendURLKey = "juke.settings.backendURL"
 
+    /// Used when the user has not chosen a server: a build-time or launch
+    /// environment value (iOS reads `BACKEND_URL`). Set once at launch.
+    nonisolated(unsafe) static var fallbackBaseURL: URL?
+
     /// The configured backend root, always ending in `/`.
     static func baseURL(defaults: UserDefaults = .standard) -> URL {
-        defaults.string(forKey: backendURLKey).flatMap(normalizedBaseURL) ?? defaultBaseURL
+        defaults.string(forKey: backendURLKey).flatMap(normalizedBaseURL) ?? fallbackBaseURL ?? defaultBaseURL
     }
 
     /// `<base>/api/v1/`, the root of every REST endpoint.
