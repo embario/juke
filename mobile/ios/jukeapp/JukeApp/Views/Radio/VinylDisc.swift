@@ -14,20 +14,24 @@ struct VinylDisc: View {
     @State private var lastAngle = 0.0
     @State private var spinDegrees = 0.0
     @State private var slide: CGFloat = 0
+    /// The idle angle the record rests at, and when it last started turning.
+    @State private var restAngle = 0.0
+    @State private var playStart = Date.now
     @State private var frozenIdle = 0.0
-    @State private var startedAt = Date.now
 
     var body: some View {
         let radio = model.radio
         TimelineView(.animation(paused: !radio.isPlaying || reduceMotion || grab != nil)) { context in
-            let idle = radio.isPlaying && !reduceMotion
-                ? context.date.timeIntervalSince(startedAt).truncatingRemainder(dividingBy: VinylSeek.idleTurnDuration) / VinylSeek.idleTurnDuration * 360
-                : 0
+            let idle = idleAngle(at: context.date)
             disc
                 .rotationEffect(.degrees((grab == nil ? idle : frozenIdle) + spinDegrees))
                 .overlay(alignment: .top) { bubble }
         }
         .frame(width: size, height: size)
+        .onChange(of: radio.isPlaying) { _, playing in
+            if playing { playStart = .now } else { restAngle = idleAngle(at: .now, playing: true) }
+        }
+        .onAppear { playStart = .now }
         .contentShape(Circle())
         .gesture(drag)
         .accessibilityElement()
@@ -36,6 +40,14 @@ struct VinylDisc: View {
         .accessibilityAdjustableAction { direction in
             Task { await radio.spin(degrees: direction == .increment ? 36 : -36) }
         }
+    }
+
+    /// Where the idle spin has the record: it keeps its angle across pauses and grabs.
+    private func idleAngle(at date: Date, playing: Bool? = nil) -> Double {
+        let turning = (playing ?? model.radio.isPlaying) && !reduceMotion
+        guard turning else { return restAngle }
+        let elapsed = date.timeIntervalSince(playStart) / VinylSeek.idleTurnDuration * 360
+        return (restAngle + elapsed).truncatingRemainder(dividingBy: 360)
     }
 
     private var disc: some View {
@@ -68,7 +80,7 @@ struct VinylDisc: View {
             .onChanged { value in
                 let box = CGSize(width: size, height: size)
                 if grab == nil {
-                    frozenIdle = 0
+                    frozenIdle = idleAngle(at: .now)
                     grab = VinylSeek.isLabelGrab(value.startLocation, in: box) ? .label : .ring
                     lastAngle = VinylSeek.angle(of: value.startLocation, in: box)
                 }
@@ -87,6 +99,9 @@ struct VinylDisc: View {
                 let mode = grab
                 let degrees = spinDegrees
                 withAnimation(.spring(duration: 0.35)) { slide = 0 }
+                // Keep the angle the finger left it at; idle spin resumes from there.
+                restAngle = (frozenIdle + (mode == .ring ? degrees : 0)).truncatingRemainder(dividingBy: 360)
+                playStart = .now
                 grab = nil; spinDegrees = 0
                 switch mode {
                 case .label:
