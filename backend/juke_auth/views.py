@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover - fallback for older rest_registration l
 
 from social_django.utils import load_backend, load_strategy
 from social_core.actions import do_auth, do_complete
-from social_core.exceptions import AuthConnectionError
+from juke_auth.social_exceptions import AuthConnectionError
 from social_django import views as social_views
 from social_django.models import UserSocialAuth
 
@@ -64,7 +64,11 @@ SOCIAL_AUTH_PROVIDER = 'spotify'
 
 def _spotify_connection_error(exc):
     normalized = str(exc).upper()
-    if 'QUOTA_EXCEEDED' in normalized or ('429' in normalized and 'SPOTIFY' in normalized):
+    if (
+        getattr(exc, 'code', None) == 'rate_limited'
+        or 'QUOTA_EXCEEDED' in normalized
+        or ('429' in normalized and 'SPOTIFY' in normalized)
+    ):
         return (
             'spotify_quota_exceeded',
             'Spotify has temporarily paused new connections because Juke reached its provider quota. '
