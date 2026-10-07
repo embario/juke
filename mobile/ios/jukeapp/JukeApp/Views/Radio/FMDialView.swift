@@ -8,6 +8,8 @@ struct FMDialView: View {
     @State private var dragDelta: CGFloat = 0
     @State private var dragging = false
     @State private var lastTick = 0
+    /// A station picked up by press-and-hold, and where it would land.
+    @State private var holding: (id: Radio.ID, frequency: Double)?
 
     var body: some View {
         let radio = model.radio
@@ -17,7 +19,7 @@ struct FMDialView: View {
                     ticks
                     ForEach(radio.stations) { station in
                         stationMark(station)
-                            .position(x: FMDial.x(for: station.frequency), y: 38)
+                            .position(x: FMDial.x(for: holding?.id == station.id ? holding!.frequency : station.frequency), y: holding?.id == station.id ? 30 : 38)
                     }
                     newMark.position(x: FMDial.x(for: FMDial.newSlot), y: 38)
                 }
@@ -96,14 +98,37 @@ struct FMDialView: View {
 
     private func stationMark(_ station: Radio.Station) -> some View {
         let tuned = station.id == model.radio.tunedStation?.id
-        return Button { Task { await model.radio.tune(to: station.id) } } label: {
-            VStack(spacing: 2) {
-                Text(station.name).font(.caption.weight(.semibold)).lineLimit(1)
-                Text(station.frequencyLabel).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 8).padding(.vertical, 5).frame(width: FMDial.itemWidth - 12)
-            .background(tuned ? model.atmosphere.primary.opacity(0.3) : Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 9))
-        }.buttonStyle(.plain)
+        let lifted = holding?.id == station.id
+        return VStack(spacing: 2) {
+            Text(station.name).font(.caption.weight(.semibold)).lineLimit(1)
+            Text(String(format: "%.1f", lifted ? holding!.frequency : station.frequency)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5).frame(width: FMDial.itemWidth - 12)
+        .background(tuned || lifted ? model.atmosphere.primary.opacity(0.3) : Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 9))
+        .scaleEffect(lifted ? 1.08 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture { Task { await model.radio.tune(to: station.id) } }
+        .gesture(
+            LongPressGesture(minimumDuration: RadioGesture.holdDelay.seconds)
+                .sequenced(before: DragGesture(minimumDistance: 0))
+                .onChanged { phase in
+                    guard case .second(true, let drag) = phase else { return }
+                    let dx = drag?.translation.width ?? 0
+                    let target = FMDial.snap(station.frequency + Double(dx) / Double(FMDial.pointsPerMHz))
+                    if holding?.id != station.id { lastTick += 1 }
+                    holding = (station.id, target)
+                }
+                .onEnded { phase in
+                    guard let held = holding, held.id == station.id else { holding = nil; return }
+                    let direction = held.frequency >= station.frequency ? 1 : -1
+                    holding = nil
+                    Task { await model.radio.moveStation(station.id, to: held.frequency, preferring: direction) }
+                }
+        )
+        .accessibilityAction(named: "Move up the dial") { Task { await model.radio.moveStation(station.id, to: station.frequency + 2.2, preferring: 1) } }
+        .accessibilityAction(named: "Move down the dial") { Task { await model.radio.moveStation(station.id, to: station.frequency - 2.2, preferring: -1) } }
+        .accessibilityLabel("\(station.name), \(station.frequencyLabel) FM")
+        .accessibilityAddTraits(.isButton)
     }
 
     private var newMark: some View {
@@ -112,4 +137,8 @@ struct FMDialView: View {
                 .background(Color.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 9))
         }.buttonStyle(.plain)
     }
+}
+
+private extension Duration {
+    var seconds: TimeInterval { TimeInterval(components.seconds) + TimeInterval(components.attoseconds) / 1e18 }
 }

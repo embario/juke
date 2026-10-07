@@ -148,3 +148,15 @@ on the integration branch.
 - Not done: hold-to-move a station on the dial, fling velocity on the vinyl, "play after this song" from the
   crate, lyrics sheet. Gestures were built against the shared, unit-tested math and rendered on the iOS 27.0
   simulator, but not driven by touch (no touch injection available here); a human pass on a device is wanted.
+
+### Slice 4: Radio parity (branch `juke-app/ios-parity`, stacked on #184)
+
+- Station sheet (tap the station name): records, feelings, keep-out list + add, learning toggle, "Pull more
+  records". Put-away card with session summary, "Save as a memory" and "Play again". Skip long-press menu (not on
+  this station, less/never this artist). Lyrics "coming soon" alert.
+- Found while wiring: `RadioController.saveMemory` defaults to a no-op and neither app passed it, so "Save this
+  moment" / "Save as a memory" claimed success without saving. Both JukeMac (`AppModel`) and JukeApp now pass
+  `memories.save`. This changes macOS behaviour (it now really saves); flagged in the PR.
+- Added: hold-to-move a station on the dial (long-press then drag; VoiceOver actions), appearance + chat text size settings.
+- Remaining parity gaps: Memories media/photos/journey composer, chat text-size
+  and restyle, theme tokens/artwork palette shared, background recognition, app lock.

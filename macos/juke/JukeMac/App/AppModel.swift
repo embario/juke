@@ -105,14 +105,16 @@ final class AppModel {
             }
             let playback = RadioFixturePlayback()
             radio = RadioController(backend: RadioFixtureBackend(playback: playback), playback: playback,
-                                    preferences: radioPreferences, coordinator: coordinator)
+                                    preferences: radioPreferences, coordinator: coordinator,
+                                    saveMemory: { [memories] draft in _ = try await memories.save(draft) })
         } else {
             radioPreferences = RadioPreferences()
             radio = RadioController(
                 backend: api,
                 playback: SpotifyRadioPlayback(token: { [accessToken] in accessToken.get() }),
                 preferences: radioPreferences,
-                coordinator: coordinator
+                coordinator: coordinator,
+                saveMemory: { [memories] draft in _ = try await memories.save(draft) }
             )
         }
         let savedTextSize = UserDefaults.standard.object(forKey: Self.chatTextSizeKey) as? Double

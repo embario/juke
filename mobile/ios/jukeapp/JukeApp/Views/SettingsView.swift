@@ -5,6 +5,8 @@ struct SettingsView: View {
     @State private var serverText = ""
     @State private var serverError: String?
     @State private var loaded = false
+    @AppStorage("juke.settings.appearance") private var appearanceRaw = AppearanceChoice.system.rawValue
+    @AppStorage("vibe.chatTextSize") private var chatTextSize = 17.0
     @AppStorage("juke.settings.crateFlipDirection") private var flipRaw = CrateFlipDirection.sideToSide.rawValue
 
     var body: some View {
@@ -22,6 +24,11 @@ struct SettingsView: View {
             } header: { Text("Juke server") } footer: {
                 Text("HTTPS is required (plain HTTP only for localhost). Changing the server signs you out, because a sign-in belongs to the server that issued it.")
             }
+            Section("Appearance") {
+                Picker("Appearance", selection: $appearanceRaw) {
+                    ForEach(AppearanceChoice.allCases) { Label($0.label, systemImage: $0.symbol).tag($0.rawValue) }
+                }.pickerStyle(.segmented)
+            }
             Section("Library") {
                 Picker("Crate flips", selection: $flipRaw) {
                     ForEach(CrateFlipDirection.allCases) { Text($0.label).tag($0.rawValue) }
@@ -36,6 +43,13 @@ struct SettingsView: View {
                 LabeledContent("Apple Music", value: "On while active")
                 Toggle("Identify Around Me", isOn: Binding(get: { model.nowPlaying.isListeningAroundMe }, set: { enabled in Task { await model.nowPlaying.setAroundMe(enabled) } }))
                 Text("iOS does not expose a universal queue or another app's raw audio. Juke reads Apple Music's current item, checks linked Spotify playback through Juke, and uses the microphone only when you enable Around Me.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Chat") {
+                HStack {
+                    Text("Text size")
+                    Slider(value: $chatTextSize, in: 14...22, step: 1)
+                    Text("\(Int(chatTextSize)) pt").monospacedDigit().foregroundStyle(.secondary).frame(width: 46, alignment: .trailing)
+                }
             }
             Section("Conversation privacy") {
                 Label("Encrypted before local storage", systemImage: "lock.shield")

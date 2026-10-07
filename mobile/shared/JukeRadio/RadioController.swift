@@ -948,7 +948,8 @@ final class RadioController {
                 if self.isPlaying, self.queuedTrack == nil, untilQueue > 0.2 { interval = min(interval, untilQueue) }
                 try? await Task.sleep(for: .seconds(interval))
             }
-            self?.pollTask = nil
+            // A cancelled loop must not clear the handle of a newer one started after stop().
+            if !Task.isCancelled { self?.pollTask = nil }
         }
     }
 
