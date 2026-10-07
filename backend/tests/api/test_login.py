@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from social_core.backends.spotify import SpotifyOAuth2
-from social_core.exceptions import AuthConnectionError
+from juke_auth.social_exceptions import AuthConnectionError
 
 from juke_auth.models import JukeUser
 
