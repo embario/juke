@@ -4,18 +4,27 @@ import SwiftUI
 /// station strip. Touch gestures (vinyl, FM dial) come in later slices.
 struct RadioScreen: View {
     @Environment(VibeAppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var isNewStation: Bool {
+        if case .newStation = model.coordinator.radioRoute { true } else { false }
+    }
 
     var body: some View {
         let radio = model.radio
-        Group {
+        // Flicking the dial to "+ New" eases the card away and the wizard in (and back again).
+        ZStack {
             if case .newStation(let draft) = model.coordinator.radioRoute {
                 NewStationScreen(draft: draft)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             } else if !radio.hasTunedIn {
-                FirstRunCard()
+                FirstRunCard().transition(.opacity)
             } else {
                 NowPlayingCard()
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.94).combined(with: .opacity))
             }
         }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.5), value: isNewStation)
         .navigationTitle(model.coordinator.radioRoute == .nowPlaying ? "Radio" : "New station")
         .navigationBarTitleDisplayMode(.inline)
         .background(VibeBackground(atmosphere: model.atmosphere))

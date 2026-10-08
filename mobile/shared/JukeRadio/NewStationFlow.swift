@@ -30,7 +30,7 @@ enum NewStationPick: Identifiable, Hashable, Sendable {
 final class NewStationFlow {
     typealias Step = JukeCoordinator.NewStationDraft.Start
 
-    static let maxRecords = StationStarter.maxRecords
+    static let maxRecords = 3
     /// Same limit as reactions; the server counts Unicode code points.
     nonisolated static let maxPhraseLength = Radio.ReactionsRequest.maxPhraseLength
     /// The server's `MAX_FEELINGS` (`backend/radio/serializers.py`).
