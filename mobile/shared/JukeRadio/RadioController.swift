@@ -846,7 +846,10 @@ final class RadioController {
             // The song ended with nothing queued: keep the music going, but
             // back off after failures instead of retrying every poll.
             guard now() >= nextAutoStart, let id = pendingStationID ?? currentStationID else { return }
-            if await startNow(id) {
+            if isBusy {
+                // This request is deferred behind a real start attempt; leave retry state alone.
+                _ = await startNow(id)
+            } else if await startNow(id) {
                 autoStartFailures = 0
             } else if session == generation {
                 autoStartFailures += 1
