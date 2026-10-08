@@ -39,6 +39,8 @@ struct RadioPlaybackSnapshot: Equatable, Sendable {
     var deviceName: String?
     /// `spotify:track:…`, or an episode/other URI. `nil` when unknown.
     var uri: String?
+    /// Spotify's `currently_playing_type` when the backend reports it.
+    var contentType: String?
     /// The backend's state, passed on to the recognition helper so the app
     /// polls Spotify only once while radio is on. Not part of equality.
     var raw: JukePlaybackState?
@@ -48,6 +50,11 @@ struct RadioPlaybackSnapshot: Equatable, Sendable {
             && lhs.album == rhs.album && lhs.albumID == rhs.albumID && lhs.artworkURL == rhs.artworkURL
             && lhs.durationMs == rhs.durationMs && lhs.progressMs == rhs.progressMs && lhs.isPlaying == rhs.isPlaying
             && lhs.deviceID == rhs.deviceID && lhs.deviceName == rhs.deviceName && lhs.uri == rhs.uri
+    }
+
+    /// A podcast episode is playing (never a station song).
+    var isEpisode: Bool {
+        contentType == "episode" || (uri?.hasPrefix("spotify:episode:") ?? false)
     }
 
     /// A song (not a podcast episode or ad).
@@ -91,6 +98,7 @@ struct RadioPlaybackSnapshot: Equatable, Sendable {
             deviceName: state.device?.name,
             uri: track?.uri
         )
+        contentType = state.currentlyPlayingType
         raw = state
     }
 

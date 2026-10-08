@@ -40,9 +40,12 @@ struct JukePlaybackState: Decodable, Sendable {
     let progressMs: Int
     let track: Track?
     let device: Device?
+    /// Spotify's `currently_playing_type` (`track`, `episode`, `ad`). `nil` from older backends.
+    var currentlyPlayingType: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case provider, track, device
+        case currentlyPlayingType = "currently_playing_type"
         case isPlaying = "is_playing"
         case progressMs = "progress_ms"
     }

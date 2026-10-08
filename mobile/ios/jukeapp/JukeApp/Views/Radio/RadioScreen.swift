@@ -64,6 +64,9 @@ private struct NowPlayingCard: View {
                 ReactionStrip()
                 IssueView()
                 if let notice = radio.notice { Text(notice).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
+                if radio.isPausedForEpisode {
+                    Button("Resume station") { Task { await radio.togglePlayPause() } }.buttonStyle(.borderedProminent).accessibilityIdentifier("radio.resumeStation")
+                }
                 FMDialView()
             }
             .padding(.horizontal, 20).padding(.vertical, 12)

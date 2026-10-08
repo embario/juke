@@ -37,6 +37,8 @@ final class VibeAppModel {
     let memoryPlayer: MemoryPlayer
     /// Album-art colour feeding `JukeTheme`.
     let artwork = ArtworkPalette()
+    /// DEBUG screenshots: pins the artwork colour (`--uitesting-artwork-hex=RRGGBB`).
+    @ObservationIgnored private var artworkOverride: RGB?
     @ObservationIgnored private let accessToken = AccessTokenStore()
     private let context: ModelContext
     private let auth = JukeAuthService()
@@ -53,7 +55,21 @@ final class VibeAppModel {
         #else
         let fixtures = false
         #endif
-        let store = fixtures ? MemoryStore(client: MemoryClient(fixtures: true)) : MemoryStore()
+        let store: MemoryStore
+        if fixtures {
+            #if DEBUG
+            var samples: (@Sendable () async -> (memories: [MusicMemory], media: [(MemoryMedia, Data)]))?
+            if ProcessInfo.processInfo.arguments.contains("--uitesting-memories-sample") {
+                samples = { @Sendable in await MemorySampleData.make() }
+            }
+            let client = MemoryClient(fixtures: true, fixtureSamples: samples)
+            #else
+            let client = MemoryClient(fixtures: true)
+            #endif
+            store = MemoryStore(client: client)
+        } else {
+            store = MemoryStore()
+        }
         memories = store
         recognitionFeed = NowPlayingRecognitionFeed(nowPlaying)
         recognition = .live(
@@ -100,6 +116,10 @@ final class VibeAppModel {
             if let name = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-tab=") })?.dropFirst(16), let value = JukeTab(rawValue: String(name)) { tab = value }
             if ProcessInfo.processInfo.arguments.contains("--uitesting-locked") { lock.lockNow() }
             beginSession(preview, polling: false)
+            if let hex = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-artwork-hex=") })?.dropFirst(24) {
+                artworkOverride = RGB(hex: "#" + hex)
+                artwork.apply(RGB(hex: "#" + hex))
+            }
             return
         }
         #endif
@@ -123,7 +143,7 @@ final class VibeAppModel {
     }
 
     private func radioTrackChanged(_ track: Radio.Track?) {
-        artwork.update(artworkURL: track?.artworkURL, enabled: atmosphere.enabled)
+        if artworkOverride == nil { artwork.update(artworkURL: track?.artworkURL, enabled: atmosphere.enabled) }
         guard let track else { return }
         atmosphere.update(for: NowPlayingTrack(id: track.spotifyId, title: track.title, artist: track.artist, album: track.album, artworkURL: track.artworkURL, localArtwork: nil, source: "Juke Radio"))
     }
@@ -161,7 +181,7 @@ final class VibeAppModel {
 
     func trackChanged() {
         atmosphere.update(for: nowPlaying.track)
-        if !radio.isOnAir { artwork.update(artworkURL: nowPlaying.track?.artworkURL, enabled: atmosphere.enabled) }
+        if !radio.isOnAir, artworkOverride == nil { artwork.update(artworkURL: nowPlaying.track?.artworkURL, enabled: atmosphere.enabled) }
         Task { await refreshQuestion() }
     }
 

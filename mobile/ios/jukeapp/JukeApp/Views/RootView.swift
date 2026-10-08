@@ -34,7 +34,12 @@ struct RootView: View {
         @Bindable var model = model
         return TabView(selection: $model.tab) {
             ForEach(JukeTab.allCases) { tab in
-                NavigationStack { content(for: tab) }
+                // Every tab shows the artwork-tinted page, even screens with no background of their own.
+                NavigationStack {
+                    content(for: tab)
+                        .scrollContentBackground(.hidden)
+                        .containerBackground(for: .navigation) { VibeBackground(atmosphere: model.atmosphere) }
+                }
                     .safeAreaInset(edge: .bottom) { if tab.showsMiniPlayer { MiniPlayerPill() } }
                     .tabItem { Label(tab.title, systemImage: tab.symbol) }
                     .tag(tab)
