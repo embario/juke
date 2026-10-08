@@ -454,7 +454,8 @@ final class RadioController {
     @discardableResult
     func pause() async -> Bool {
         guard isOnAir, isPlaying else { return true }
-        let position = position(at: now())
+        // An unconfirmed resume has not moved the song.
+        let position = isResuming ? resumeFrom : position(at: now())
         do {
             try await playback.pause(deviceID: deviceID)
             userPaused = true

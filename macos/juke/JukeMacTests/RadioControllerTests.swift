@@ -502,6 +502,20 @@ final class RadioControllerTests: XCTestCase {
         XCTAssertNil(radio.issue)
     }
 
+    func testPausingAnUnconfirmedResumeKeepsThePlace() async {
+        let radio = await pausedAt(30)
+        await playback.set(nil)
+        await playback.setDeviceAnswers(false)
+        await radio.resume()
+        clock.advance(3)
+        await radio.pause()
+        XCTAssertEqual(radio.status, .paused)
+        XCTAssertEqual(radio.position(at: clock.now), 30, accuracy: 0.01)
+        clock.advance(10)
+        await radio.refresh()
+        XCTAssertNil(radio.issue, "the listener paused again; nothing is wrong")
+    }
+
     func testComingBackFromSpotifyResumesTheSong() async {
         let radio = await pausedAt(30)
         await playback.set(nil)
