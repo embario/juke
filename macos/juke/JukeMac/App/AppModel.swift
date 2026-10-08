@@ -84,7 +84,7 @@ final class AppModel {
         #endif
         backgroundRecognition = .live(
             api: api,
-            settings: settings,
+            enabled: { [settings] in settings.backgroundRecognitionEnabled },
             token: { [accessToken] in accessToken.get() },
             allowed: { [isUITesting] in !isUITesting }
         )

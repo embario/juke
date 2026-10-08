@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var serverError: String?
     @State private var loaded = false
     @AppStorage("juke.settings.appearance") private var appearanceRaw = AppearanceChoice.system.rawValue
+    @AppStorage(JukeRecognitionSetting.key) private var recognizeMusic = true
     @AppStorage("vibe.chatTextSize") private var chatTextSize = 17.0
     @AppStorage("juke.settings.crateFlipDirection") private var flipRaw = CrateFlipDirection.sideToSide.rawValue
 
@@ -39,6 +40,8 @@ struct SettingsView: View {
                 Text("Current artwork shapes the colors. Motion follows your Accessibility settings.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Music detection") {
+                Toggle("Recognize music while Juke is open", isOn: $recognizeMusic)
+                    .onChange(of: recognizeMusic) { _, _ in model.recognition.reevaluate() }
                 LabeledContent("Radio", value: "Spotify through Juke")
                 LabeledContent("Apple Music", value: "On while active")
                 Toggle("Identify Around Me", isOn: Binding(get: { model.nowPlaying.isListeningAroundMe }, set: { enabled in Task { await model.nowPlaying.setAroundMe(enabled) } }))
