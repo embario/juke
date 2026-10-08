@@ -15,6 +15,7 @@
 		154696631ECAA3BCC8750019 /* LocalVibeIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C46B8ED4337270D4245BB5C /* LocalVibeIntelligence.swift */; };
 		189D6AD832CEEBED7C31D56B /* NowPlayingPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76DAF882B610EA572590E5AE /* NowPlayingPill.swift */; };
 		1B1D65CAF628ECD7BAF765A9 /* VibeAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6A8BDAFD0900B4B4266600 /* VibeAPI.swift */; };
+		1BD8769844187145B8815322 /* VibeBackgroundGlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8239F90A43E27AF281B3A1E7 /* VibeBackgroundGlowTests.swift */; };
 		1E762619BB115E55CDDEDCDB /* RadioController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC1600417C1EC83B8F8C5C95 /* RadioController.swift */; };
 		22444B3FE6FED102104A636A /* NewStationScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C62ADD8FEB0B5C2C7FC2CAFC /* NewStationScreen.swift */; };
 		27BBC41638BE52E6B6CC56AD /* RadioScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E86866E5F50638D1FCDE22A /* RadioScreen.swift */; };
@@ -117,6 +118,7 @@
 		7A865B110B41CA3A2C7C892A /* RadioServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioServices.swift; sourceTree = "<group>"; };
 		7D3CF032BFA0B09411D0D144 /* RadioFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioFixtures.swift; sourceTree = "<group>"; };
 		806E45185EB177301D43ABDF /* MusicMemory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicMemory.swift; sourceTree = "<group>"; };
+		8239F90A43E27AF281B3A1E7 /* VibeBackgroundGlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeBackgroundGlowTests.swift; sourceTree = "<group>"; };
 		88817C4485CCB70C2BB52469 /* VibeAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeAppModel.swift; sourceTree = "<group>"; };
 		8A6371277CE5CE45F267F7D1 /* CatalogClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogClient.swift; sourceTree = "<group>"; };
 		958D80D34F1CAA46CF6F2A18 /* AppLockControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockControllerTests.swift; sourceTree = "<group>"; };
@@ -157,6 +159,7 @@
 				CB8A86FED0C799F9C642AD85 /* NowPlayingRecognitionFeedTests.swift */,
 				BBB5EC0C699F85EFAA959DF0 /* PlaybackAuthTests.swift */,
 				E063B16365CC39C5A8811EB2 /* ServerSelectionTests.swift */,
+				8239F90A43E27AF281B3A1E7 /* VibeBackgroundGlowTests.swift */,
 			);
 			path = JukeAppTests;
 			sourceTree = "<group>";
@@ -424,6 +427,7 @@
 				EB94342776BB3BB5D8BF329D /* NowPlayingRecognitionFeedTests.swift in Sources */,
 				711938BFC51755C8A89492C1 /* PlaybackAuthTests.swift in Sources */,
 				8FBBC7289E3FC51B4938AC60 /* ServerSelectionTests.swift in Sources */,
+				1BD8769844187145B8815322 /* VibeBackgroundGlowTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
