@@ -74,4 +74,23 @@ import UniformTypeIdentifiers
         #expect(parts.year == 2019 && parts.month == 7 && parts.day == 4)
         #expect(MemoryJourneyFlow.captureDate(fromImageData: Data([1, 2, 3])) == nil)
     }
+
+    @Test func aPhotoOnlyMemoryCanBeSavedAndLosingItDisablesSaving() {
+        let draft = MemoryDraft()
+        let photo = UUID()
+        #expect(!draft.canSave)
+        #expect(MemoryJourneyFlow.canSave(draft, attachmentIDs: [photo]))
+        #expect(MemoryJourneyFlow.savableDraft(draft, attachmentIDs: [photo]).mediaIDs == [photo])
+        // Removing the final attachment leaves nothing to save.
+        #expect(!MemoryJourneyFlow.canSave(draft, attachmentIDs: []))
+        var withText = draft; withText.text = "hello"
+        #expect(MemoryJourneyFlow.canSave(withText, attachmentIDs: []))
+    }
+
+    @Test func anUploadThatFinishesAfterLeavingIsNotKept() {
+        var gate = MemoryUploadGate()
+        #expect(gate.shouldKeepLateUpload())
+        gate.abandon()
+        #expect(!gate.shouldKeepLateUpload())
+    }
 }

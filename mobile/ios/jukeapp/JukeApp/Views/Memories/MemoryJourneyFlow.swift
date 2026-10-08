@@ -40,6 +40,20 @@ struct MemoryJourneyFlow: Equatable {
 
     mutating func complete() { step = .complete }
 
+    // MARK: Saving
+
+    /// The draft as it will be saved: with the uploaded attachments' IDs, so a photo- or
+    /// video-only memory is eligible before the final submit builds it.
+    static func savableDraft(_ draft: MemoryDraft, attachmentIDs: [UUID]) -> MemoryDraft {
+        var value = draft
+        value.mediaIDs = attachmentIDs
+        return value
+    }
+
+    static func canSave(_ draft: MemoryDraft, attachmentIDs: [UUID]) -> Bool {
+        savableDraft(draft, attachmentIDs: attachmentIDs).canSave
+    }
+
     // MARK: Copy
 
     func title(draftHasSong: Bool, nowPlaying: Bool, question: String) -> String {
@@ -104,4 +118,12 @@ struct MemoryJourneyFlow: Equatable {
         formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
         return formatter.date(from: text)
     }
+}
+
+/// Decides what happens to an upload that finishes after the journey was left: it is
+/// discarded from the server, never attached to a view that is gone.
+struct MemoryUploadGate: Equatable {
+    private(set) var abandoned = false
+    mutating func abandon() { abandoned = true }
+    func shouldKeepLateUpload() -> Bool { !abandoned }
 }

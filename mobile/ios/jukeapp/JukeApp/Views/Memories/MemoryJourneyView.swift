@@ -25,6 +25,7 @@ struct MemoryJourneyView: View {
     @State private var results: [CatalogSearchResult] = []
     @State private var searching = false
     @State private var saving = false
+    @State private var gate = MemoryUploadGate()
     @State private var confirmDiscard = false
     @State private var didSave = false
     @State private var error: String?
@@ -36,14 +37,19 @@ struct MemoryJourneyView: View {
         var initialFlow = MemoryJourneyFlow(startWithSong: startWithSong)
         var initialDraft = MemoryDraft()
         #if DEBUG
-        if let value = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-memory-step=") })?.dropFirst(24), let steps = Int(value) {
+        if let value = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-memory-step=") })?.dropFirst(24) {
+            // A step name (photo, song, story, review) or a count of steps to skip.
+            let names: [String: MemoryJourneyFlow.Step] = ["photo": .photo, "song": .song, "story": .story, "review": .review]
+            var steps = Int(value) ?? 0
+            if let target = names[String(value)], let position = initialFlow.order.firstIndex(of: target) { steps = position }
             for _ in 0..<steps { initialFlow.next() }
-            if steps >= 2 {
+            let reached = initialFlow.furthest
+            if reached >= 2 || value == "review" || value == "story" {
                 var song = MemorySong(title: "Blue in Green", artist: "Miles Davis", provider: "spotify", providerID: "0aWMVrwxPNYkKmFthzmpRi")
                 song.artworkURL = nil
                 initialDraft.songs = [song]
             }
-            if steps >= 3 { initialDraft.text = "Driving home with the windows down. #summer #roadtrip"; initialDraft.place = "Highway 1" }
+            if value == "review" || value == "story" || reached >= 3 { initialDraft.text = "Driving home with the windows down. #summer #roadtrip"; initialDraft.place = "Highway 1" }
         }
         #endif
         _flow = State(initialValue: initialFlow)
@@ -104,7 +110,7 @@ struct MemoryJourneyView: View {
         .background(VibeBackground(atmosphere: model.atmosphere))
         .animation(gentle, value: flow.step)
         .onChange(of: picks) { _, items in Task { await upload(items) } }
-        .onDisappear { if !didSave { discard() } }
+        .onDisappear { if !didSave { gate.abandon(); discard() } }
         .confirmationDialog("Keep this moment going?", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Keep going", role: .cancel) {}
             Button("Leave draft", role: .destructive) { discard(); onClose() }
@@ -134,7 +140,8 @@ struct MemoryJourneyView: View {
             }
             Spacer()
             Button { if draft.canSave || !attachments.isEmpty { confirmDiscard = true } else { onClose() } } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
-                .disabled(saving).opacity(flow.step == .complete ? 0 : 1)
+                // Leaving mid-upload would strand the file on the server, so wait for it.
+                .disabled(saving || uploading).opacity(flow.step == .complete ? 0 : 1)
                 .accessibilityLabel("Close memory").accessibilityIdentifier("memory.close")
         }
         .foregroundStyle(theme.ink.color).padding(.horizontal, 12)
@@ -145,7 +152,7 @@ struct MemoryJourneyView: View {
             Text(flow.primaryLabel(hasPhotos: !attachments.isEmpty, hasSong: !draft.songs.isEmpty)).frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent).controlSize(.large)
-        .disabled(uploading || saving || (flow.step == .review && !draft.canSave))
+        .disabled(uploading || saving || (flow.step == .review && !MemoryJourneyFlow.canSave(draft, attachmentIDs: attachments.map(\.media.id))))
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(.bar)
         .accessibilityIdentifier("memory.next")
@@ -372,6 +379,7 @@ struct MemoryJourneyView: View {
                 let type = item.supportedContentTypes.first
                 let ext = type?.preferredFilenameExtension ?? "jpg"
                 let media = try await model.memories.upload(data, filename: "memory-\(UUID().uuidString.prefix(8)).\(ext)", contentType: type?.preferredMIMEType ?? "image/jpeg")
+                guard gate.shouldKeepLateUpload() else { await model.memories.discardMedia([media]); return }
                 if !dateChosenByHand, attachments.isEmpty, let date = MemoryJourneyFlow.captureDate(fromImageData: data) { draft.occurredAt = date }
                 attachments.append(Attachment(media: media, thumbnail: type?.conforms(to: .image) == false ? nil : UIImage(data: data)?.preparingThumbnail(of: CGSize(width: 480, height: 480))))
             } catch { self.error = (error as? LocalizedError)?.errorDescription ?? "That attachment could not be added." }
@@ -390,8 +398,7 @@ struct MemoryJourneyView: View {
     }
 
     private func save() async {
-        var value = draft
-        value.mediaIDs = attachments.map(\.media.id)
+        var value = MemoryJourneyFlow.savableDraft(draft, attachmentIDs: attachments.map(\.media.id))
         value.people = people.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         value.tags = MemoryDraft.normalizedTags(value.tags + MemoryDraft.storyTags(value.text))
         if let message = value.validationMessage { error = message; return }
