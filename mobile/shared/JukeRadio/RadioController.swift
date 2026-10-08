@@ -54,6 +54,8 @@ final class RadioController {
     // MARK: Feedback
 
     private(set) var issue: RadioIssue?
+    /// Spotify is playing a podcast episode: radio stepped aside and offers to resume.
+    private(set) var isPausedForEpisode = false
     /// The status line's message ("Noted. My Station will lean into 😌.").
     var notice: String?
     /// A better-matching station for the listener's reactions.
@@ -224,6 +226,7 @@ final class RadioController {
         isPlaying = false
         isOnAir = false
         isPutAway = false
+        isPausedForEpisode = false
         issue = nil
         notice = nil
         suggestion = nil
@@ -254,7 +257,11 @@ final class RadioController {
         let snapshot = try? await playback.state()
         guard session == generation else { return }
         if let snapshot, snapshot.isPlaying {
-            if let playing = snapshot.radioTrack, preferences.recentRadioTrackIDs.contains(playing.spotifyId) {
+            if snapshot.isEpisode {
+                notice = Self.episodeNotice
+                isPausedForEpisode = true
+                preferences.wasPlaying = false
+            } else if let playing = snapshot.radioTrack, preferences.recentRadioTrackIDs.contains(playing.spotifyId) {
                 adopt(snapshot, track: playing)
                 preferences.wasPlaying = true
                 ensurePolling()
@@ -305,6 +312,7 @@ final class RadioController {
             if let stale = queuedTrack { staleQueuedIDs.insert(stale.spotifyId) }
             issue = nil
             notice = nil
+            isPausedForEpisode = false
             suggestion = nil
             currentStationID = stationID
             if pendingStationID == stationID { pendingStationID = nil }
@@ -764,6 +772,11 @@ final class RadioController {
             return
         }
         onSnapshot?(snapshot)
+        if snapshot.isEpisode {
+            // Never show an episode as a station song or queue songs behind it.
+            if snapshot.isPlaying { yieldToEpisode() }
+            return
+        }
         if issue == .noActiveDevice || issue == .spotifyFailed { issue = nil }
         deviceID = snapshot.deviceID ?? deviceID
         deviceName = snapshot.deviceName ?? deviceName
@@ -908,7 +921,15 @@ final class RadioController {
         apply(snapshot)
     }
 
+    static let episodeNotice = "Spotify is playing something else. Radio is paused."
+
+    private func yieldToEpisode() {
+        goOffAir(notice: Self.episodeNotice)
+        isPausedForEpisode = true
+    }
+
     private func goOffAir(notice message: String) {
+        isPausedForEpisode = false
         isOnAir = false
         isPlaying = false
         queuedTrack = nil

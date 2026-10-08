@@ -49,4 +49,17 @@ import Testing
         #expect(NewStationWizard.name("  Late  night ") == "Late night")
         #expect(NewStationWizard.name(String(repeating: "x", count: 200))?.count == 80)
     }
+
+    @Test func aDescriptionThatCannotBeKeptIsReportedNotDropped() {
+        let full = (1...NewStationFlow.maxFeelings).map { "f\($0)" }
+        #expect(NewStationWizard.descriptionIssue(feelings: full, description: "one more")?.contains("12 feelings") == true)
+        #expect(NewStationWizard.descriptionIssue(feelings: full, description: "f3") == nil)
+        let long = String(repeating: "a", count: NewStationFlow.maxPhraseLength + 1)
+        #expect(NewStationWizard.descriptionIssue(feelings: ["🔥"], description: long)?.contains("40 characters") == true)
+        #expect(NewStationWizard.descriptionIssue(feelings: ["🔥"], description: String(repeating: "a", count: NewStationFlow.maxPhraseLength)) == nil)
+        #expect(NewStationWizard.descriptionIssue(feelings: full, description: "   ") == nil)
+        #expect(NewStationWizard.descriptionIssue(feelings: [], description: "slow and warm") == nil)
+        // Whatever the page lets through is kept in full.
+        #expect(NewStationWizard.feelings(["🔥"], description: "slow and warm") == ["🔥", "slow and warm"])
+    }
 }

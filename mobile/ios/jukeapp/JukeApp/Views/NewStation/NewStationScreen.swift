@@ -37,6 +37,8 @@ struct NewStationScreen: View {
         _page = State(initialValue: start)
     }
 
+    private var descriptionIssue: String? { NewStationWizard.descriptionIssue(feelings: flow.feelings, description: details) }
+
     private var gentle: Animation? { reduceMotion ? nil : .smooth(duration: 0.45) }
 
     var body: some View {
@@ -107,9 +109,9 @@ struct NewStationScreen: View {
                 EmptyView()
             case .finish:
                 Button { Task { await create(.afterCurrentSong) } } label: { Text(flow.startLabel).frame(maxWidth: .infinity) }
-                    .buttonStyle(.borderedProminent).controlSize(.large).disabled(!flow.canStart || saving)
+                    .buttonStyle(.borderedProminent).controlSize(.large).disabled(!flow.canStart || saving || descriptionIssue != nil)
                     .accessibilityIdentifier("newStation.start")
-                Button("Play it now") { Task { await create(.now) } }.disabled(!flow.canStart || saving)
+                Button("Play it now") { Task { await create(.now) } }.disabled(!flow.canStart || saving || descriptionIssue != nil)
             default:
                 Button { advance() } label: { Text(NewStationWizard.advanceLabel(from: page, flow: flow)).frame(maxWidth: .infinity) }
                     .buttonStyle(.borderedProminent).controlSize(.large)
@@ -245,7 +247,12 @@ struct NewStationScreen: View {
                 }
                 field("Name", prompt: flow.stationName ?? "My late-night station", text: $name)
                 field("In a few words", prompt: "Rainy Sunday, slow and warm", text: $details, axis: .vertical)
-                Text("The words join your feelings, so Juke can match them. Keep it short.").font(.footnote).foregroundStyle(theme.sub.color)
+                if let issue = descriptionIssue {
+                    Label(issue, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(theme.ink.color)
+                        .accessibilityIdentifier("newStation.descriptionIssue")
+                } else {
+                    Text("The words join your feelings, so Juke can match them. Keep it short.").font(.footnote).foregroundStyle(theme.sub.color)
+                }
             }
             .padding(.horizontal, 20).padding(.bottom, 16)
         }
@@ -319,6 +326,7 @@ struct NewStationScreen: View {
     }
 
     private func create(_ timing: JukeCoordinator.StationRequest.Timing) async {
+        guard descriptionIssue == nil else { return }
         saving = true; error = nil
         defer { saving = false }
         do {

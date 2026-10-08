@@ -374,6 +374,31 @@ final class RadioControllerTests: XCTestCase {
         XCTAssertFalse(RadioPreferences(defaults: defaults).wasPlaying)
     }
 
+    func testPodcastEpisodeTakesRadioOffAirImmediatelyAndCanResume() async {
+        let radio = await onAir()
+        clock.advance(10)
+        var episode = RadioPlaybackSnapshot(trackID: nil, durationMs: 0, progressMs: 5000, isPlaying: true, deviceID: "device-1", deviceName: "Mac")
+        episode.contentType = "episode"
+        await playback.set(episode)
+        await radio.refresh()
+        XCTAssertFalse(radio.isOnAir)
+        XCTAssertTrue(radio.isPausedForEpisode)
+        XCTAssertEqual(radio.notice, "Spotify is playing something else. Radio is paused.")
+        XCTAssertFalse(RadioPreferences(defaults: defaults).wasPlaying)
+        let before = await backend.plays.count
+        await radio.togglePlayPause()
+        XCTAssertTrue(radio.isOnAir)
+        XCTAssertFalse(radio.isPausedForEpisode)
+        let after = await backend.plays.count
+        XCTAssertEqual(after, before + 1, "resume starts the station again")
+    }
+
+    func testEpisodeDetectedFromURIWithoutContentType() {
+        let snapshot = RadioPlaybackSnapshot(trackID: "e1", durationMs: 1, progressMs: 0, isPlaying: true, uri: "spotify:episode:e1")
+        XCTAssertTrue(snapshot.isEpisode)
+        XCTAssertFalse(playing(first, at: 0).isEpisode)
+    }
+
     func testJustStartedSongIsGivenTimeToAppear() async {
         let radio = makeController()
         await radio.start()

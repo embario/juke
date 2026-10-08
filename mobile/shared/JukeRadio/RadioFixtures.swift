@@ -106,6 +106,8 @@ actor RadioFixturePlayback: RadioPlaybackControlling {
     private var progress: TimeInterval = 96
     private var playing = true
     private var updatedAt = Date()
+    /// `--uitesting-episode`: Spotify is playing a podcast until radio starts a station.
+    private var episodePlaying = ProcessInfo.processInfo.arguments.contains("--uitesting-episode")
 
     private func settle() {
         if playing { progress += Date().timeIntervalSince(updatedAt) }
@@ -115,11 +117,17 @@ actor RadioFixturePlayback: RadioPlaybackControlling {
         }
     }
 
-    func start(_ track: Radio.Track) { current = track; progress = 0; playing = true; updatedAt = Date() }
+    func start(_ track: Radio.Track) { episodePlaying = false; current = track; progress = 0; playing = true; updatedAt = Date() }
     func enqueue(_ track: Radio.Track) { queue.append(track) }
 
     func state() async throws -> RadioPlaybackSnapshot? {
         settle()
+        if episodePlaying {
+            var episode = RadioPlaybackSnapshot(trackID: nil, durationMs: 0, progressMs: 60_000, isPlaying: true, deviceID: "ui-test-device",
+                                                deviceName: "Test Mac")
+            episode.contentType = "episode"
+            return episode
+        }
         guard let current else { return nil }
         return RadioPlaybackSnapshot(trackID: current.spotifyId, title: current.title, artist: current.artist, artistID: current.artistId,
                                      album: current.album, albumID: current.albumId, durationMs: current.durationMs,

@@ -65,6 +65,21 @@ enum NewStationWizard {
         return result
     }
 
+    /// Why the description cannot be used as it is, or `nil`. Nothing is truncated or dropped silently:
+    /// the page shows this and holds the Start button until it is fixed.
+    static func descriptionIssue(feelings chosen: [String], description: String) -> String? {
+        let collapsed = description.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard !collapsed.isEmpty else { return nil }
+        let length = collapsed.unicodeScalars.count
+        if length > NewStationFlow.maxPhraseLength {
+            return "Keep it to \(NewStationFlow.maxPhraseLength) characters (it is \(length) now)."
+        }
+        if !chosen.contains(collapsed), chosen.count >= NewStationFlow.maxFeelings {
+            return "This station already has \(NewStationFlow.maxFeelings) feelings. Remove one to add your words."
+        }
+        return nil
+    }
+
     /// Trimmed name, or `nil` so the server picks "<first seed> Radio".
     static func name(_ text: String) -> String? {
         let trimmed = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
