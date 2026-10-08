@@ -24,4 +24,7 @@ enum JukeTab: String, CaseIterable, Identifiable, Sendable {
         case .settings: "gearshape"
         }
     }
+
+    /// Radio is the player itself, and Chat owns the bottom edge for its composer.
+    var showsMiniPlayer: Bool { self != .radio && self != .chat }
 }

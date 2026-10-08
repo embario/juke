@@ -35,7 +35,7 @@ struct RootView: View {
         return TabView(selection: $model.tab) {
             ForEach(JukeTab.allCases) { tab in
                 NavigationStack { content(for: tab) }
-                    .safeAreaInset(edge: .bottom) { if tab != .radio { MiniPlayerPill() } }
+                    .safeAreaInset(edge: .bottom) { if tab.showsMiniPlayer { MiniPlayerPill() } }
                     .tabItem { Label(tab.title, systemImage: tab.symbol) }
                     .tag(tab)
             }
