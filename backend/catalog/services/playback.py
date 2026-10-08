@@ -271,14 +271,19 @@ class SpotifyPlaybackProvider(PlaybackProvider):
         self._execute(lambda client: client.add_to_queue(track_uri, **kwargs))
 
     def state(self) -> Optional[Dict[str, Any]]:
-        playback = self._execute(lambda client: client.current_playback())
+        # additional_types opts into episodes; Spotify defaults to tracks only.
+        playback = self._execute(lambda client: client.current_playback(additional_types='track,episode'))
         if not playback:
             return None
         track = playback.get('item')
+        if playback.get('currently_playing_type') in ('episode', 'ad'):
+            track = None  # episodes/ads are not catalog tracks
         device = playback.get('device')
         normalized: Dict[str, Any] = {
             'provider': self.slug,
             'is_playing': bool(playback.get('is_playing')),
+            # Spotify reports 'track', 'episode', 'ad' or 'unknown'; clients use it to avoid treating podcasts as songs.
+            'currently_playing_type': playback.get('currently_playing_type') or 'track',
             'progress_ms': playback.get('progress_ms') or 0,
             'updated_at': timezone.now().isoformat(),
             'track': self._normalize_track(track),
