@@ -281,7 +281,8 @@ class SpotifyPlaybackProvider(PlaybackProvider):
         normalized: Dict[str, Any] = {
             'provider': self.slug,
             'is_playing': bool(playback.get('is_playing')),
-            # additional_types opts into episodes (Spotify defaults to tracks only). Spotify reports 'track', 'episode', 'ad' or 'unknown'; clients use it to avoid treating podcasts as songs.
+            # additional_types=track,episode opts into episodes (Spotify defaults to tracks only).
+            # Spotify reports 'track', 'episode', 'ad' or 'unknown'; clients use it to avoid treating podcasts as songs.
             'currently_playing_type': playback.get('currently_playing_type') or 'track',
             'progress_ms': playback.get('progress_ms') or 0,
             'updated_at': timezone.now().isoformat(),
