@@ -183,3 +183,24 @@ on the integration branch.
 - iOS: `ThemedRoot` injects `\.jukeTheme` and tints controls with the accent; `VibeBackground` draws the theme
   background; `atmosphere.primary` follows the accent so older views stay consistent. The artwork colour follows
   the radio track (or the detected track when radio is off). Checked in light and dark on the iOS 27.0 simulator.
+
+### Slices 7-9: recognition, app lock, memory replay (PRs #190, #191, #192, each from `integration/juke-app`)
+
+- Pre-commit hook fixed at its root: `npm ci` in `web/` (web lint now runs). The backend lint step needs Docker, which
+  Uranus lacks, so commits use the hook's own `SKIP_BACKEND_LINT=1` switch instead of `--no-verify`.
+- #190 recognition: `BackgroundRecognizer` and `CatalogClient` moved to `mobile/shared/JukeRadio`; the recognizer follows
+  a `RecognitionFeed` protocol (Mac: `MusicDetectionController`; iOS: `NowPlayingRecognitionFeed` over
+  `NowPlayingObserver`). The feed is owned by `VibeAppModel` because the recognizer holds it weakly. Setting key is shared
+  (`juke.settings.backgroundRecognition`). iOS suspends in the background, so it recognises while Juke is open; no
+  background modes added. `VibeAPI.spotifyPlayback` untouched (owned by juke-implementor).
+- #191 app lock: `AppLockController` shared; iOS locks after the chosen delay away (scene `.background`, not Control
+  Center), on a cold launch with a restored session, and via Settings; Face ID/passcode through `LocalAuthentication`;
+  material shield in the app switcher; content gets a new identity on lock so open sheets are dismissed. Verified the
+  system passcode sheet appears on the 27.0 simulator (`--uitesting-locked`). Deviation: sign-out does not leave a stale lock.
+- #192 replay: `MemoryPlayer` (Spotify via `PlaybackClient` with device verification and end-of-moment pause; Apple Music
+  library/catalog IDs via the system player; else hand-off to the provider app). Stacked on #190 for `MemoryPlaybackMark`.
+  Not exercised against real Spotify/Apple Music here.
+- Signing fix (owner request): `com.apple.developer.shazamkit` removed from `JukeApp.entitlements` (ShazamKit is an App
+  Service, not an entitlement; DTS thread 837008). Carried in all three branches; never restore it. An earlier
+  `git checkout` of that file by me wrongly reverted the owner's removal.
+- Still open: touch-driven verification on a device, live sign-in on neptune, `startNow` back-off follow-up.
