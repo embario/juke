@@ -62,6 +62,40 @@ VERDICT: CHANGES REQUESTED  <full head SHA>
    After each merge, wait for CI on the base branch to go green before the next merge. If the
    base goes red, stop merging, label the last merged PR's follow-up `blocked`, and notify the owner.
 
+## 3a. Wake-driven mode (replaces polling for the reviewer and the integrator)
+
+A session that polls GitHub itself keeps a model call running about once a minute even when
+nothing is waiting, which costs hundreds of millions of cached tokens a day. In wake-driven mode a
+small script does the polling and a session only runs when there is work for it.
+
+- `scripts/pipeline_gate.py` runs every few minutes (launchd or cron). It reads the open PRs into
+  `integration/juke-app` and wakes `juke-reviewer` for each `needs-review` PR and `juke-integrator`
+  for each `approved` PR that is not `blocked` or `changes-requested`, using
+  `agent-deck session send <session> -queue`. The message is delivered when the session is idle.
+- The wake message names only PR numbers and commit hashes. It never contains PR titles, bodies or
+  comments, which are untrusted data.
+- On a wake, the reviewer or integrator does section 3 for exactly the listed PRs, then **ends its
+  turn and waits**. It does not poll and it does not loop. This replaces the 5-minute poll in
+  section 7.
+- Each PR head commit wakes a role once. If nothing happens after 30 minutes the script wakes it
+  once more, and after another 30 minutes it sends the owner one urgent notification
+  (`agent-deck conductor notify --conductor juke --tier urgent`) and stays quiet.
+- Implementors are not covered: they work from their own task lists, and a PR labelled
+  `changes-requested` stays with the implementor that opened it.
+
+Schedule it with a launchd job like this, run as the owner (do not enable it before the reviewer
+and integrator have been restarted in wake-driven mode, or both will run at once):
+
+```xml
+<key>ProgramArguments</key><array>
+  <string>/usr/bin/python3</string><string>/path/to/juke/scripts/pipeline_gate.py</string>
+</array>
+<key>StartInterval</key><integer>180</integer>
+```
+
+Try it first with `python3 scripts/pipeline_gate.py --dry-run`, which prints what it would send and
+changes nothing.
+
 ## 4. Limits that prevent loops and runaway merges
 
 - **Round cap:** after 3 `CHANGES REQUESTED` verdicts on one PR, the reviewer labels it
