@@ -1,12 +1,15 @@
 #!/usr/bin/env sh
 set -eu
 
+# Only lint the areas touched by this commit (e.g. Swift-only commits need neither node_modules nor Docker).
+staged="$(git diff --cached --name-only)"
+touches() { printf '%s\n' "$staged" | grep -Eq "$1"; }
+
 if [ "${SKIP_WEB_LINT:-}" = "1" ]; then
   echo "pre-commit: skipping web lint (SKIP_WEB_LINT=1)"
-  exit 0
-fi
-
-if [ -f "web/package.json" ]; then
+elif ! touches '^web/'; then
+  echo "pre-commit: no web changes; skipping web lint"
+elif [ -f "web/package.json" ]; then
   echo "pre-commit: running web lint"
   npm --prefix web run lint
 else
@@ -15,10 +18,9 @@ fi
 
 if [ "${SKIP_BACKEND_LINT:-}" = "1" ]; then
   echo "pre-commit: skipping backend lint (SKIP_BACKEND_LINT=1)"
-  exit 0
-fi
-
-if [ -f "docker-compose.ci.yml" ]; then
+elif ! touches '^(backend|recommender_engine)/'; then
+  echo "pre-commit: no backend changes; skipping backend lint"
+elif [ -f "docker-compose.ci.yml" ]; then
   echo "pre-commit: running backend ruff via docker compose"
   docker compose -f docker-compose.ci.yml exec -T backend ruff check
 else
