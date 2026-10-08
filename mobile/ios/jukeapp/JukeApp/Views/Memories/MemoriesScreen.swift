@@ -39,7 +39,10 @@ struct MemoriesScreen: View {
         .refreshable { await store.refresh() }
         .task(id: model.session?.account.id) { await store.refresh() }
         .overlay { if store.isLoading, store.memories.isEmpty { ProgressView() } }
-        .sheet(isPresented: $composing) { MemoryComposer() }
+        #if DEBUG
+        .onAppear { if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--uitesting-memory-step=") }) { composing = true } }
+        #endif
+        .fullScreenCover(isPresented: $composing) { MemoryJourneyView(startWithSong: model.radio.isOnAir || model.nowPlaying.isPlaying) { composing = false } }
     }
 }
 
@@ -128,84 +131,5 @@ private struct MemoryMediaThumb: View {
             catch { failed = true }
         }
         .accessibilityLabel(media.kind == "video" ? "Video attachment" : "Photo attachment")
-    }
-}
-
-struct MemoryComposer: View {
-    @Environment(VibeAppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    @State private var draft = MemoryDraft()
-    @State private var songTitle = ""
-    @State private var songArtist = ""
-    @State private var people = ""
-    @State private var picks: [PhotosPickerItem] = []
-    @State private var attached: [MemoryMedia] = []
-    @State private var uploading = false
-    @State private var error: String?
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section { TextField("Title", text: $draft.title); DatePicker("When", selection: $draft.occurredAt, displayedComponents: .date) }
-                Section("The moment") { TextField("What was happening? Use #tags", text: $draft.text, axis: .vertical).lineLimit(3...8) }
-                Section("A song") {
-                    TextField("Song title", text: $songTitle); TextField("Artist", text: $songArtist)
-                    if let track = model.radio.track, model.radio.isOnAir {
-                        Button("Use \(track.title)", systemImage: "dot.radiowaves.left.and.right") { songTitle = track.title; songArtist = track.artist }
-                    }
-                }
-                Section("Photos and videos") {
-                    PhotosPicker(selection: $picks, maxSelectionCount: 6, matching: .any(of: [.images, .videos])) {
-                        Label(attached.isEmpty ? "Add photos or videos" : "\(attached.count) attached", systemImage: "photo.badge.plus")
-                    }
-                    if uploading { ProgressView() }
-                }
-                Section("Who and where") { TextField("People (comma separated)", text: $people); TextField("Place", text: $draft.place) }
-                if !model.memories.reusableTags.isEmpty {
-                    Section("Your tags") {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack { ForEach(model.memories.reusableTags.prefix(20), id: \.self) { tag in
-                                Button("#\(tag)") { draft.tags = MemoryDraft.normalizedTags(draft.tags + [tag]) }.buttonStyle(.bordered).controlSize(.small)
-                            } }
-                        }
-                    }
-                }
-                if let error { Section { Text(error).foregroundStyle(.red) } }
-            }
-            .navigationTitle("New memory").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { Task { await model.memories.discardMedia(attached); dismiss() } } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { Task { await save() } }.disabled(model.memories.isSaving || uploading) }
-            }
-            .onChange(of: picks) { _, items in Task { await upload(items) } }
-        }
-    }
-
-    private func upload(_ items: [PhotosPickerItem]) async {
-        guard !items.isEmpty else { return }
-        uploading = true; error = nil
-        defer { uploading = false; picks = [] }
-        for item in items {
-            do {
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
-                let type = item.supportedContentTypes.first
-                let ext = type?.preferredFilenameExtension ?? "jpg"
-                let media = try await model.memories.upload(data, filename: "memory-\(UUID().uuidString.prefix(8)).\(ext)", contentType: type?.preferredMIMEType ?? "image/jpeg")
-                attached.append(media)
-            } catch { self.error = (error as? LocalizedError)?.errorDescription ?? "That attachment could not be added." }
-        }
-    }
-
-    private func save() async {
-        var value = draft
-        value.mediaIDs = attached.map(\.id)
-        value.people = people.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        value.tags = MemoryDraft.normalizedTags(value.tags + MemoryDraft.storyTags(value.text))
-        if !songTitle.trimmingCharacters(in: .whitespaces).isEmpty {
-            value.songs = [MemorySong(title: songTitle, artist: songArtist, provider: "manual")]
-        }
-        if let message = value.validationMessage { error = message; return }
-        do { _ = try await model.memories.save(value); dismiss() }
-        catch { self.error = error.localizedDescription }
     }
 }
