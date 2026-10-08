@@ -172,6 +172,7 @@ class PlaybackAPITests(APITestCase):
 
         response = self.client.get(f'{self.playback_url}state/', data={'provider': 'spotify'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        client.current_playback.assert_called_with(additional_types='track,episode')
         self.assertEqual(response.data['currently_playing_type'], 'episode')
         self.assertTrue(response.data['is_playing'])
         self.assertIsNone(response.data['track'])
