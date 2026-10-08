@@ -723,6 +723,23 @@ final class RadioControllerTests: XCTestCase {
         XCTAssertEqual(RadioController.retryDelay(afterFailures: 20), 300)
     }
 
+    func testDeferredStartIsAcceptedInsteadOfReportedAsRestartFailure() async {
+        let radio = await onAir()
+        await backend.setPlayDelay(.milliseconds(150))
+        let inFlight = Task { await radio.startNow(mine.id) }
+        try? await Task.sleep(for: .milliseconds(20))
+
+        let accepted = await radio.startNow(night.id)
+        _ = await inFlight.value
+
+        XCTAssertTrue(accepted, "a deferred start is accepted and should not trigger auto-restart back-off")
+        let plays = await backend.plays
+        XCTAssertEqual(plays.suffix(2), [
+            .init(stationID: mine.id, mode: .now),
+            .init(stationID: night.id, mode: .now),
+        ])
+    }
+
     func testPutAwayStaysOutWhenSpotifyWillNotPause() async {
         let radio = await onAir()
         await playback.setPauseError(PlaybackClientError.unavailable(502))
@@ -747,7 +764,7 @@ final class RadioControllerTests: XCTestCase {
         let firstStart = Task { await radio.startNow(mine.id) }
         try? await Task.sleep(for: .milliseconds(20))
         let deferred = await radio.startNow(night.id)
-        XCTAssertFalse(deferred)
+        XCTAssertTrue(deferred, "a queued request is accepted while the current start finishes")
         _ = await firstStart.value
         let plays = await backend.plays
         XCTAssertEqual(plays.map(\.stationID), [mine.id, night.id])

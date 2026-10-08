@@ -289,7 +289,8 @@ final class RadioController {
         guard !isBusy else {
             // Keep the latest request and run it when the current one finishes.
             deferredStart = stationID
-            return false
+            // It is accepted, not a failed playback attempt; callers use false to back off.
+            return true
         }
         isBusy = true
         let session = generation
