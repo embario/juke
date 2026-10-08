@@ -1,25 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-    <key>BACKEND_URL</key><string>$(BACKEND_URL)</string>
-    <key>FRONTEND_URL</key><string>$(FRONTEND_URL)</string>
-    <key>CFBundleDevelopmentRegion</key><string>$(DEVELOPMENT_LANGUAGE)</string>
-    <key>CFBundleDisplayName</key><string>Juke</string>
-    <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-    <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
-    <key>CFBundlePackageType</key><string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
-    <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
-    <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
-    <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>com.juke.app.authentication</string><key>CFBundleURLSchemes</key><array><string>juke-app</string></array></dict></array>
-    <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
-    <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
-    <key>NSAppleMusicUsageDescription</key><string>Juke reads the song currently playing in Apple Music so the companion can listen along.</string>
-    <key>NSPhotoLibraryUsageDescription</key><string>Juke attaches the photos and videos you choose to a music memory. It never reads your library otherwise.</string>
-    <key>NSFaceIDUsageDescription</key><string>Juke uses Face ID to keep your private chats and memories locked.</string>
-    <key>NSMicrophoneUsageDescription</key><string>Juke uses the microphone only when you start Around Me recognition to identify music outside your phone.</string>
-    <key>UILaunchScreen</key><dict><key>UIColorName</key><string></string></dict>
-    <key>UIRequiresFullScreen</key><false/>
-    <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
-</dict></plist>
+<plist version="1.0">
+<dict>
+	<key>BACKEND_URL</key>
+	<string>$(BACKEND_URL)</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Juke</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.juke.app.authentication</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>juke-app</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>FRONTEND_URL</key>
+	<string>$(FRONTEND_URL)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.music</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Juke reads the song currently playing in Apple Music so the companion can listen along.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Juke uses Face ID to keep your private chats and memories locked.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Juke uses the microphone only when you start Around Me recognition to identify music outside your phone.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Juke attaches the photos and videos you choose to a music memory. It never reads your library otherwise.</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string></string>
+	</dict>
+	<key>UIRequiresFullScreen</key>
+	<false/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>
