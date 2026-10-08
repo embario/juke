@@ -9,6 +9,7 @@ struct LibraryScreen: View {
     @State private var loading = false
     @State private var error: String?
     @State private var selected: Radio.CrateItem?
+    @State private var browsing: Radio.CrateItem?
     @State private var focus = 0
     @State private var loadTask: Task<Void, Never>?
     @AppStorage("juke.library.crateView") private var showsCrate = true
@@ -27,7 +28,7 @@ struct LibraryScreen: View {
                 if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
                 if loading { ProgressView().frame(maxWidth: .infinity) }
                 if showsCrate, !items.isEmpty {
-                    CrateView(items: items, mode: CrateMode(CrateFlipDirection(rawValue: flipRaw) ?? .sideToSide), onSelect: { selected = $0 }, focus: $focus)
+                    CrateView(items: items, mode: CrateMode(CrateFlipDirection(rawValue: flipRaw) ?? .sideToSide), onSelect: { open($0) }, focus: $focus)
                     if items.indices.contains(focus) {
                         VStack(spacing: 2) {
                             Text(items[focus].title).font(.headline).lineLimit(1)
@@ -37,7 +38,7 @@ struct LibraryScreen: View {
                 } else {
                     LazyVGrid(columns: columns, spacing: 14) {
                         ForEach(items) { item in
-                            Button { selected = item } label: { CrateCard(item: item) }.buttonStyle(.plain)
+                            Button { open(item) } label: { CrateCard(item: item) }.buttonStyle(.plain)
                         }
                     }
                 }
@@ -62,12 +63,28 @@ struct LibraryScreen: View {
             kind = request.kind
             reload(resetFocus: true)
         }
+        .navigationDestination(item: $browsing) { item in
+            if item.kind == .artist { ArtistBrowser(title: item.title, spotifyID: item.spotifyId) }
+            else { AlbumBrowser(title: item.title, spotifyID: item.spotifyId, artist: item.subtitle) }
+        }
         .confirmationDialog(selected?.title ?? "", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } }), presenting: selected) { item in
+            Button("Play now") { Task { await play(item) } }
             Button("Start a station from this") {
                 model.coordinator.openNewStation(.init(start: .records, seeds: [item.seed], feelings: []))
                 model.tab = .radio
             }
         } message: { Text($0.subtitle ?? "") }
+    }
+
+    /// Artists and albums open their own screens; songs offer play / start a station.
+    private func open(_ item: Radio.CrateItem) {
+        if item.kind == .track { selected = item } else { browsing = item }
+    }
+
+    private func play(_ item: Radio.CrateItem) async {
+        guard let token = model.session?.accessToken else { return }
+        do { _ = try await PlaybackClient().play(token: token, spotifyID: item.spotifyId, kind: "tracks", deviceID: nil) }
+        catch { self.error = (error as? LocalizedError)?.errorDescription ?? "Spotify couldn’t play that." }
     }
 
     /// "Open the album/artist" from the sleeve: search for it and bring it to the front.
