@@ -44,6 +44,17 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/JukeApp.app/JukeApp"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  JukeAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: JukeAppUITests
+    dependencies:
+      - target: JukeApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.juke.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   JukeApp:
     build:
@@ -53,3 +64,4 @@ schemes:
     test:
       targets:
         - JukeAppTests
+        - JukeAppUITests

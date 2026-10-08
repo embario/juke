@@ -39,23 +39,34 @@ struct ChatView: View {
         #if DEBUG
         .onAppear { if ProcessInfo.processInfo.arguments.contains("--uitesting-focus-chat") { focused = true } }
         #endif
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focused = false }
-            }
-        }
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom) {
-            TextField("Ask about what you're hearing…", text: Bindable(model).draft, axis: .vertical)
-                .lineLimit(1...4).padding(12)
-                .background(theme.well.color, in: RoundedRectangle(cornerRadius: 17))
-                .focused($focused)
-            Button { Task { await model.send() } } label: { Image(systemName: "arrow.up").frame(width: 32, height: 32) }
-                .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(model.atmosphere.primary)
-                .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        VStack(alignment: .leading, spacing: 0) {
+            // Own both controls in this inset: the system keyboard toolbar can
+            // occupy the same trailing space as Send on compact phones.
+            if focused {
+                Button { focused = false } label: {
+                    Text("Done")
+                        .font(.body.weight(.semibold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                    .accessibilityLabel("Dismiss keyboard")
+                    .accessibilityIdentifier("chat.dismissKeyboard")
+            }
+            HStack(alignment: .bottom, spacing: 12) {
+                TextField("Ask about what you're hearing…", text: Bindable(model).draft, axis: .vertical)
+                    .lineLimit(1...4).padding(12)
+                    .background(theme.well.color, in: RoundedRectangle(cornerRadius: 17))
+                    .focused($focused)
+                    .accessibilityIdentifier("chat.draft")
+                Button { Task { await model.send() } } label: { Image(systemName: "arrow.up").frame(width: 32, height: 32) }
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(model.atmosphere.primary)
+                    .accessibilityLabel("Send message")
+                    .accessibilityIdentifier("chat.send")
+                    .disabled(!ChatComposer.canSend(draft: model.draft, isSending: model.isSending))
+            }
         }
         .padding(.horizontal).padding(.vertical, 8)
         .background(.bar)

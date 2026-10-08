@@ -121,3 +121,12 @@ Execution mode: **ASYNC**. Follow `docs/agent-pr-pipeline-protocol.md`. Rank is 
 - Completed: spec written (this file).
 - Next: start A and B (P1), then queues per Execution Notes.
 - Blockers: none.
+
+### PR B — Chat keyboard controls (implementer-1)
+
+- Scope: Done moves from the system keyboard toolbar to a dedicated leading row in the Chat composer; Send stays beside the draft. Both remain in the bottom safe-area inset, with a 44-point Done tap target and accessibility labels/identifiers.
+- Send uses the same whitespace/in-flight guard in the view and `VibeAppModel.send`; dismissal only changes focus and preserves the draft.
+- Added composer unit tests and focused XCTest UI coverage for separate/hittable controls, multiline drafts, draft-preserving dismissal and accessibility XXXL text.
+- Simulator evidence: `docs/design/juke-app/ios-polish-r2/`. Not verified on device. Round3 has no Chat screen, so the comparison is a static Radio reference for visual styling.
+- Other round-2 groups remain outstanding; B only partially addresses synced task issue #210.
+- B validation blocker (2026-10-08): three `ChatComposerTests` passed; final builds succeeded on iPhone 17e and dedicated iPhone 18 Pro. Final UI checks/screenshots could not complete: fresh Pro remains on the startup progress screen, installation blocks in CoreSimulator bridge IPC, and small-phone test host PID 36457 blocks in simulator `dyld` cache `mmap` before app code. Own test runs were stopped. NEED: coordinated CoreSimulator recovery window while other workers pause simulator use. No shared service restart attempted; no PR opened before the required evidence is complete. See the evidence README for commands/logs and simulator IDs.

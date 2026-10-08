@@ -176,7 +176,8 @@ final class VibeAppModel {
 
     func send() async {
         guard let session, let token = session.accessToken else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines); guard !text.isEmpty, !isSending else { return }
+        guard ChatComposer.canSend(draft: draft, isSending: isSending) else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         draft = ""; isSending = true; defer { isSending = false }
         do {
             try await store(text, role: "user")
