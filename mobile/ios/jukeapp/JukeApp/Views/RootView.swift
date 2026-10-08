@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(VibeAppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @State private var privacy = PrivacyWindow()
     @AppStorage("juke.settings.appearance") private var appearanceRaw = AppearanceChoice.system.rawValue
     var body: some View {
         ThemedRoot(content: content)
@@ -16,9 +17,9 @@ struct RootView: View {
             if model.session == nil { SignInView() } else { main.id(model.lock.isLocked) // a new identity dismisses open sheets, which would otherwise sit above the lock
                 .disabled(model.lock.isLocked).accessibilityHidden(model.lock.isLocked) }
             if model.session != nil, model.lock.isLocked { LockedView() }
-            else if scenePhase != .active, model.session != nil { PrivacyShield() }
         }
         .onChange(of: scenePhase) { _, phase in
+            privacy.update(shielded: PrivacyWindow.shouldShield(phase: phase, signedIn: model.session != nil))
             switch phase {
             case .active: model.lock.sceneBecameActive(isAuthenticated: model.session != nil)
             // Control Center and call banners only make the scene inactive; leaving the app is `.background`.
@@ -49,13 +50,6 @@ struct RootView: View {
         case .chat: ChatView()
         case .settings: SettingsView()
         }
-    }
-}
-
-/// Covers the app in the app switcher and while the scene is inactive.
-private struct PrivacyShield: View {
-    var body: some View {
-        Rectangle().fill(.regularMaterial).ignoresSafeArea().accessibilityHidden(true)
     }
 }
 

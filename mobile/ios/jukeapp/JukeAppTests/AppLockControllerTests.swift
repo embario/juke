@@ -34,3 +34,14 @@ import Testing
         _ = controller(after: 5)
     }
 }
+
+import SwiftUI
+
+@MainActor @Suite struct PrivacyWindowTests {
+    @Test func shieldsAnyNonActiveScenePhaseWhileSignedIn() {
+        #expect(PrivacyWindow.shouldShield(phase: .inactive, signedIn: true))
+        #expect(PrivacyWindow.shouldShield(phase: .background, signedIn: true))
+        #expect(!PrivacyWindow.shouldShield(phase: .active, signedIn: true))
+        #expect(!PrivacyWindow.shouldShield(phase: .inactive, signedIn: false))
+    }
+}
