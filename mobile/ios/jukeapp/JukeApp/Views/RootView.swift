@@ -13,7 +13,8 @@ struct RootView: View {
     private var content: some View {
         ZStack {
             VibeBackground(atmosphere: model.atmosphere)
-            if model.session == nil { SignInView() } else { main.disabled(model.lock.isLocked).accessibilityHidden(model.lock.isLocked) }
+            if model.session == nil { SignInView() } else { main.id(model.lock.isLocked) // a new identity dismisses open sheets, which would otherwise sit above the lock
+                .disabled(model.lock.isLocked).accessibilityHidden(model.lock.isLocked) }
             if model.session != nil, model.lock.isLocked { LockedView() }
             else if scenePhase != .active, model.session != nil { PrivacyShield() }
         }
