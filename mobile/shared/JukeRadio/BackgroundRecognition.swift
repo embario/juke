@@ -101,6 +101,16 @@ struct MemoryPlaybackMark: Equatable, Sendable {
     }
 }
 
+/// What background recognition listens to: the platform's detector of the song
+/// playing elsewhere (`MusicDetectionController` on the Mac, the now-playing
+/// observer on iOS). Properties must be observable so `follow` re-arms on change.
+@MainActor
+protocol RecognitionFeed: AnyObject {
+    var track: RecognizedTrack? { get }
+    var isPlaying: Bool { get }
+    var isAudioPresent: Bool { get }
+}
+
 /// Background recognition: while Settings > "Recognize music in the
 /// background" is on and Juke radio is not playing, songs the user plays
 /// elsewhere become `recognized` taste events (`POST radio/events/`).
@@ -175,12 +185,12 @@ final class BackgroundRecognizer {
 
     /// Follows the detection controller's current song (and the setting) for
     /// the app's lifetime: `withObservationTracking`, re-armed after each change.
-    func follow(_ detection: MusicDetectionController) {
+    func follow(_ detection: any RecognitionFeed) {
         followed = detection
         track()
     }
 
-    @ObservationIgnored private weak var followed: MusicDetectionController?
+    @ObservationIgnored private weak var followed: (any RecognitionFeed)?
 
     private func track() {
         guard let detection = followed else { return }
@@ -321,11 +331,12 @@ final class BackgroundRecognizer {
 
 extension BackgroundRecognizer {
     /// The app's recognizer: posts through `JukeAPI` and resolves Apple Music
-    /// and Shazam songs through the existing catalog search.
-    static func live(api: JukeAPI, settings: JukeSettings, token: @escaping @MainActor () -> String?, allowed: @escaping @MainActor () -> Bool) -> BackgroundRecognizer {
+    /// and Shazam songs through the existing catalog search. `enabled` is the
+    /// user's setting; the token and sign-in checks are added here.
+    static func live(api: JukeAPI, enabled: @escaping @MainActor () -> Bool, token: @escaping @MainActor () -> String?, allowed: @escaping @MainActor () -> Bool) -> BackgroundRecognizer {
         let catalog = CatalogClient()
         return BackgroundRecognizer(
-            isEnabled: { allowed() && settings.backgroundRecognitionEnabled && token() != nil },
+            isEnabled: { allowed() && enabled() && token() != nil },
             resolveCatalog: { track in
                 guard let token = token() else { throw CancellationError() }
                 let results = try await catalog.search(SpotifyTrackMatcher.searchQuery(for: track), kind: "tracks", token: token)

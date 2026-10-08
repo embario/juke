@@ -4,7 +4,7 @@ import Observation
 
 @MainActor
 @Observable
-final class MusicDetectionController {
+final class MusicDetectionController: RecognitionFeed {
     enum SpotifyPlaybackAccess: Equatable {
         case checking
         case available

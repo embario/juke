@@ -25,6 +25,10 @@ final class VibeAppModel {
     /// Radio stations, the tuned station and the continuous-play loop.
     let radio: RadioController
     let memories: MemoryStore
+    /// Quietly turns songs played elsewhere into `recognized` taste events.
+    let recognition: BackgroundRecognizer
+    /// The song last started from Memories; recognition ignores it for a while.
+    var memoryPlayback: MemoryPlaybackMark?
     /// Album-art colour feeding `JukeTheme`.
     let artwork = ArtworkPalette()
     @ObservationIgnored private let accessToken = AccessTokenStore()
@@ -45,6 +49,12 @@ final class VibeAppModel {
         #endif
         let store = fixtures ? MemoryStore(client: MemoryClient(fixtures: true)) : MemoryStore()
         memories = store
+        recognition = .live(
+            api: api,
+            enabled: { UserDefaults.standard.object(forKey: JukeRecognitionSetting.key) as? Bool ?? true },
+            token: { accessToken.get() },
+            allowed: { !fixtures }
+        )
         let saveMemory: @MainActor (MemoryDraft) async throws -> Void = { draft in _ = try await store.save(draft) }
         if fixtures {
             // Fresh in-memory radio and memories for UI checks; no network.
@@ -65,7 +75,15 @@ final class VibeAppModel {
                 saveMemory: saveMemory
             )
         }
-        radio.onTrackChange = { [weak self] track in self?.radioTrackChanged(track) }
+        radio.onTrackChange = { [weak self] track in
+            self?.radioTrackChanged(track)
+            self?.recognition.noteRadioTrack(track?.spotifyId)
+        }
+        // Radio posts its own events, and a memory replay is not listening elsewhere.
+        recognition.isRadioPlaying = { [weak radio] in (radio?.isOnAir ?? false) && (radio?.isPlaying ?? false) }
+        recognition.isRadioTrack = { [weak radio] id in radio?.track?.spotifyId == id || radio?.queuedTrack?.spotifyId == id }
+        recognition.memoryPlayback = { [weak self] in self?.memoryPlayback }
+        recognition.follow(NowPlayingRecognitionFeed(nowPlaying))
         #if DEBUG
         if fixtures, ProcessInfo.processInfo.arguments.contains("--uitesting-authenticated") {
             let preview = JukeSession(account: .localPreview, accessToken: "ui-test-token", authenticatedAt: .now)
@@ -85,6 +103,7 @@ final class VibeAppModel {
     private func beginSession(_ value: JukeSession, polling: Bool = true) {
         accessToken.set(value.accessToken)
         if polling, let token = value.accessToken { nowPlaying.start(token: token) }
+        recognition.reevaluate()
         Task {
             await memories.configure(session: value)
             await radio.start(accountID: value.account.id)
@@ -113,7 +132,7 @@ final class VibeAppModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func logout() { nowPlaying.stopPolling(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; messages = [] }
+    func logout() { nowPlaying.stopPolling(); recognition.reset(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; messages = [] }
 
     func send() async {
         guard let session, let token = session.accessToken else { return }
