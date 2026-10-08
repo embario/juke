@@ -51,6 +51,10 @@ Nine items, each one small PR into `integration/juke-app`:
 
 ## Handoff
 
-- Completed: task spec written.
+- Completed: task spec written. T10 applied on Neptune 2026-10-08 (extra stack only, `/srv/juke-extra/juke-app/docker-compose.juke-app.yml`, `juke-app-web` recreated with `up -d --no-deps`; backend untouched):
+  - `WEB_ALLOWED_HOSTS`: `100.110.159.98,localhost` -> `neptune.tail647b75.ts.net,100.110.159.98,localhost`
+  - `VITE_API_BASE_URL` (runtime env): `http://100.110.159.98:5373` -> `http://neptune.tail647b75.ts.net:5373`
+  - Build args and `BACKEND_URL`/`PUBLIC_BACKEND_URL` left as the IP. Neptune compose file is untracked there; backup at `/tmp/juke-app-compose.before` on Neptune.
+  - Verified: `http://neptune.tail647b75.ts.net:5373/` -> 200 and `/api/v1/radio/stations/` -> 401 (unauthenticated, proxy reaches backend); same results via the IP.
 - Next: T10, T9, T7, T8 (juke-implementor); T1+T2, T5, T6, T3, T4 (juke-ios-port).
 - Blockers: none.
