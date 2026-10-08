@@ -25,7 +25,9 @@ actor VibeAPI {
         struct State: Decodable { let is_playing: Bool; let track: Track? }
         var components = URLComponents(url: baseURL.appending(path: "playback/state/"), resolvingAgainstBaseURL: false)!
         components.queryItems = [.init(name: "provider", value: "spotify")]
-        var request = URLRequest(url: components.url!); request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        var request = URLRequest(url: components.url!)
+        // /playback/state/ uses DRF TokenAuthentication, which only reads "Token" (the Vibe endpoints accept both).
+        request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { return nil }
         if http.statusCode == 204 { return nil }
