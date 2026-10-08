@@ -124,6 +124,16 @@ final class VibeAppModel {
             if ProcessInfo.processInfo.arguments.contains("--uitesting-radio-putaway") {
                 Task { try? await Task.sleep(for: .seconds(2)); await radio.putAway() }
             }
+            // `--uitesting-radio-pause` pauses the song; `--uitesting-radio-resume` then presses play again
+            // (with `--uitesting-radio-device-asleep` Spotify ignores it, as a suspended Spotify app does).
+            let resumes = ProcessInfo.processInfo.arguments.contains("--uitesting-radio-resume")
+            if resumes || ProcessInfo.processInfo.arguments.contains("--uitesting-radio-pause") {
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    await radio.pause()
+                    if resumes { try? await Task.sleep(for: .seconds(1)); await radio.resume() }
+                }
+            }
             if let hex = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-artwork-hex=") })?.dropFirst(24) {
                 artworkOverride = RGB(hex: "#" + hex)
                 artwork.apply(RGB(hex: "#" + hex))

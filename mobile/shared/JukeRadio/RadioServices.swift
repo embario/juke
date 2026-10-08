@@ -124,10 +124,18 @@ struct RadioPlaybackSnapshot: Equatable, Sendable {
 
 /// Spotify transport controls through the Juke backend.
 protocol RadioPlaybackControlling: Sendable {
-    /// `nil` when Spotify has no active device.
+    /// `nil` when Spotify reports no player. That is normal for a player that has been paused
+    /// for a while, so it does not by itself mean the device is gone.
     func state() async throws -> RadioPlaybackSnapshot?
     func pause(deviceID: String?) async throws
-    func resume(deviceID: String?) async throws
+    /// Continues what Spotify had paused. Returns Spotify's state after the command, or `nil`
+    /// when it reported none (no player took the command).
+    @discardableResult
+    func resume(deviceID: String?) async throws -> RadioPlaybackSnapshot?
+    /// Starts one song at `position`. Unlike `resume` this does not depend on what Spotify
+    /// remembers, so it also works after the Spotify app was reopened.
+    @discardableResult
+    func play(trackID: String, at position: TimeInterval, deviceID: String?) async throws -> RadioPlaybackSnapshot?
     func next(deviceID: String?) async throws
     func seek(to position: TimeInterval, deviceID: String?) async throws
 }
@@ -152,7 +160,13 @@ struct SpotifyRadioPlayback: RadioPlaybackControlling {
     }
 
     func pause(deviceID: String?) async throws { _ = try await client.pause(token: authorized(), deviceID: deviceID) }
-    func resume(deviceID: String?) async throws { _ = try await client.resume(token: authorized(), deviceID: deviceID) }
+    func resume(deviceID: String?) async throws -> RadioPlaybackSnapshot? {
+        try await client.resume(token: authorized(), deviceID: deviceID).map(RadioPlaybackSnapshot.init)
+    }
+    func play(trackID: String, at position: TimeInterval, deviceID: String?) async throws -> RadioPlaybackSnapshot? {
+        try await client.play(token: authorized(), spotifyID: trackID, kind: "tracks", deviceID: deviceID, startSeconds: max(0, position))
+            .map(RadioPlaybackSnapshot.init)
+    }
     func next(deviceID: String?) async throws { _ = try await client.next(token: authorized(), deviceID: deviceID) }
     func seek(to position: TimeInterval, deviceID: String?) async throws {
         _ = try await client.seek(token: authorized(), deviceID: deviceID, position: position)
@@ -203,10 +217,59 @@ struct RadioPreferences {
         nonmutating set { defaults.set(Array(newValue.suffix(10)), forKey: key("recentTrackIDs")) }
     }
 
+    /// The Spotify device radio last played on. Used only to recover playback when Spotify
+    /// reports no active device; a normal start never targets it.
+    var lastDeviceID: String? {
+        get { defaults.string(forKey: key("lastDeviceID")) }
+        nonmutating set { defaults.set(newValue, forKey: key("lastDeviceID")) }
+    }
+
+    /// The song radio was paused on, kept so a relaunch shows it paused and can resume it.
+    var pausedSession: RadioPausedSession? {
+        get { defaults.data(forKey: key("pausedSession")).flatMap { try? JSONDecoder().decode(RadioPausedSession.self, from: $0) } }
+        nonmutating set {
+            if let newValue, let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: key("pausedSession"))
+            } else {
+                defaults.removeObject(forKey: key("pausedSession"))
+            }
+        }
+    }
+
     /// The listener's own emoji and words, offered again on later songs.
     var customReactions: [String] {
         get { defaults.stringArray(forKey: key("customReactions")) ?? [] }
         nonmutating set { defaults.set(Array(newValue.suffix(24)), forKey: key("customReactions")) }
+    }
+}
+
+/// A paused radio song: enough to show it again and resume it at the same place.
+struct RadioPausedSession: Codable, Equatable, Sendable {
+    var track: Radio.Track
+    var position: TimeInterval
+    var stationID: Radio.ID?
+}
+
+/// What the radio's transport is doing, for the player controls and their status line.
+enum RadioPlaybackStatus: Equatable, Sendable {
+    /// Radio is not in charge of playback.
+    case offAir
+    case playing
+    /// Paused, by the listener or in Spotify. Play resumes it.
+    case paused
+    /// Play was pressed and Spotify has not confirmed yet.
+    case resuming
+    /// Spotify did not respond: its app has to be opened before radio can play.
+    case deviceUnavailable
+
+    /// A short line for the compact player; `nil` while a song plays normally.
+    var caption: String? {
+        switch self {
+        case .offAir, .playing: nil
+        case .paused: "Paused"
+        case .resuming: "Waiting for Spotify…"
+        case .deviceUnavailable: "Open Spotify to keep playing"
+        }
     }
 }
 
@@ -216,7 +279,8 @@ struct RadioPreferences {
 enum RadioIssue: Equatable, Sendable {
     /// 400 `playback_provider_not_linked`: show "Connect Spotify".
     case spotifyNotLinked
-    /// Playback `state` is null: "Open Spotify on any device".
+    /// Spotify stopped reporting a song that should be playing, or did not start one when
+    /// asked. A paused player that Spotify no longer reports is not this problem.
     case noActiveDevice
     /// 502 `playback_provider_failure`.
     case spotifyFailed
@@ -229,7 +293,7 @@ enum RadioIssue: Equatable, Sendable {
     var message: String {
         switch self {
         case .spotifyNotLinked: "Radio plays through Spotify. Connect your account to tune in."
-        case .noActiveDevice: "Open Spotify on any device, then press play."
+        case .noActiveDevice: "Juke can’t reach Spotify. Open Spotify, then press play."
         case .spotifyFailed: "Spotify didn’t answer. Give it a moment and try again."
         case .noTracks(let name): "\(name) has nothing new right now. Tune to another station."
         case .signedOut: "Sign in to Juke to play radio."

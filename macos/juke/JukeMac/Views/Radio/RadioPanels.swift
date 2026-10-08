@@ -141,7 +141,10 @@ struct RadioIssueView: View {
     private func retry() async {
         let radio = model.radio
         if !radio.stationsLoaded { await radio.loadStations() }
-        if radio.isOnAir { await radio.refresh() } else if !radio.hasTunedIn { await radio.tuneIn() } else { await radio.switchNow() }
+        if radio.isOnAir {
+            // A paused song with no device needs a new play command; a refresh alone changes nothing.
+            if radio.status == .deviceUnavailable { await radio.resume() } else { await radio.refresh() }
+        } else if !radio.hasTunedIn { await radio.tuneIn() } else { await radio.switchNow() }
     }
 }
 

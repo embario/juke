@@ -25,6 +25,10 @@ final class RadioController {
     static let naturalEndWindow: TimeInterval = 5
     /// How long a just-started song may take to show up in Spotify's state.
     static let startGracePeriod: TimeInterval = 8
+    /// How long Spotify may take to report a resumed song as playing.
+    static let resumeGracePeriod: TimeInterval = 5
+    /// Consecutive polls without any Spotify state before a playing song counts as lost.
+    static let missingStateTolerance = 3
     static let defaultStripEmoji = ["🔥", "🥹", "💃", "🌙", "☀️"]
     static let pickerEmoji = ["😌", "🔥", "🌙", "☀️", "💃", "🥹", "🧘", "🚗", "🌧️", "✨", "☕", "🤘",
                               "😭", "🥰", "😎", "🤯", "🫶", "🌊", "🍂", "❄️", "🌸", "🏃", "🛋️", "🎉"]
@@ -49,6 +53,8 @@ final class RadioController {
     private(set) var queuedStationID: Radio.ID?
     private(set) var deviceName: String?
     private(set) var isBusy = false
+    /// Play was pressed and Spotify has not confirmed that the song is playing yet.
+    private(set) var isResuming = false
     private(set) var hasTunedIn: Bool
 
     // MARK: Feedback
@@ -109,6 +115,19 @@ final class RadioController {
     @ObservationIgnored private var awaitingRestart = false
     /// The latest station asked for while a start was in flight.
     @ObservationIgnored private var deferredStart: Radio.ID?
+    /// Consecutive polls without any Spotify state while a song should be playing.
+    @ObservationIgnored private var missedStates = 0
+    /// Where the song was when Spotify's state first went missing.
+    @ObservationIgnored private var positionAtFirstMiss: TimeInterval = 0
+    @ObservationIgnored private var resumeDeadline: Date = .distantPast
+    /// Where the song was paused, restored when a resume does not start.
+    @ObservationIgnored private var resumeFrom: TimeInterval = 0
+    /// A resume did not start: only a playing song (not just any state) clears the problem.
+    @ObservationIgnored private var resumeFailed = false
+    /// Spotify may no longer have this song loaded, so the next resume names the song.
+    @ObservationIgnored private var resumeNamesSong = false
+    /// The listener left for the Spotify app to wake it; resume when Juke is active again.
+    @ObservationIgnored private var resumeWhenActive = false
 
     init(
         backend: any RadioBackend,
@@ -145,6 +164,14 @@ final class RadioController {
     /// What the dial's needle points at.
     var tunedStation: Radio.Station? { pendingStation ?? currentStation }
     var duration: TimeInterval { track?.duration ?? 0 }
+
+    /// What the transport is doing. A pause is never reported as a missing device.
+    var status: RadioPlaybackStatus {
+        guard isOnAir else { return .offAir }
+        if isResuming { return .resuming }
+        if isPlaying { return .playing }
+        return issue == .noActiveDevice ? .deviceUnavailable : .paused
+    }
 
     func position(at date: Date) -> TimeInterval {
         let elapsed = isPlaying ? max(0, date.timeIntervalSince(anchorDate)) : 0
@@ -187,7 +214,24 @@ final class RadioController {
         guard session == generation else { return }
         if let last = preferences.lastStationID, station(last) != nil { currentStationID = last }
         if currentStationID == nil { currentStationID = personalStation?.id }
-        if hasTunedIn, preferences.wasPlaying { await resumeOnLaunch() }
+        if hasTunedIn, preferences.wasPlaying {
+            await resumeOnLaunch()
+        } else if hasTunedIn, let paused = preferences.pausedSession {
+            restore(paused)
+        }
+    }
+
+    /// Shows the song radio was paused on at quit. Nothing plays until play is pressed.
+    private func restore(_ paused: RadioPausedSession) {
+        if let stationID = paused.stationID, station(stationID) != nil { currentStationID = stationID }
+        isOnAir = true
+        userPaused = true
+        // Spotify may have moved on since; resuming names this song.
+        resumeNamesSong = true
+        setTrack(paused.track)
+        remember(paused.track, station: currentStationID)
+        setPosition(paused.position, playing: false)
+        ensurePolling()
     }
 
     /// Stops polling and forgets the session (sign-out). Preferences stay.
@@ -212,6 +256,12 @@ final class RadioController {
         nextAutoStart = .distantPast
         awaitingRestart = false
         deferredStart = nil
+        missedStates = 0
+        resumeDeadline = .distantPast
+        resumeFailed = false
+        resumeNamesSong = false
+        resumeWhenActive = false
+        isResuming = false
         isBusy = false
         hasTunedIn = false
         customReactions = []
@@ -326,6 +376,12 @@ final class RadioController {
             isPutAway = false
             isOnAir = true
             userPaused = false
+            isResuming = false
+            missedStates = 0
+            resumeFailed = false
+            resumeNamesSong = false
+            resumeWhenActive = false
+            preferences.pausedSession = nil
             currentTrackSkipped = false
             expectedTrackID = response.track.spotifyId
             expectationDeadline = now().addingTimeInterval(Self.startGracePeriod)
@@ -402,8 +458,11 @@ final class RadioController {
         do {
             try await playback.pause(deviceID: deviceID)
             userPaused = true
+            isResuming = false
+            missedStates = 0
             setPosition(position, playing: false)
             preferences.wasPlaying = false
+            rememberPause()
             return true
         } catch {
             issue = RadioIssue.from(error, stationName: currentStation?.name ?? "Radio")
@@ -411,19 +470,108 @@ final class RadioController {
         }
     }
 
+    /// Resumes the paused song. Spotify does not say whether a command reached a player, so
+    /// the song counts as playing only once Spotify reports it; if that does not happen within
+    /// `resumeGracePeriod` the song stays paused and the listener is asked to open Spotify.
     func resume() async {
-        guard isOnAir, !isPlaying else { return }
+        guard isOnAir, !isPlaying, !isResuming else { return }
         let position = position(at: now())
+        let session = generation
+        resumeWhenActive = false
+        // Set before the request, so a poll that lands meanwhile waits instead of judging.
+        resumeFrom = position
+        resumeDeadline = now().addingTimeInterval(Self.resumeGracePeriod)
+        isResuming = true
         do {
-            try await playback.resume(deviceID: deviceID)
+            var reported: RadioPlaybackSnapshot?
+            if !resumeNamesSong { reported = try await playback.resume(deviceID: deviceID) }
+            guard session == generation else { return }
+            if let song = track, reported?.trackID != song.spotifyId {
+                // Spotify has no player with this song loaded (it was closed, reopened, or
+                // moved on). Name the song and the device radio last used.
+                reported = try await playback.play(trackID: song.spotifyId, at: position,
+                                                   deviceID: deviceID ?? preferences.lastDeviceID)
+                guard session == generation else { return }
+            }
             userPaused = false
             issue = nil
-            setPosition(position, playing: true)
+            resumeFailed = false
+            resumeNamesSong = false
+            missedStates = 0
             preferences.wasPlaying = true
+            if let reported, reported.isPlaying, track == nil || reported.trackID == track?.spotifyId {
+                isResuming = false
+                apply(reported)
+            } else {
+                resumeDeadline = now().addingTimeInterval(Self.resumeGracePeriod)
+                setPosition(position, playing: true)
+            }
             ensurePolling()
         } catch {
+            guard session == generation else { return }
+            isResuming = false
             issue = RadioIssue.from(error, stationName: currentStation?.name ?? "Radio")
         }
+    }
+
+    /// The listener is leaving for the Spotify app to wake it up.
+    func willOpenSpotify() {
+        resumeWhenActive = isOnAir && !isPlaying
+    }
+
+    /// Juke is in the foreground again: catch up, and resume if the listener went to wake Spotify.
+    func appBecameActive() async {
+        guard isOnAir else { return }
+        let wantsResume = resumeWhenActive
+        resumeWhenActive = false
+        if wantsResume, !isPlaying { await resume() } else { await refresh() }
+    }
+
+    /// The resume was sent but no song started: keep the song paused where it was.
+    private func resumeDidNotStart() {
+        isResuming = false
+        setPosition(resumeFrom, playing: false)
+        userPaused = true
+        resumeFailed = true
+        resumeNamesSong = true
+        issue = .noActiveDevice
+        preferences.wasPlaying = false
+        rememberPause()
+    }
+
+    /// Spotify reported no state at all.
+    private func handleMissingState() {
+        if isResuming {
+            if now() >= resumeDeadline { resumeDidNotStart() }
+            return
+        }
+        // Spotify stops reporting a player that has been paused for a while. That is not a
+        // problem: the song stays paused here, and pressing play finds out whether the device
+        // still answers.
+        guard isPlaying else { return }
+        if missedStates == 0 { positionAtFirstMiss = position(at: now()) }
+        missedStates += 1
+        // One missing answer is not enough, and a song that was just started may not show yet.
+        guard missedStates >= Self.missingStateTolerance, now() >= expectationDeadline else { return }
+        missedStates = 0
+        setPosition(positionAtFirstMiss, playing: false)
+        resumeFailed = false
+        resumeNamesSong = true
+        issue = .noActiveDevice
+        preferences.wasPlaying = false
+        rememberPause()
+    }
+
+    private func rememberPause() {
+        guard let track else { return }
+        let paused = RadioPausedSession(track: track, position: anchorPosition, stationID: currentStationID)
+        if preferences.pausedSession != paused { preferences.pausedSession = paused }
+    }
+
+    private func noteDevice(_ snapshot: RadioPlaybackSnapshot) {
+        deviceID = snapshot.deviceID ?? deviceID
+        deviceName = snapshot.deviceName ?? deviceName
+        if let id = snapshot.deviceID, !id.isEmpty, id != preferences.lastDeviceID { preferences.lastDeviceID = id }
     }
 
     /// Skips the song: plays the queued pick if there is one, otherwise a new
@@ -461,6 +609,7 @@ final class RadioController {
         do {
             try await playback.seek(to: clamped, deviceID: deviceID)
             setPosition(clamped, playing: isPlaying)
+            if !isPlaying { rememberPause() }
             await post(.seek, track: playing, positionMs: milliseconds(clamped))
         } catch {
             issue = RadioIssue.from(error, stationName: currentStation?.name ?? "Radio")
@@ -485,6 +634,8 @@ final class RadioController {
         notice = nil
         suggestion = nil
         preferences.wasPlaying = false
+        // A record that was put away is not a paused song to come back to after a relaunch.
+        preferences.pausedSession = nil
         summary = try? await backend.sessionSummary()
     }
 
@@ -767,21 +918,42 @@ final class RadioController {
         }
         guard session == generation, isOnAir else { return }
         guard let snapshot else {
-            issue = .noActiveDevice
-            if isPlaying { setPosition(position(at: now()), playing: false) }
+            handleMissingState()
             return
         }
+        missedStates = 0
         onSnapshot?(snapshot)
         if snapshot.isEpisode {
             // Never show an episode as a station song or queue songs behind it.
             if snapshot.isPlaying { yieldToEpisode() }
             return
         }
-        if issue == .noActiveDevice || issue == .spotifyFailed { issue = nil }
-        deviceID = snapshot.deviceID ?? deviceID
-        deviceName = snapshot.deviceName ?? deviceName
+        if isResuming {
+            if snapshot.isPlaying {
+                isResuming = false
+            } else if now() < resumeDeadline {
+                // Spotify may report the paused state for a moment after play was sent.
+                return
+            } else {
+                noteDevice(snapshot)
+                resumeDidNotStart()
+                return
+            }
+        }
+        // After a resume that did not start, a paused state does not show the device is back.
+        if issue == .spotifyFailed || (issue == .noActiveDevice && (snapshot.isPlaying || !resumeFailed)) {
+            issue = nil
+            resumeFailed = false
+        }
+        noteDevice(snapshot)
         // A state without a song (between tracks, an ad) says nothing.
         guard let playingID = snapshot.trackID, !playingID.isEmpty else { return }
+        if !isPlaying, !snapshot.isPlaying, playingID != track?.spotifyId {
+            // Both are paused, on different songs: Spotify moved on while radio was paused.
+            // Radio keeps its song, and resuming names it.
+            resumeNamesSong = true
+            return
+        }
         let lastRemaining = duration - position(at: now())
 
         if staleQueuedIDs.contains(playingID), playingID != track?.spotifyId {
@@ -935,6 +1107,8 @@ final class RadioController {
         isPausedForEpisode = false
         isOnAir = false
         isPlaying = false
+        isResuming = false
+        preferences.pausedSession = nil
         queuedTrack = nil
         queuedStationID = nil
         notice = message
@@ -942,10 +1116,16 @@ final class RadioController {
     }
 
     private func apply(_ snapshot: RadioPlaybackSnapshot) {
-        deviceID = snapshot.deviceID ?? deviceID
-        deviceName = snapshot.deviceName ?? deviceName
+        noteDevice(snapshot)
         setPosition(TimeInterval(snapshot.progressMs) / 1000, playing: snapshot.isPlaying)
-        if snapshot.isPlaying { userPaused = false }
+        if snapshot.isPlaying {
+            userPaused = false
+            resumeNamesSong = false
+            if preferences.pausedSession != nil { preferences.pausedSession = nil }
+        } else if isOnAir {
+            // Paused in Spotify itself: still a paused radio song.
+            rememberPause()
+        }
     }
 
     private func setPosition(_ position: TimeInterval, playing: Bool) {

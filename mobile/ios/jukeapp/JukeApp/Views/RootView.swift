@@ -21,7 +21,10 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             privacy.update(shielded: PrivacyWindow.shouldShield(phase: phase, signedIn: model.session != nil))
             switch phase {
-            case .active: model.lock.sceneBecameActive(isAuthenticated: model.session != nil)
+            case .active:
+                model.lock.sceneBecameActive(isAuthenticated: model.session != nil)
+                // Back from Spotify (or anywhere): catch up, and resume if the listener went to wake Spotify.
+                Task { await model.radio.appBecameActive() }
             // Control Center and call banners only make the scene inactive; leaving the app is `.background`.
             case .background: model.lock.sceneBecameInactive()
             default: break
