@@ -271,6 +271,7 @@ class SpotifyPlaybackProvider(PlaybackProvider):
         self._execute(lambda client: client.add_to_queue(track_uri, **kwargs))
 
     def state(self) -> Optional[Dict[str, Any]]:
+        # additional_types opts into episodes; Spotify defaults to tracks only.
         playback = self._execute(lambda client: client.current_playback(additional_types='track,episode'))
         if not playback:
             return None
@@ -281,7 +282,6 @@ class SpotifyPlaybackProvider(PlaybackProvider):
         normalized: Dict[str, Any] = {
             'provider': self.slug,
             'is_playing': bool(playback.get('is_playing')),
-            # additional_types=track,episode opts into episodes (Spotify defaults to tracks only).
             # Spotify reports 'track', 'episode', 'ad' or 'unknown'; clients use it to avoid treating podcasts as songs.
             'currently_playing_type': playback.get('currently_playing_type') or 'track',
             'progress_ms': playback.get('progress_ms') or 0,
