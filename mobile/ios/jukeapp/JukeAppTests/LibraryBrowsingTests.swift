@@ -14,11 +14,11 @@ import Testing
         """.utf8))
     }
 
-    @Test func matchPrefersSpotifyIDThenName() {
-        let rows = [result(1, "Kind of Blue (Remastered)", "other"), result(2, "Kind of Blue", "alb")]
-        #expect(LibraryBrowsing.match(rows, spotifyID: "alb", title: "zzz")?.pk == 2)
-        #expect(LibraryBrowsing.match(rows, spotifyID: "missing", title: "kind of blue")?.pk == 2)
-        #expect(LibraryBrowsing.match(rows, spotifyID: "missing", title: "nope") == nil)
+    @Test func matchRequiresTheExactSpotifyID() {
+        let rows = [result(1, "Kind of Blue", "other"), result(2, "Kind of Blue (Remastered)", "alb")]
+        #expect(LibraryBrowsing.match(rows, spotifyID: "alb")?.pk == 2)
+        #expect(LibraryBrowsing.match([result(1, "Kind of Blue", "other")], spotifyID: "alb") == nil, "same name, different id is another album")
+        #expect(LibraryBrowsing.match([result(3, "Kind of Blue", nil)], spotifyID: "alb") == nil)
     }
 
     @Test func trackAndAlbumSeeds() throws {

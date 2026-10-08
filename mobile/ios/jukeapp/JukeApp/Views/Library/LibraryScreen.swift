@@ -112,7 +112,21 @@ struct LibraryScreen: View {
         guard model.session != nil else { return }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--uitesting") {
-            items = (1...9).map { Radio.CrateItem(id: Radio.ID("\($0)"), kind: kind, spotifyId: "fixture\($0)", title: "Record \($0)", subtitle: "Fixture artist", artworkUrl: nil, track: nil) }
+            if let name = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-kind=") })?.dropFirst(17),
+               let launchKind = Radio.SeedKind(rawValue: String(name)), launchKind != kind, browsing == nil { kind = launchKind; return }
+            // The first record matches the catalog fixtures so browsing (artist -> albums -> tracks) works offline.
+            let known: [Radio.SeedKind: (String, String, String?)] = [
+                .album: ("1weenld61qoidwYuZ1GESA", "Kind of Blue", "Miles Davis"), .artist: ("0kbYTNQb4Pb1rPbbaF0pT4", "Miles Davis", nil),
+                .track: ("0aWMVrwxPNYkKmFthzmpRi", "Blue in Green", "Miles Davis"),
+            ]
+            items = (1...9).map { index in
+                if index == 1, let (id, title, subtitle) = known[kind] {
+                    return Radio.CrateItem(id: Radio.ID("\(index)"), kind: kind, spotifyId: id, title: title, subtitle: subtitle, artworkUrl: nil, track: nil)
+                }
+                return Radio.CrateItem(id: Radio.ID("\(index)"), kind: kind, spotifyId: "fixture\(index)", title: "Record \(index)", subtitle: "Fixture artist", artworkUrl: nil, track: nil)
+            }
+            // `--uitesting-browse` opens the first record's screen (for screenshots).
+            if ProcessInfo.processInfo.arguments.contains("--uitesting-browse"), browsing == nil, selected == nil { open(items[0]) }
             return
         }
         #endif

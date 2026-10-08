@@ -2,10 +2,9 @@ import SwiftUI
 
 /// Pure helpers for Library browsing (artist -> albums, album -> tracks).
 enum LibraryBrowsing {
-    /// The catalog row for a crate item: matched on Spotify id, else the first row with the same name.
-    static func match(_ results: [CatalogSearchResult], spotifyID: String, title: String) -> CatalogSearchResult? {
+    /// The catalog row for a crate item. Matched on the exact Spotify id only: a same-name entry with another id is a different artist/album.
+    static func match(_ results: [CatalogSearchResult], spotifyID: String) -> CatalogSearchResult? {
         results.first { $0.spotifyID == spotifyID }
-            ?? results.first { $0.name.caseInsensitiveCompare(title) == .orderedSame }
     }
 
     static func trackSeed(_ track: CatalogTrackDetail, in album: CatalogAlbumDetail, artist: String?) -> Radio.Seed? {
@@ -120,7 +119,7 @@ struct AlbumBrowser: View {
         do {
             let pk: Int
             if let catalogID { pk = catalogID }
-            else if let found = LibraryBrowsing.match(try await client.search(title, kind: "albums", token: token), spotifyID: spotifyID, title: title) { pk = found.pk }
+            else if let found = LibraryBrowsing.match(try await client.search(title, kind: "albums", token: token), spotifyID: spotifyID) { pk = found.pk }
             else { state = .failed("This album isn’t in the catalog yet."); return }
             state = .loaded(try await client.album(id: pk, token: token))
         } catch { state = .failed((error as? LocalizedError)?.errorDescription ?? "The album couldn’t be loaded.") }
@@ -182,7 +181,7 @@ struct ArtistBrowser: View {
         guard let token = model.session?.accessToken else { state = .failed("Sign in to browse."); return }
         let client = CatalogClient()
         do {
-            guard let found = LibraryBrowsing.match(try await client.search(title, kind: "artists", token: token), spotifyID: spotifyID, title: title) else {
+            guard let found = LibraryBrowsing.match(try await client.search(title, kind: "artists", token: token), spotifyID: spotifyID) else {
                 state = .failed("This artist isn’t in the catalog yet."); return
             }
             state = .loaded(try await client.artist(id: found.pk, token: token))
