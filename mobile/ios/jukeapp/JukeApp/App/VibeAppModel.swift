@@ -100,6 +100,11 @@ final class VibeAppModel {
             if let name = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-tab=") })?.dropFirst(16), let value = JukeTab(rawValue: String(name)) { tab = value }
             if ProcessInfo.processInfo.arguments.contains("--uitesting-locked") { lock.lockNow() }
             beginSession(preview, polling: false)
+            if let value = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-new-station=") })?.dropFirst(24) {
+                var draft = JukeCoordinator.NewStationDraft()
+                draft.start = value == "feelings" ? .feelings : .records
+                coordinator.openNewStation(draft)
+            }
             return
         }
         #endif
