@@ -84,10 +84,15 @@ VERDICT: CHANGES REQUESTED  <full head SHA>
 
 ## 6. Notifications to the owner (Telegram via the bridge)
 
-- `agent-deck conductor notify --tier urgent "<one line>"`: a PR becomes `blocked`, base CI goes
-  red after a merge, a worker has a `NEED:`, or a decision only the owner can make.
-- `agent-deck conductor notify --tier info "<one line>"`: each merge (`Merged #N: title`) and
-  each approval. Do not send routine polling noise.
+Worker sessions (reviewer, integrator, implementors) are not conductor sessions, so they must
+name the conductor with `--conductor juke`; without it the command fails with
+`no --conductor given and this is not a conductor session`. The conductor's own session may omit it.
+
+- `agent-deck conductor notify --conductor juke --tier urgent "<one line>"`: a PR becomes
+  `blocked`, base CI goes red after a merge, a worker has a `NEED:`, or a decision only the owner
+  can make.
+- `agent-deck conductor notify --conductor juke --tier info "<one line>"`: each merge
+  (`Merged #N: title`) and each approval. Do not send routine polling noise.
 
 ## 7. Setup steps (the conductor does these once, then confirms in one paragraph)
 
