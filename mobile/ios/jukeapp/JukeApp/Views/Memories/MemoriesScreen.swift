@@ -24,10 +24,13 @@ struct MemoriesScreen: View {
             }
             ForEach(store.memories) { memory in
                 NavigationLink { MemoryDetail(memory: memory) } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(memory.displayTitle).font(.headline).lineLimit(1)
-                        Text(memory.occurredAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
-                        if let song = memory.songs.first { Label("\(song.title) — \(song.artist)", systemImage: "music.note").font(.subheadline).lineLimit(1) }
+                    HStack(spacing: 12) {
+                        MemoryThumbnail(memory: memory)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(memory.displayTitle).font(.headline).lineLimit(1)
+                            Text(memory.occurredAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                            if let song = memory.songs.first { Label("\(song.title) — \(song.artist)", systemImage: "music.note").font(.subheadline).lineLimit(1) }
+                        }
                     }
                 }
             }
@@ -65,7 +68,10 @@ private struct MemoryDetail: View {
                 Label {
                     VStack(alignment: .leading) { Text(song.title); Text(song.artist).font(.caption).foregroundStyle(.secondary)
                         if let segment = song.segmentDescription { Text(segment).font(.caption2).foregroundStyle(.tertiary) } }
-                } icon: { Image(systemName: "music.note") }
+                } icon: {
+                    AsyncImage(url: song.artworkURL) { $0.resizable().scaledToFill() } placeholder: { Image(systemName: "music.note") }
+                        .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 6))
+                }
                 .swipeActions { Button("Play") { Task { await model.memoryPlayer.play(song) } }.tint(.accentColor) }
                 .overlay(alignment: .trailing) {
                     Button { Task { await model.memoryPlayer.play(song) } } label: {
@@ -118,14 +124,16 @@ private struct MemoryMediaThumb: View {
         ZStack {
             Color.secondary.opacity(0.15)
             if let image { Image(uiImage: image).resizable().scaledToFill() }
-            else if failed || media.kind != "image" { Image(systemName: media.kind == "video" ? "play.rectangle" : "photo").foregroundStyle(.secondary) }
+            else if failed || (media.kind != "image" && media.kind != "video") { Image(systemName: media.kind == "video" ? "play.rectangle" : "photo").foregroundStyle(.secondary) }
             else { ProgressView() }
         }
         .frame(width: 160, height: 160).clipShape(RoundedRectangle(cornerRadius: 12))
         .task {
-            guard media.kind == "image" else { return }
-            do { let url = try await model.memories.localMediaURL(media); image = UIImage(contentsOfFile: url.path) }
-            catch { failed = true }
+            do {
+                let url = try await model.memories.localMediaURL(media)
+                image = media.kind == "video" ? await MemoryImageDecoder.videoFrame(url, maxPixel: 480) : MemoryImageDecoder.downsampled(url, maxPixel: 960)
+                if image == nil { failed = true }
+            } catch { failed = true }
         }
         .accessibilityLabel(media.kind == "video" ? "Video attachment" : "Photo attachment")
     }
