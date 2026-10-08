@@ -245,6 +245,14 @@ class AssignTaskTest(unittest.TestCase):
         self.assertEqual(len([c for c in self.runner.commands if c[0] == "tmux"]), 3)
         self.assertIn("not confirmed: send S1", out)
 
+    def test_unreadable_pane_is_not_reported_as_submitted(self):
+        self.runner.send_states["S1"] = "typed"
+        self.runner.capture_rc = 1
+        rc, out = self.assign("--submit-wait-sec", "5", I1, "P3", "small")
+        self.assertEqual(rc, 3)
+        self.assertIn("not confirmed: send S1", out)
+        self.assertEqual([c for c in self.runner.commands if c[0] == "tmux"], [])
+
     def test_claude_sends_are_not_followed_up(self):
         rc, _ = self.assign(I2, "P2", "feature")
         self.assertEqual((rc, self.slept), (0, []))

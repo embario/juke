@@ -63,6 +63,7 @@ class FakeRunner:
         self.send_states = {}  # send id -> state reported by `session send-status`
         self.panes = {}  # tmux session -> captured pane text
         self.set_rc = 0
+        self.capture_rc = 0
         self.restart_rc = 0
         self.calls, self.send_cmds = [], []  # every command, and the full `session send` commands
         self.labeled_at = None  # epoch seconds stamped on every labeled event, or None
@@ -112,7 +113,7 @@ class FakeRunner:
             state = self.send_states.get(cmd[3])
             return (0, json.dumps({"send_id": cmd[3], "state": state})) if state else (2, "unknown id")
         if cmd[:2] == ["tmux", "capture-pane"]:
-            return 0, self.panes.get(cmd[-1], "")
+            return (0, self.panes.get(cmd[-1], "")) if self.capture_rc == 0 else (self.capture_rc, "no such session")
         if cmd[:2] == ["tmux", "send-keys"]:
             self.commands.append(cmd)
             return 0, ""
@@ -722,6 +723,23 @@ class GateTest(unittest.TestCase):
         self.assertEqual(json.loads(Path(self.state).read_text())["sends"].keys(), {"S1"})
         self.assertEqual(len(runner.sent), 1)
         self.assertEqual(pg.nudge_send(runner, "S1", "tmux-r1", pg.WAKE_MARKER), "unknown")
+
+    def test_unreadable_pane_is_not_taken_as_submitted(self):
+        runner = FakeRunner(gh_json((10, SHA_A, ["needs-review"])))
+        self.run_gate(runner)
+        runner.send_states["S1"] = "typed"
+        runner.capture_rc = 1                  # pane missing, session restarting, or tmux failed
+        self.assertEqual(pg.nudge_send(runner, "S1", "tmux-r1", pg.WAKE_MARKER), "unknown")
+        self.assertEqual(pg.nudge_send(runner, "S1", "", pg.WAKE_MARKER), "unknown")  # no pane known
+        self.clock.t += 180
+        self.run_gate(runner)
+        self.assertEqual(self.enters(runner), [])
+        self.assertEqual(json.loads(Path(self.state).read_text())["sends"].keys(), {"S1"})  # still tracked
+        runner.capture_rc = 0
+        runner.panes["tmux-r1"] = self.CODEX_BOX
+        self.clock.t += 180
+        self.run_gate(runner)
+        self.assertEqual(len(self.enters(runner)), 1)  # submitted once the pane can be read again
 
     def test_claude_wakes_are_never_followed_by_enter(self):
         runner = FakeRunner(gh_json((10, SHA_A, ["needs-review", "author:codex"]), (11, SHA_B, ["approved"])))

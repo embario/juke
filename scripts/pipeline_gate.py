@@ -357,14 +357,15 @@ def apply_profile(run: Runner, session: str, info: dict, want: Profile, dry_run:
     return True
 
 
-def composer_holds(run: Runner, tmux: str, marker: str) -> bool:
-    """True when the Codex input box in tmux pane `tmux` still shows a message containing `marker`.
+def composer_holds(run: Runner, tmux: str, marker: str) -> Optional[bool]:
+    """True when the Codex input box in tmux pane `tmux` still shows a message containing `marker`,
+    False when the pane was read and it does not, None when the pane could not be read.
 
     Only the last prompt line is checked, so an approval dialog or an empty box is never answered.
     """
     rc, out = run(["tmux", "capture-pane", "-p", "-t", tmux])
     if rc != 0:
-        return False
+        return None
     prompts = [line for line in out.splitlines() if line.lstrip().startswith(COMPOSER_PROMPT)]
     return bool(prompts) and marker in prompts[-1]
 
@@ -398,10 +399,13 @@ def nudge_send(run: Runner, send_id: str, tmux: str, marker: str, dry_run: bool 
         return "failed"
     if state is None:
         return "unknown"
-    if state != "typed" or not tmux:
+    if state != "typed":
         return "pending"
-    if not composer_holds(run, tmux, marker):
-        return "done"  # no longer in the box: it was submitted
+    holds = composer_holds(run, tmux, marker) if tmux else None
+    if holds is None:
+        return "unknown"  # pane missing or unreadable: neither press Enter nor call it submitted
+    if not holds:
+        return "done"  # the box was read and no longer shows it: it was submitted
     if dry_run:
         return "pending"
     rc, _ = run(["tmux", "send-keys", "-t", tmux, "Enter"])
