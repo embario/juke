@@ -66,7 +66,18 @@ private struct MemoryDetail: View {
                     VStack(alignment: .leading) { Text(song.title); Text(song.artist).font(.caption).foregroundStyle(.secondary)
                         if let segment = song.segmentDescription { Text(segment).font(.caption2).foregroundStyle(.tertiary) } }
                 } icon: { Image(systemName: "music.note") }
+                .swipeActions { Button("Play") { Task { await model.memoryPlayer.play(song) } }.tint(.accentColor) }
+                .overlay(alignment: .trailing) {
+                    Button { Task { await model.memoryPlayer.play(song) } } label: {
+                        Label(song.segmentDescription == nil ? "Play" : "Play the moment", systemImage: "play.fill").labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(model.memoryPlayer.isBusy)
+                    .accessibilityLabel(song.segmentDescription == nil ? "Play \(song.title)" : "Play the moment")
+                    .accessibilityIdentifier("memory.playMoment")
+                }
             }
+            if let message = model.memoryPlayer.message { Text(message).font(.footnote).foregroundStyle(.secondary) }
             Section("Tags") {
                 ForEach(current.tags, id: \.self) { tag in
                     HStack { Text("#\(tag)"); Spacer()

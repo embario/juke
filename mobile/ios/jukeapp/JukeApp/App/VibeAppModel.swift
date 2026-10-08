@@ -33,6 +33,8 @@ final class VibeAppModel {
     @ObservationIgnored private let recognitionFeed: NowPlayingRecognitionFeed
     /// The song last started from Memories; recognition ignores it for a while.
     var memoryPlayback: MemoryPlaybackMark?
+    /// Plays a memory's saved song and moment.
+    let memoryPlayer: MemoryPlayer
     /// Album-art colour feeding `JukeTheme`.
     let artwork = ArtworkPalette()
     @ObservationIgnored private let accessToken = AccessTokenStore()
@@ -80,6 +82,8 @@ final class VibeAppModel {
                 saveMemory: saveMemory
             )
         }
+        memoryPlayer = MemoryPlayer(token: { accessToken.get() })
+        memoryPlayer.marked = { [weak self] in self?.memoryPlayback = $0 }
         radio.onTrackChange = { [weak self] track in
             self?.radioTrackChanged(track)
             self?.recognition.noteRadioTrack(track?.spotifyId)
@@ -140,7 +144,7 @@ final class VibeAppModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func logout() { nowPlaying.stopPolling(); recognition.reset(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; messages = [] }
+    func logout() { memoryPlayer.cancel(); nowPlaying.stopPolling(); recognition.reset(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; messages = [] }
 
     func send() async {
         guard let session, let token = session.accessToken else { return }
