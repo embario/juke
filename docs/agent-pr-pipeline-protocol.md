@@ -7,8 +7,8 @@ Owner: Mario. Version 1, 2026-10-07. This is the owner's standing process for PR
 
 | Role | Session | May | May NOT |
 |---|---|---|---|
-| Implementor | `juke-implementor`, `juke-ios-port`, others | write code, push to its own branch, open PRs, fix review comments | merge, approve, label `approved`, edit another worker's branch |
-| Reviewer | `juke-reviewer` (Codex, so it is independent of the Claude implementors) | read the repo, check out the PR in its own worktree, run build/tests, post PR reviews/comments, set `approved` / `changes-requested` | push, edit code, merge |
+| Implementer | `juke-implementer-1` (Codex), `juke-implementer-2`, `juke-implementer-3` (Claude) | write code, push to its own branch, open PRs, fix review comments | merge, approve, label `approved`, edit another worker's branch |
+| Reviewer | `juke-reviewer-1` (Codex), `juke-reviewer-2` (Claude); a PR goes to the reviewer of the other family than its author (section 2b) | read the repo, check out the PR in its own worktree, run build/tests, post PR reviews/comments, set `approved` / `changes-requested` | push, edit code, merge |
 | Integrator | `juke-integrator` | merge approved PRs into `integration/juke-app`, retarget stacked PRs, update bases | merge anything not approved, touch master or PR #177, force-push |
 | Conductor | `conductor-juke` | assign work, launch/restart workers, escalate to the owner, send digests | do a worker's job inside the PR loop |
 | Owner | Mario | everything, including PR #177 into master | |
@@ -64,10 +64,72 @@ before routine work. A PR with none (or two) is not reviewed, and the gate tells
   notification with `agent-deck conductor notify --conductor juke --tier urgent`. A review already
   in progress is not interrupted.
 
+## 2b. The fleet: sessions, model profiles and author labels
+
+"Implementer" and "implementor" mean the same role in this file. Model names are always the full
+names below, never aliases.
+
+| Session | Tool and model | Effort | Raised for P0/P1 work |
+|---|---|---|---|
+| `juke-implementer-1` | Codex, `gpt-6-luna` | high | `gpt-6.1-sol`, medium |
+| `juke-implementer-2` | Claude, `claude-sonnet-5-5` | medium | `claude-opus-5-5`, medium |
+| `juke-implementer-3` | Claude, `claude-sonnet-5-5` | medium | none (never takes P0/P1) |
+| `juke-reviewer-1` | Codex, `gpt-6.1-sol` | medium | high |
+| `juke-reviewer-2` | Claude, `claude-opus-5-5` | medium | high |
+| `juke-integrator` | unchanged | | |
+| `conductor-juke` | unchanged | | |
+
+The table lives in code as `PROFILES` in `scripts/pipeline_gate.py`; change both together.
+
+**Author labels.** The implementer adds one of `author:codex` or `author:claude` when it opens a
+PR, next to `needs-review` and the severity label. A PR with no author label is treated as
+`author:claude`.
+
+**Rules.**
+
+1. **Severity decides the model, per task.** When a P0 or P1 task is assigned, the implementer is
+   raised to its "raised" profile for that task. It stays raised if its next task is also P0/P1 and
+   returns to its default profile when it takes a P2 or lower task. Only `juke-implementer-1` and
+   `juke-implementer-2` take P0/P1 tasks.
+2. **Batch and sort.** Each implementer's queue is ordered P0 to P4 and grouped by profile, so a
+   session switches models as few times as possible. A switch restarts the session, so it only
+   happens while the session is idle.
+3. **Reviewers.** A P0 or P1 review runs at high effort, everything else at medium. The gate picks
+   an idle reviewer, restarts it only when its stored profile differs from what the review needs,
+   and wakes it. One wake carries PRs of one effort level. A reviewer keeps no memory between
+   reviews (all state is on GitHub), so a restart loses nothing.
+4. **Pair contrasting work.** A PR written by Codex (`author:codex`) goes to `juke-reviewer-2`
+   (Claude). A PR written by Claude goes to `juke-reviewer-1` (Codex). If the preferred reviewer
+   has not been available for 20 minutes, the other one is used. A P0 never waits: it goes to
+   whichever reviewer is idle.
+5. **Concurrency is capped by pool:** at most 2 Claude implementers and 1 Codex implementer running
+   at once, and no more than 2 open PRs at P0/P1 (section 2a).
+6. **`juke-implementer-1` takes bounded small tasks** (P3 and easy P2). Heavy or ambiguous work
+   goes to `juke-implementer-2` or `juke-implementer-3`.
+
+**Assigning tasks.** The conductor assigns implementer work with `scripts/assign_task.py`, which
+applies rules 1 and 2:
+
+```
+python3 scripts/assign_task.py juke-implementer-2 P1 "task text"
+python3 scripts/assign_task.py --batch tasks.json     # [{"session": ..., "severity": "P2", "task": ...}]
+python3 scripts/assign_task.py --dry-run ...          # print what would run; change nothing
+```
+
+It stores the profile on the session (`agent-deck session set <s> model <m>` and
+`session set <s> extra-args -- --effort <e>` for Claude; `session set <s> command
+"codex -m <m> -c model_reasoning_effort=<e>"` for Codex), restarts the session if the profile
+differs and the session is idle, and sends the task with `agent-deck session send <s> -queue`.
+With several tasks for one session it sends the first profile group and lists the rest as
+deferred; assign those again when the session is idle. It refuses a P0/P1 task for
+`juke-implementer-3`. It sends only the task text the owner or conductor wrote and never reads
+GitHub, so PR titles, bodies and comments cannot reach a session through it.
+
 ## 3. The flow
 
 1. **Implementor** finishes a slice, pushes, opens a PR into `integration/juke-app`
-   (never master), adds `needs-review` and one severity label (section 2a), and keeps going on
+   (never master), adds `needs-review`, one severity label (section 2a) and its author label
+   (section 2b), and keeps going on
    the next slice. Before its own feature queue it handles any of its P0 or P1 PRs that are in
    `changes-requested`. It does not stop
    after opening a PR and does not end a turn to report.
@@ -99,10 +161,19 @@ nothing is waiting, which costs hundreds of millions of cached tokens a day. In 
 small script does the polling and a session only runs when there is work for it.
 
 - `scripts/pipeline_gate.py` runs every few minutes (launchd or cron). It reads the open PRs into
-  `integration/juke-app` and wakes `juke-reviewer` for each `needs-review` PR and `juke-integrator`
+  `integration/juke-app` and wakes a reviewer for each `needs-review` PR and `juke-integrator`
   for each `approved` PR that is not `blocked` or `changes-requested`, using
   `agent-deck session send <session> -queue`. The message is delivered when the session is idle.
   PRs without exactly one severity label are skipped (see section 2a).
+- **Which reviewer.** The script assigns each `needs-review` PR to `juke-reviewer-1` or
+  `juke-reviewer-2` by rules 3 and 4 of section 2b and records the assignment in its state file. It
+  uses a reviewer only when that session is idle (`waiting` or `idle` in `agent-deck list`) and has
+  no review woken in the last 30 minutes; a busy reviewer is never interrupted or restarted. Before
+  a wake it restarts the reviewer if its stored model or effort differs from what the review needs.
+- **Codex sessions.** A queued send to a Codex session can be left typed in the input box without
+  being submitted. The script remembers each send to a Codex session and, on a later run, presses
+  Enter in that session's tmux pane, at most three times, and only if `agent-deck session
+  send-status` reports `typed` and the input box still shows the script's own message.
 - The wake message lists PRs by effective severity, then PR number. The reviewer takes them in that
   order. The integrator uses the list as a hint only: dependency order still comes first.
 - The wake message names only PR numbers and commit hashes. It never contains PR titles, bodies or
@@ -113,9 +184,11 @@ small script does the polling and a session only runs when there is work for it.
 - Each review round wakes a role once. A round is a new head commit, or the role's label being
   added again on the same commit (for example when only the description or screenshots were fixed);
   the script tells them apart by the id of the newest `labeled` event. If nothing happens after
-  30 minutes the script wakes the role once more, and after another 30 minutes it sends the owner one
-  urgent notification (`agent-deck conductor notify --conductor juke --tier urgent`) and stays quiet
-  until the next round. If GitHub's label history cannot be read, the script skips that role for the
+  30 minutes the script wakes the role once more (for a review: the other reviewer if it is idle,
+  otherwise the same one; a reviewer that is still running is left alone), and after another
+  30 minutes it sends the owner one urgent notification
+  (`agent-deck conductor notify --conductor juke --tier urgent`) and stays quiet until the next
+  round. A PR that no reviewer has been free to take for 60 minutes is escalated the same way. If GitHub's label history cannot be read, the script skips that role for the
   run and changes nothing.
 - Implementors are not covered: they work from their own task lists, and a PR labelled
   `changes-requested` stays with the implementor that opened it.
@@ -167,10 +240,11 @@ name the conductor with `--conductor juke`; without it the command fails with
 
 ## 7. Setup steps (the conductor does these once, then confirms in one paragraph)
 
-1. Create the four labels with `gh label create` (ignore "already exists").
-2. Launch `juke-reviewer` as a Codex session in its own worktree off `origin/integration/juke-app`
+1. Create the labels with `gh label create` (ignore "already exists"): the four state labels,
+   `P0` to `P4`, `author:codex` and `author:claude`.
+2. Launch `juke-reviewer-1` as a Codex session in its own worktree off `origin/integration/juke-app`
    (read-only workflow: no pushes), with this file as its standing instructions and a 5-minute poll loop.
-3. Re-parent the implementors under `juke-integrator` (or `juke-reviewer` for review wake-ups);
+3. Re-parent the implementors under `juke-integrator` (or a reviewer for review wake-ups);
    confirm the exact `agent-deck` flags with `--help` before using them.
 4. Restart `juke-integrator` with this file as its standing instructions and a 5-minute poll loop.
 5. Tell every implementor to follow section 3 step 1 and 3, and to read this file each turn.

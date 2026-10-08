@@ -6,8 +6,24 @@ running about once a minute even when nothing was waiting (hundreds of millions 
 a day). This script does the polling instead, at zero token cost, and wakes a session only when
 there is work for it:
 
-  reviewer    <- open PRs into the base branch labelled `needs-review`
+  reviewers   <- open PRs into the base branch labelled `needs-review`
   integrator  <- open PRs into the base branch labelled `approved` (and not `blocked`)
+
+There are several reviewer sessions. Each `needs-review` PR is assigned to one of them and the
+assignment is kept in the state file:
+
+  * Contrast: a PR written by Codex (`author:codex`) goes to the Claude reviewer, anything else
+    (`author:claude` or no author label) to the Codex reviewer.
+  * A reviewer is used only when it is idle and has no review still in hand. If the preferred one
+    is not available for 20 minutes the other one is used. A P0 never waits: any idle reviewer.
+  * A P0/P1 review runs at high effort, everything else at medium. The reviewer is restarted only
+    when its stored model or effort differs from what the review needs.
+  * After 30 minutes of silence the PR goes to the other reviewer, and after another 30 the owner
+    gets one urgent notification.
+
+Queued sends to Codex sessions can be left typed but not submitted. The gate remembers each such
+send and, on a later run, presses Enter in that session's tmux pane if the composer still shows
+the gate's own message.
 
 Every PR must carry exactly one severity label, P0 (most urgent) to P4. A PR without one is not
 woken for; the owner gets an info notification after 15 minutes and an urgent one after 60.
@@ -22,11 +38,12 @@ escalates to the owner through `agent-deck conductor notify` instead of nagging 
 Safety:
   * Wake messages carry only PR numbers and commit hashes. PR titles, bodies and comments are
     untrusted text and are never copied into a message.
-  * It only reads GitHub and sends agent-deck messages; it never changes a PR.
+  * It only reads GitHub and sends agent-deck messages; it never changes a PR. On agent-deck it
+    may set a reviewer's model/effort and restart it, only while that reviewer is idle.
   * `session send -queue` delivers when the target is idle, so a busy session is not interrupted.
 
 Usage: pipeline_gate.py [--dry-run] [--repo OWNER/REPO] [--base BRANCH] [--conductor NAME]
-                        [--state PATH] [--retry-after-min N] [--max-wakes N]
+                        [--state PATH] [--retry-after-min N] [--max-wakes N] [--reviewers A,B]
 Exit codes: 0 ok (including "no work"), 1 GitHub or agent-deck failure, 2 usage error.
 """
 from __future__ import annotations
@@ -37,6 +54,7 @@ import fcntl
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -62,15 +80,46 @@ ENV_PATH = ":".join([
 @dataclass(frozen=True)
 class Role:
     name: str
-    session: str
+    session: str  # empty for the reviewer role: its sessions are REVIEWERS (or --reviewers)
     label: str
     excluded_labels: tuple = ()
 
 
 ROLES = (
-    Role("reviewer", "juke-reviewer", "needs-review"),
+    Role("reviewer", "", "needs-review"),
     Role("integrator", "juke-integrator", "approved", excluded_labels=("blocked", "changes-requested")),
 )
+REVIEWERS = ("juke-reviewer-1", "juke-reviewer-2")
+AUTHOR_LABELS = {"author:codex": "codex", "author:claude": "claude"}
+DEFAULT_AUTHOR = "claude"  # a PR with no author label
+PREFERRED_WAIT = 20 * 60  # how long a PR waits for its preferred reviewer before the other is used
+IDLE_STATUSES = ("waiting", "idle")
+BUSY_STATUSES = ("running", "starting")
+WAKE_MARKER = "[pipeline-gate]"
+COMPOSER_PROMPT = "\u203a"  # the character Codex draws in front of its input box
+MAX_NUDGES = 3
+SEND_MAX_AGE = 2 * 3600
+
+
+@dataclass(frozen=True)
+class Profile:
+    tool: str  # "claude" or "codex"
+    model: str  # full model name, never an alias
+    effort: str
+
+
+# Per session: the default profile and the one used for P0/P1 work (None: never takes P0/P1).
+PROFILES = {
+    "juke-implementer-1": {"default": Profile("codex", "gpt-6-luna", "high"),
+                           "raised": Profile("codex", "gpt-6.1-sol", "medium")},
+    "juke-implementer-2": {"default": Profile("claude", "claude-sonnet-5-5", "medium"),
+                           "raised": Profile("claude", "claude-opus-5-5", "medium")},
+    "juke-implementer-3": {"default": Profile("claude", "claude-sonnet-5-5", "medium"), "raised": None},
+    "juke-reviewer-1": {"default": Profile("codex", "gpt-6.1-sol", "medium"),
+                        "raised": Profile("codex", "gpt-6.1-sol", "high")},
+    "juke-reviewer-2": {"default": Profile("claude", "claude-opus-5-5", "medium"),
+                        "raised": Profile("claude", "claude-opus-5-5", "high")},
+}
 
 Runner = Callable[[list], "tuple[int, str]"]
 
@@ -135,6 +184,206 @@ def work_for(role: Role, prs: list) -> list:
     items = [p for p in prs
              if p.get("sev") is not None and role.label in p["labels"] and not (set(role.excluded_labels) & p["labels"])]
     return [(p["number"], p["sha"]) for p in sorted(items, key=lambda p: (p["sev"], p["number"]))]
+
+
+def author_family(labels: set) -> str:
+    """"codex" or "claude" from the author label; no label (or both) counts as DEFAULT_AUTHOR."""
+    found = {family for name, family in AUTHOR_LABELS.items() if name in labels}
+    return found.pop() if len(found) == 1 else DEFAULT_AUTHOR
+
+
+def profile_for(session: str, sev: int) -> Optional[Profile]:
+    """The profile `session` must run for work of severity `sev` (0..4); None if it may not take it."""
+    entry = PROFILES.get(session)
+    if entry is None:
+        return None
+    return entry["raised"] if sev <= 1 else entry["default"]
+
+
+def fleet_status(run: Runner) -> Optional[dict]:
+    """{title: {status, tool, command, model, extra_args, tmux}} for every agent-deck session, or None."""
+    rc, out = run(["agent-deck", "list", "--json"])
+    if rc != 0:
+        return None
+    try:
+        raw = json.loads(out)
+    except ValueError:
+        return None
+    fleet = {}
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict) or not isinstance(item.get("title"), str):
+            continue
+        extra = item.get("extra_args")
+        fleet[item["title"]] = {
+            "status": item.get("status") or "", "tool": item.get("tool") or "",
+            "command": item.get("command") or "", "model": item.get("model") or "",
+            "extra_args": [str(a) for a in extra] if isinstance(extra, list) else [],
+            "tmux": item.get("tmux_session") or "",
+        }
+    return fleet
+
+
+def _split_codex(command: str) -> "tuple[list, str, str]":
+    """(other tokens, model, effort) from a Codex command line such as `codex -m X -c model_reasoning_effort=Y`."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = []
+    rest, model, effort, i = [], "", "", 0
+    while i < len(tokens):
+        tok, nxt = tokens[i], tokens[i + 1] if i + 1 < len(tokens) else ""
+        if tok in ("-m", "--model"):
+            model, i = nxt, i + 2
+        elif tok in ("-c", "--config") and nxt.startswith("model_reasoning_effort="):
+            effort, i = nxt.split("=", 1)[1].strip("\"'"), i + 2
+        else:
+            rest.append(tok)
+            i += 1
+    return rest, model, effort
+
+
+def _split_effort(extra_args: list) -> "tuple[list, str]":
+    """(other tokens, effort) from Claude extra args such as [`--effort`, `medium`]."""
+    rest, effort, i = [], "", 0
+    while i < len(extra_args):
+        tok = extra_args[i]
+        if tok == "--effort" and i + 1 < len(extra_args):
+            effort, i = extra_args[i + 1], i + 2
+        elif tok.startswith("--effort="):
+            effort, i = tok.split("=", 1)[1], i + 1
+        else:
+            rest.append(tok)
+            i += 1
+    return rest, effort
+
+
+def current_profile(info: dict) -> Profile:
+    """The model and effort agent-deck has stored for a session (empty strings where unset)."""
+    if info["tool"] == "codex":
+        _, model, effort = _split_codex(info["command"])
+        return Profile("codex", model, effort)
+    return Profile(info["tool"], info["model"], _split_effort(info["extra_args"])[1])
+
+
+def profile_commands(session: str, info: dict, want: Profile) -> list:
+    """The agent-deck commands that store `want` on `session` and restart it. Empty if nothing differs.
+
+    Claude: `session set <s> model <m>` and `session set <s> extra-args -- ... --effort <e>`.
+    Codex: `session set <s> command "codex -m <m> -c model_reasoning_effort=<e>"`.
+    Other tokens already stored (extra args, command flags) are kept.
+    """
+    have = current_profile(info)
+    if have == want:
+        return []
+    cmds = []
+    if want.tool == "codex":
+        rest, _, _ = _split_codex(info["command"])
+        if not rest or os.path.basename(rest[0]) != "codex":
+            rest = ["codex"] + rest
+        command = " ".join(shlex.quote(t) for t in rest + ["-m", want.model, "-c", f"model_reasoning_effort={want.effort}"])
+        cmds.append(["agent-deck", "session", "set", session, "command", command])
+    else:
+        if have.model != want.model:
+            cmds.append(["agent-deck", "session", "set", session, "model", want.model])
+        if have.effort != want.effort:
+            rest, _ = _split_effort(info["extra_args"])
+            cmds.append(["agent-deck", "session", "set", session, "extra-args", "--", *rest, "--effort", want.effort])
+    cmds.append(["agent-deck", "session", "restart", session])
+    return cmds
+
+
+def apply_profile(run: Runner, session: str, info: dict, want: Profile, dry_run: bool,
+                  say: Callable[[str], None]) -> bool:
+    """Store `want` on an idle session and restart it. True when the session now has that profile."""
+    cmds = profile_commands(session, info, want)
+    if not cmds:
+        return True
+    if info["tool"] != want.tool:
+        say(f"{session} is a {info['tool'] or 'unknown'} session, not {want.tool}; profile not applied")
+        return False
+    label = f"{want.model} / {want.effort}"
+    if dry_run:
+        for cmd in cmds:
+            say(f"[dry-run] would run: {' '.join(shlex.quote(c) for c in cmd)}")
+        return True
+    for cmd in cmds:
+        rc, reply = run(cmd)
+        if rc != 0:
+            say(f"could not set {session} to {label}: {reply}")
+            return False
+    say(f"restarted {session} as {label}")
+    return True
+
+
+def composer_holds(run: Runner, tmux: str, marker: str) -> bool:
+    """True when the Codex input box in tmux pane `tmux` still shows a message containing `marker`.
+
+    Only the last prompt line is checked, so an approval dialog or an empty box is never answered.
+    """
+    rc, out = run(["tmux", "capture-pane", "-p", "-t", tmux])
+    if rc != 0:
+        return False
+    prompts = [line for line in out.splitlines() if line.lstrip().startswith(COMPOSER_PROMPT)]
+    return bool(prompts) and marker in prompts[-1]
+
+
+def send_state(run: Runner, send_id: str) -> Optional[str]:
+    """State of a queued send (queued, typing, typed, submitted, landed, failed); None if unknown."""
+    rc, out = run(["agent-deck", "session", "send-status", send_id, "--json"])
+    if rc != 0:
+        return None
+    try:
+        data = json.loads(out)
+    except ValueError:
+        return None
+    return data.get("state") if isinstance(data, dict) else None
+
+
+def nudge_send(run: Runner, send_id: str, tmux: str, marker: str, dry_run: bool = False) -> str:
+    """Finish one queued send to a Codex session. Returns "done", "pending" or "nudged".
+
+    "typed" means agent-deck put the text in the input box but could not submit it. If the box
+    still shows our message, press Enter there.
+    """
+    state = send_state(run, send_id)
+    if state in ("landed", "submitted", "failed", None):
+        return "done"
+    if state != "typed" or not tmux:
+        return "pending"
+    if not composer_holds(run, tmux, marker):
+        return "done"  # no longer in the box: it was submitted
+    if dry_run:
+        return "pending"
+    rc, _ = run(["tmux", "send-keys", "-t", tmux, "Enter"])
+    return "nudged" if rc == 0 else "pending"
+
+
+def nudge_pending_sends(run: Runner, state: dict, fleet: dict, t: float, dry_run: bool,
+                        say: Callable[[str], None]) -> None:
+    """Check every remembered Codex send and submit the ones still sitting in the input box."""
+    keep = {}
+    for send_id, rec in (state.get("sends") or {}).items():
+        if t - rec.get("at", t) > SEND_MAX_AGE or rec.get("nudges", 0) >= MAX_NUDGES:
+            continue
+        tmux = (fleet.get(rec.get("session")) or {}).get("tmux", "")
+        result = nudge_send(run, send_id, tmux, WAKE_MARKER, dry_run)
+        if result == "done":
+            continue
+        if result == "nudged":
+            rec = {**rec, "nudges": rec.get("nudges", 0) + 1}
+            say(f"pressed Enter in {rec.get('session')} to submit a typed wake")
+        keep[send_id] = rec
+    state["sends"] = keep
+
+
+def send_wake(run: Runner, session: str, text: str, fleet: Optional[dict], state: dict, t: float) -> "tuple[int, str]":
+    """Queue `text` for `session`. A send to a Codex session is remembered so it can be submitted later."""
+    rc, reply = run(["agent-deck", "session", "send", session, "-queue", text])
+    tool = ((fleet or {}).get(session) or {}).get("tool") or getattr((PROFILES.get(session) or {}).get("default"), "tool", "")
+    found = re.search(r"Queued\s+(\S+)", reply or "")
+    if rc == 0 and tool == "codex" and found:
+        state.setdefault("sends", {})[found.group(1)] = {"session": session, "at": t, "nudges": 0}
+    return rc, reply
 
 
 def _json_values(text: str) -> list:
@@ -243,6 +492,79 @@ def plan(entries: dict, work: list, now: float, retry_after: float, max_wakes: i
     return {"wake": wake, "escalate": escalate, "keep": keep}
 
 
+def reviewer_states(fleet: dict, reviewers: list) -> dict:
+    """{session: "idle" | "busy" | "gone"} for the configured reviewers."""
+    out = {}
+    for session in reviewers:
+        status = (fleet.get(session) or {}).get("status", "")
+        out[session] = "idle" if status in IDLE_STATUSES else "busy" if status in BUSY_STATUSES else "gone"
+    return out
+
+
+def plan_reviews(entries: dict, work: list, sev: dict, authors: dict, states: dict, families: dict,
+                 now: float, retry_after: float, max_wakes: int, preferred_wait: float = PREFERRED_WAIT) -> dict:
+    """Decide which reviewer gets which PR. Pure function.
+
+    work: [(number, sha, round)] in review order. sev: {number: 0..4}. authors: {number: family}.
+    states: {session: "idle" | "busy" | "gone"}. families: {session: "codex" | "claude"}.
+    entries: the reviewer part of the state file, {key: {first, last_wake, wakes, escalated, session}}.
+
+    Returns {"wake": {session: [items]}, "effort": {session: "high" | "medium"},
+             "escalate": [items], "keep": {key: entry}}.
+
+    A reviewer takes work only when it is idle and has no review woken less than `retry_after` ago.
+    One wake carries PRs of one effort level, so a reviewer is restarted at most once per wake.
+    """
+    keep, escalate, pending, occupied = {}, [], [], set()
+    for item in work:
+        key = key_of(*item)
+        entry = entries.get(key)
+        if entry is None:
+            keep[key] = {"first": now, "last_wake": 0, "wakes": 0, "escalated": False, "session": None}
+            pending.append((item, None))
+            continue
+        keep[key] = dict(entry)
+        session = entry.get("session")
+        if not session or not entry.get("wakes"):
+            pending.append((item, None))  # still waiting for a reviewer
+            continue
+        silent_for = now - entry["last_wake"]
+        if silent_for < retry_after:
+            occupied.add(session)
+        elif states.get(session) == "busy":
+            # It is still working. Leave it alone, but do not let a hung session hide forever.
+            if silent_for >= retry_after * max_wakes and not entry.get("escalated"):
+                escalate.append(item)
+        elif entry["wakes"] >= max_wakes:
+            if not entry.get("escalated"):
+                escalate.append(item)
+        else:
+            pending.append((item, session))  # silent: hand it to the other reviewer
+
+    order = list(states)
+    free = {s for s in order if states[s] == "idle" and s not in occupied}
+    wake, effort = {}, {}
+    for item, avoid in pending:
+        number = item[0]
+        need = "high" if sev[number] <= 1 else "medium"
+        contrasting = [s for s in order if families.get(s) != authors.get(number, DEFAULT_AUTHOR)]
+        others = [s for s in order if s not in contrasting]
+        waited = now - keep[key_of(*item)]["first"]
+        if avoid is not None:
+            candidates = [s for s in order if s != avoid] + [avoid]
+        elif sev[number] == 0 or waited > preferred_wait or not contrasting:
+            candidates = contrasting + others
+        else:
+            candidates = contrasting
+        pick = next((s for s in candidates if s in free and effort.get(s, need) == need), None)
+        if pick is not None:
+            wake.setdefault(pick, []).append(item)
+            effort[pick] = need
+        elif avoid is None and waited >= retry_after * max_wakes and not keep[key_of(*item)].get("escalated"):
+            escalate.append(item)  # no reviewer has been free for it at all
+    return {"wake": wake, "effort": effort, "escalate": escalate, "keep": keep}
+
+
 def wake_message(role: Role, items: list) -> str:
     refs = ", ".join(f"#{n}@{sha[:12]}" for n, sha, _ in items)
     return (
@@ -255,8 +577,8 @@ def wake_message(role: Role, items: list) -> str:
 
 def escalation_message(role: Role, items: list, minutes: int, wakes: int) -> str:
     refs = ", ".join(f"#{n}" for n, _, _ in items)
-    return (f"Pipeline stuck: {role.name} ({role.session}) has not acted on {refs} "
-            f"for {minutes} min after {wakes} wakes. Check that session.")
+    return (f"Pipeline stuck: {role.name} ({role.session or ', '.join(REVIEWERS)}) has not acted on {refs} "
+            f"for {minutes} min (at most {wakes} wakes each). Check that session.")
 
 
 def severity_message(numbers: list, minutes: int) -> str:
@@ -312,6 +634,7 @@ def main(argv: Optional[list] = None, run: Runner = default_run, now: Callable[[
     ap.add_argument("--state", default=DEFAULT_STATE)
     ap.add_argument("--retry-after-min", type=int, default=30)
     ap.add_argument("--max-wakes", type=int, default=2)
+    ap.add_argument("--reviewers", default=",".join(REVIEWERS), help="comma-separated reviewer session titles")
     ap.add_argument("--dry-run", action="store_true", help="print what would be sent; change nothing")
     try:
         args = ap.parse_args(argv)
@@ -331,6 +654,67 @@ def main(argv: Optional[list] = None, run: Runner = default_run, now: Callable[[
         return run_gate(args, state_path, run, now, say)
 
 
+def run_reviews(args, run: Runner, say: Callable[[str], None], role: Role, state: dict, entries: dict,
+                work: list, prs: list, fleet: Callable[[], Optional[dict]], t: float, retry_after: float):
+    """Assign and wake reviewers. Returns (new entries, status), or None to leave the state as it was."""
+    if not work:
+        return {}, 0
+    sessions = fleet()
+    if sessions is None:
+        say("could not read agent-deck sessions; reviewers skipped this run")
+        return None
+    reviewers = [name.strip() for name in args.reviewers.split(",") if name.strip()]
+    states = reviewer_states(sessions, reviewers)
+    for name in reviewers:
+        if name not in sessions:
+            say(f"reviewer session {name} does not exist in agent-deck; it gets no work")
+    families = {s: (sessions.get(s) or {}).get("tool") or getattr((PROFILES.get(s) or {}).get("default"), "tool", "")
+                for s in reviewers}
+    sev = {p["number"]: p["sev"] for p in prs}
+    authors = {p["number"]: author_family(p["labels"]) for p in prs}
+    decision = plan_reviews(entries, work, sev, authors, states, families, t, retry_after, args.max_wakes)
+    new_entries, status = decision["keep"], 0
+    for session, items in decision["wake"].items():
+        want = (PROFILES.get(session) or {}).get("raised" if decision["effort"][session] == "high" else "default")
+        if want is not None and not apply_profile(run, session, sessions[session], want, args.dry_run, say):
+            status = 1  # not woken and not recorded, so the next run tries again
+            continue
+        text = wake_message(role, items)
+        if args.dry_run:
+            say(f"[dry-run] would wake {session}: {text}")
+            continue
+        rc, reply = send_wake(run, session, text, sessions, state, t)
+        if rc != 0:
+            say(f"could not wake {session}: {reply}")
+            status = 1
+            continue
+        say(f"woke {session}: " + ", ".join(f"#{n}" for n, _, _ in items) + f" ({reply})")
+        for item in items:
+            prev = entries.get(key_of(*item)) or {}
+            new_entries[key_of(*item)] = {"first": prev.get("first", t), "last_wake": t, "wakes": prev.get("wakes", 0) + 1,
+                                          "escalated": False, "session": session}
+    if decision["escalate"]:
+        status = max(status, escalate(args, run, say, role, decision["escalate"], new_entries))
+    return new_entries, status
+
+
+def escalate(args, run: Runner, say: Callable[[str], None], role: Role, items: list, new_entries: dict) -> int:
+    """Send the owner one urgent notification for PRs a role has not acted on. Returns a status."""
+    text = escalation_message(role, items, args.retry_after_min * args.max_wakes, args.max_wakes)
+    if args.dry_run:
+        say(f"[dry-run] would escalate: {text}")
+        return 0
+    rc, reply = run(["agent-deck", "conductor", "notify", "--conductor", args.conductor, "--tier", "urgent", text])
+    if rc != 0:
+        say(f"could not escalate {role.name}: {reply}")
+        return 1
+    say(f"escalated {role.name}: " + ", ".join(f"#{n}" for n, _, _ in items))
+    for item in items:
+        if key_of(*item) in new_entries:
+            new_entries[key_of(*item)]["escalated"] = True
+    return 0
+
+
 def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say: Callable[[str], None]) -> int:
     prs = list_open_prs(run, args.repo, args.base)
     if prs is None:
@@ -342,6 +726,16 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
     t = now()
     retry_after = args.retry_after_min * 60
     status = 0
+    cache = []
+
+    def fleet() -> Optional[dict]:
+        if not cache:
+            cache.append(fleet_status(run))
+        return cache[0]
+
+    if state.get("sends") and fleet() is not None:
+        nudge_pending_sends(run, state, fleet(), t, args.dry_run, say)
+
     for role in ROLES:
         entries = state.get(role.name, {})
         rounds = with_rounds(run, args.repo, role, work_for(role, prs))
@@ -352,6 +746,13 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
             status = 1
             continue
         work = order_by_severity(rounds[0], rounds[1], prs, t)
+        if role.name == "reviewer":
+            result = run_reviews(args, run, say, role, state, entries, work, prs, fleet, t, retry_after)
+            if result is None:
+                status = 1
+            else:
+                state[role.name], status = result[0], max(status, result[1])
+            continue
         decision = plan(entries, work, t, retry_after, args.max_wakes)
         new_entries = decision["keep"]
         if decision["wake"]:
@@ -359,7 +760,7 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
             if args.dry_run:
                 say(f"[dry-run] would wake {role.session}: {text}")
             else:
-                rc, reply = run(["agent-deck", "session", "send", role.session, "-queue", text])
+                rc, reply = send_wake(run, role.session, text, cache[0] if cache else None, state, t)
                 if rc == 0:
                     say(f"woke {role.session}: " + ", ".join(f"#{n}" for n, _, _ in decision["wake"]) + f" ({reply})")
                     for number, sha, token in decision["wake"]:
@@ -371,22 +772,7 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
                     say(f"could not wake {role.session}: {reply}")
                     status = 1  # not recorded, so the next run retries
         if decision["escalate"]:
-            text = escalation_message(role, decision["escalate"],
-                                      args.retry_after_min * args.max_wakes, args.max_wakes)
-            if args.dry_run:
-                say(f"[dry-run] would escalate: {text}")
-            else:
-                rc, reply = run(["agent-deck", "conductor", "notify", "--conductor", args.conductor,
-                                 "--tier", "urgent", text])
-                if rc == 0:
-                    say(f"escalated {role.name}: " + ", ".join(f"#{n}" for n, _, _ in decision["escalate"]))
-                    for number, sha, token in decision["escalate"]:
-                        key = key_of(number, sha, token)
-                        if key in new_entries:
-                            new_entries[key]["escalated"] = True
-                else:
-                    say(f"could not escalate {role.name}: {reply}")
-                    status = 1
+            status = max(status, escalate(args, run, say, role, decision["escalate"], new_entries))
         state[role.name] = new_entries
 
     for tier, numbers, minutes in check_unlabeled(state, prs, t):
