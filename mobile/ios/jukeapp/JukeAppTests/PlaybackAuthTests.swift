@@ -4,7 +4,7 @@ import Testing
 
 private final class CapturingProtocol: URLProtocol {
     nonisolated(unsafe) static var authorization: String?
-    override class func canInit(with request: URLRequest) -> Bool { request.url?.path.hasSuffix("playback/state/") == true }
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.path.contains("playback/state") == true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.authorization = request.value(forHTTPHeaderField: "Authorization")
@@ -16,9 +16,10 @@ private final class CapturingProtocol: URLProtocol {
 
 @Suite(.serialized) struct PlaybackAuthTests {
     @Test func spotifyPlaybackUsesTokenScheme() async throws {
-        URLProtocol.registerClass(CapturingProtocol.self); defer { URLProtocol.unregisterClass(CapturingProtocol.self) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CapturingProtocol.self]
         CapturingProtocol.authorization = nil
-        let track = try await VibeAPI().spotifyPlayback(token: "abc123")
+        let track = try await VibeAPI(session: URLSession(configuration: configuration)).spotifyPlayback(token: "abc123")
         #expect(track == nil)
         #expect(CapturingProtocol.authorization == "Token abc123")
     }

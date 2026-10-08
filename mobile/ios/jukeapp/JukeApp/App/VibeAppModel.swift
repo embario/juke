@@ -25,6 +25,8 @@ final class VibeAppModel {
     /// Radio stations, the tuned station and the continuous-play loop.
     let radio: RadioController
     let memories: MemoryStore
+    /// Face ID / passcode lock over the whole app; shared with macOS.
+    let lock = AppLockController()
     /// Quietly turns songs played elsewhere into `recognized` taste events.
     let recognition: BackgroundRecognizer
     /// `BackgroundRecognizer` holds its feed weakly, so the model owns it.
@@ -92,12 +94,15 @@ final class VibeAppModel {
             let preview = JukeSession(account: .localPreview, accessToken: "ui-test-token", authenticatedAt: .now)
             session = preview
             if let name = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-tab=") })?.dropFirst(16), let value = JukeTab(rawValue: String(name)) { tab = value }
+            if ProcessInfo.processInfo.arguments.contains("--uitesting-locked") { lock.lockNow() }
             beginSession(preview, polling: false)
             return
         }
         #endif
         if let restored = try? auth.restore() {
             session = restored
+            // A cold start is a fresh look at private chats and memories: ask first.
+            lock.lockNow()
             beginSession(restored)
             Task { await synchronize(); load() }
         }

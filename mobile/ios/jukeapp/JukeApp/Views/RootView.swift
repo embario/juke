@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(VibeAppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @State private var privacy = PrivacyWindow()
     @AppStorage("juke.settings.appearance") private var appearanceRaw = AppearanceChoice.system.rawValue
     var body: some View {
         ThemedRoot(content: content)
@@ -13,7 +14,18 @@ struct RootView: View {
     private var content: some View {
         ZStack {
             VibeBackground(atmosphere: model.atmosphere)
-            if model.session == nil { SignInView() } else { main }
+            if model.session == nil { SignInView() } else { main.id(model.lock.isLocked) // a new identity dismisses open sheets, which would otherwise sit above the lock
+                .disabled(model.lock.isLocked).accessibilityHidden(model.lock.isLocked) }
+            if model.session != nil, model.lock.isLocked { LockedView() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            privacy.update(shielded: PrivacyWindow.shouldShield(phase: phase, signedIn: model.session != nil))
+            switch phase {
+            case .active: model.lock.sceneBecameActive(isAuthenticated: model.session != nil)
+            // Control Center and call banners only make the scene inactive; leaving the app is `.background`.
+            case .background: model.lock.sceneBecameInactive()
+            default: break
+            }
         }
         .onChange(of: model.nowPlaying.track?.id) { _, _ in model.trackChanged() }
     }
@@ -38,6 +50,30 @@ struct RootView: View {
         case .chat: ChatView()
         case .settings: SettingsView()
         }
+    }
+}
+
+private struct LockedView: View {
+    @Environment(VibeAppModel.self) private var model
+    @Environment(\.jukeTheme) private var theme
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.regularMaterial).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(theme.ink.color)
+                Text("Juke is locked").font(.title2.bold()).foregroundStyle(theme.ink.color)
+                Button("Unlock") { Task { await model.lock.unlock() } }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .accessibilityIdentifier("lock.unlock")
+                if let error = model.lock.unlockError {
+                    Text(error).font(.footnote).foregroundStyle(theme.sub.color).multilineTextAlignment(.center)
+                }
+            }
+            .padding(32)
+        }
+        .task { if model.lock.isLocked, model.lock.unlockError == nil, model.session != nil { await model.lock.unlock() } }
+        .accessibilityIdentifier("lock.view")
     }
 }
 
