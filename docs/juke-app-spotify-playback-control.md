@@ -53,8 +53,12 @@ Diagnosis from the code (no response from a real device was captured):
 - A resume counts only once Spotify reports the song playing. If that does not happen within
   5 seconds, the song goes back to paused at its old position and Juke says "Juke can’t reach
   Spotify. Open Spotify, then press play."
-- "Open Spotify" opens the Spotify app. When Juke is in front again it resumes the song by
-  itself.
+- "Open Spotify" opens the Spotify app. When Juke is in front again it first reads Spotify's
+  state. If Spotify is still silent or paused, Juke resumes the song by itself. If Spotify is
+  already playing (the listener pressed play there), Juke sends nothing: the radio song carries
+  on from Spotify's position, and other music is left alone.
+- A play command that takes longer than 5 seconds to answer is not judged until it answers.
+- A paused song restored after a relaunch leaves without a message if Spotify is playing other music.
 - The paused song (song, position, station) is saved, so it is still there after iOS ends Juke
   in the background. Pressing play then starts that exact song at that position.
 - The compact player says "Paused", "Waiting for Spotify…" or "Open Spotify to keep playing".

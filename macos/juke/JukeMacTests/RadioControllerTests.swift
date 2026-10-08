@@ -98,12 +98,17 @@ private actor FakePlayback: RadioPlaybackControlling {
         playing.isPlaying = true
         return playing
     }
+    /// Runs while a play command is on its way, before Spotify answers it.
+    var whilePlayIsSent: (@Sendable () async -> Void)?
+    func setWhilePlayIsSent(_ work: (@Sendable () async -> Void)?) { whilePlayIsSent = work }
     func resume(deviceID: String?) async throws -> RadioPlaybackSnapshot? {
         calls.append("resume")
+        await whilePlayIsSent?()
         return started()
     }
     func play(trackID: String, at position: TimeInterval, deviceID: String?) async throws -> RadioPlaybackSnapshot? {
         calls.append("play:\(trackID)@\(Int(position)):\(deviceID ?? "-")")
+        await whilePlayIsSent?()
         guard deviceAnswers else { return nil }
         if snapshot == nil {
             snapshot = RadioPlaybackSnapshot(trackID: trackID, durationMs: 200_000, progressMs: Int(position * 1000), isPlaying: true,
@@ -193,6 +198,20 @@ final class RadioControllerTests: XCTestCase {
         await playback.set(playing(first, at: seconds))
         await radio.refresh()
         await radio.pause()
+        return radio
+    }
+
+    /// Paused at 30 s, play went unanswered, and the listener tapped "Open Spotify".
+    private func leftForSpotify() async -> RadioController {
+        let radio = await pausedAt(30)
+        await playback.set(nil)
+        await playback.setDeviceAnswers(false)
+        await radio.resume()
+        clock.advance(RadioController.resumeGracePeriod + 1)
+        await radio.refresh()
+        XCTAssertEqual(radio.status, .deviceUnavailable)
+        radio.willOpenSpotify()
+        await playback.setDeviceAnswers(true)
         return radio
     }
 
@@ -533,6 +552,90 @@ final class RadioControllerTests: XCTestCase {
         XCTAssertEqual(calls.last, "play:t1@30:device-1", "the song and the last device are named")
         XCTAssertEqual(radio.status, .playing)
         XCTAssertNil(radio.issue)
+    }
+
+    func testComingBackAfterPressingPlayInSpotifyFollowsSpotify() async {
+        let radio = await leftForSpotify()
+        // The listener pressed play in Spotify and listened for two minutes.
+        await playback.set(playing(first, at: 150))
+        let before = await playback.calls
+        clock.advance(120)
+        await radio.appBecameActive()
+        let calls = await playback.calls
+        XCTAssertEqual(calls, before, "nothing is sent: the song is not started again")
+        XCTAssertEqual(radio.status, .playing)
+        XCTAssertEqual(radio.position(at: clock.now), 150, accuracy: 0.01, "the position is Spotify's")
+        XCTAssertNil(radio.issue)
+    }
+
+    func testComingBackWhileSpotifyPlaysSomethingElseDoesNotReplaceIt() async {
+        let radio = await leftForSpotify()
+        await playback.set(playing(makeTrack("elsewhere"), at: 12))
+        let before = await playback.calls
+        clock.advance(60)
+        await radio.appBecameActive()
+        var calls = await playback.calls
+        XCTAssertEqual(calls, before, "what the listener chose keeps playing")
+        XCTAssertFalse(radio.isPlaying)
+        XCTAssertEqual(radio.track, first)
+        clock.advance(4)
+        await radio.refresh()
+        calls = await playback.calls
+        XCTAssertEqual(calls, before)
+        XCTAssertFalse(radio.isOnAir, "the usual rule applies: radio steps aside")
+    }
+
+    func testComingBackWhileSpotifyIsPausedResumesFromSpotifysPosition() async {
+        let radio = await leftForSpotify()
+        // Spotify is awake again with the radio song loaded, paused further along.
+        await playback.set(playing(first, at: 90, isPlaying: false))
+        clock.advance(60)
+        await radio.appBecameActive()
+        let calls = await playback.calls
+        XCTAssertEqual(calls.last, "play:t1@90:device-1")
+        XCTAssertEqual(radio.status, .playing)
+        XCTAssertEqual(radio.position(at: clock.now), 90, accuracy: 0.01)
+    }
+
+    func testComingBackWhenSpotifyCannotBeReadSendsNothing() async {
+        let radio = await leftForSpotify()
+        await playback.setError(URLError(.notConnectedToInternet))
+        let before = await playback.calls
+        await radio.appBecameActive()
+        let calls = await playback.calls
+        XCTAssertEqual(calls, before)
+        XCTAssertFalse(radio.isPlaying)
+        XCTAssertNotNil(radio.issue)
+    }
+
+    func testSlowResumeRequestIsNotJudgedWhileInFlight() async {
+        let radio = await pausedAt(30)
+        await playback.set(playing(first, at: 30, isPlaying: false))
+        let clock = clock!
+        // The play command takes longer than the grace period; a poll lands meanwhile.
+        await playback.setWhilePlayIsSent { @MainActor in
+            clock.advance(RadioController.resumeGracePeriod + 2)
+            await radio.refresh()
+            XCTAssertEqual(radio.status, .resuming, "the request has not answered yet")
+        }
+        await radio.resume()
+        XCTAssertEqual(radio.status, .playing)
+        XCTAssertNil(radio.issue)
+    }
+
+    func testRestoredPausedSongLeavesQuietlyWhenSpotifyPlaysSomethingElse() async {
+        _ = await pausedAt(42)
+        await playback.set(playing(makeTrack("elsewhere"), at: 3))
+        let relaunched = makeController()
+        await relaunched.start()
+        XCTAssertTrue(relaunched.isOnAir)
+        await relaunched.refresh()
+        clock.advance(4)
+        await relaunched.refresh()
+        XCTAssertFalse(relaunched.isOnAir)
+        XCTAssertNil(relaunched.notice, "radio was not on in this session; nothing to announce")
+        let calls = await playback.calls
+        XCTAssertEqual(calls, ["pause"], "the listener's music is left alone")
     }
 
     func testBecomingActiveWithoutAskingOnlyRefreshes() async {

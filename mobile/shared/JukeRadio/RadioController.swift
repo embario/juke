@@ -128,6 +128,14 @@ final class RadioController {
     @ObservationIgnored private var resumeNamesSong = false
     /// The listener left for the Spotify app to wake it; resume when Juke is active again.
     @ObservationIgnored private var resumeWhenActive = false
+    /// The play command of a resume has not answered yet; polls wait instead of judging it.
+    @ObservationIgnored private var resumeInFlight = false
+    /// The paused song came from the last launch and play has not been pressed since.
+    @ObservationIgnored private var restoredPause = false
+    /// What the latest read of Spotify's state said.
+    @ObservationIgnored private var lastAnswer = SpotifyAnswer.unread
+
+    private enum SpotifyAnswer { case unread, silent, paused, playing }
 
     init(
         backend: any RadioBackend,
@@ -228,6 +236,7 @@ final class RadioController {
         userPaused = true
         // Spotify may have moved on since; resuming names this song.
         resumeNamesSong = true
+        restoredPause = true
         setTrack(paused.track)
         remember(paused.track, station: currentStationID)
         setPosition(paused.position, playing: false)
@@ -261,6 +270,9 @@ final class RadioController {
         resumeFailed = false
         resumeNamesSong = false
         resumeWhenActive = false
+        resumeInFlight = false
+        restoredPause = false
+        lastAnswer = .unread
         isResuming = false
         isBusy = false
         hasTunedIn = false
@@ -381,6 +393,7 @@ final class RadioController {
             resumeFailed = false
             resumeNamesSong = false
             resumeWhenActive = false
+            restoredPause = false
             preferences.pausedSession = nil
             currentTrackSkipped = false
             expectedTrackID = response.track.spotifyId
@@ -479,10 +492,13 @@ final class RadioController {
         let position = position(at: now())
         let session = generation
         resumeWhenActive = false
+        restoredPause = false
         // Set before the request, so a poll that lands meanwhile waits instead of judging.
         resumeFrom = position
         resumeDeadline = now().addingTimeInterval(Self.resumeGracePeriod)
         isResuming = true
+        resumeInFlight = true
+        defer { resumeInFlight = false }
         do {
             var reported: RadioPlaybackSnapshot?
             if !resumeNamesSong { reported = try await playback.resume(deviceID: deviceID) }
@@ -520,12 +536,19 @@ final class RadioController {
         resumeWhenActive = isOnAir && !isPlaying
     }
 
-    /// Juke is in the foreground again: catch up, and resume if the listener went to wake Spotify.
+    /// Juke is in the foreground again: catch up with Spotify first. If the listener went to
+    /// wake Spotify and it is still not playing anything, resume the song. Whatever already
+    /// plays there (the radio song further along, or something the listener chose) is left alone.
     func appBecameActive() async {
         guard isOnAir else { return }
         let wantsResume = resumeWhenActive
         resumeWhenActive = false
-        if wantsResume, !isPlaying { await resume() } else { await refresh() }
+        let session = generation
+        lastAnswer = .unread
+        await refresh()
+        guard wantsResume, session == generation, isOnAir, !isPlaying else { return }
+        guard lastAnswer == .silent || lastAnswer == .paused else { return }
+        await resume()
     }
 
     /// The resume was sent but no song started: keep the song paused where it was.
@@ -543,7 +566,7 @@ final class RadioController {
     /// Spotify reported no state at all.
     private func handleMissingState() {
         if isResuming {
-            if now() >= resumeDeadline { resumeDidNotStart() }
+            if !resumeInFlight, now() >= resumeDeadline { resumeDidNotStart() }
             return
         }
         // Spotify stops reporting a player that has been paused for a while. That is not a
@@ -919,9 +942,11 @@ final class RadioController {
         }
         guard session == generation, isOnAir else { return }
         guard let snapshot else {
+            lastAnswer = .silent
             handleMissingState()
             return
         }
+        lastAnswer = snapshot.isPlaying ? .playing : .paused
         missedStates = 0
         onSnapshot?(snapshot)
         if snapshot.isEpisode {
@@ -932,7 +957,7 @@ final class RadioController {
         if isResuming {
             if snapshot.isPlaying {
                 isResuming = false
-            } else if now() < resumeDeadline {
+            } else if resumeInFlight || now() < resumeDeadline {
                 // Spotify may report the paused state for a moment after play was sent.
                 return
             } else {
@@ -1006,7 +1031,10 @@ final class RadioController {
             mismatchCount += 1
             if mismatchCount >= 2 {
                 mismatchCount = 0
-                goOffAir(notice: "Spotify is playing something else. Press play to bring the radio back.")
+                // A song only restored from the last launch leaves quietly: the listener did
+                // not have radio on in this session.
+                goOffAir(notice: restoredPause ? nil : "Spotify is playing something else. Press play to bring the radio back.")
+                restoredPause = false
             }
             return
         }
@@ -1104,7 +1132,7 @@ final class RadioController {
         isPausedForEpisode = true
     }
 
-    private func goOffAir(notice message: String) {
+    private func goOffAir(notice message: String?) {
         isPausedForEpisode = false
         isOnAir = false
         isPlaying = false
