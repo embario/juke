@@ -723,21 +723,37 @@ final class RadioControllerTests: XCTestCase {
         XCTAssertEqual(RadioController.retryDelay(afterFailures: 20), 300)
     }
 
-    func testDeferredStartIsAcceptedInsteadOfReportedAsRestartFailure() async {
+    func testDeferredAutoRestartDoesNotClearExistingBackoff() async {
         let radio = await onAir()
+        await backend.setPlayError(JukeAPIError.server(status: 502, code: "playback_provider_failure", detail: nil))
+        await playback.set(playing(first, at: 199, isPlaying: false))
+
+        await radio.refresh()
+        clock.advance(5)
+        await radio.refresh()
+        clock.advance(10)
+        await radio.refresh()
+
+        clock.advance(20)
         await backend.setPlayDelay(.milliseconds(150))
-        let inFlight = Task { await radio.startNow(mine.id) }
+        let inFlightRestart = Task { await radio.refresh() }
         try? await Task.sleep(for: .milliseconds(20))
+        await radio.refresh()
+        await inFlightRestart.value
 
-        let accepted = await radio.startNow(night.id)
-        _ = await inFlight.value
+        let attemptsAfterFailedRestart = await backend.playAttempts
+        clock.advance(6)
+        await radio.refresh()
+        var attemptsAfterDeferredRetry = await backend.playAttempts
+        XCTAssertEqual(attemptsAfterDeferredRetry, attemptsAfterFailedRestart,
+                       "a deferred restart must not reset the 40-second delay after four failures")
 
-        XCTAssertTrue(accepted, "a deferred start is accepted and should not trigger auto-restart back-off")
-        let plays = await backend.plays
-        XCTAssertEqual(plays.suffix(2), [
-            .init(stationID: mine.id, mode: .now),
-            .init(stationID: night.id, mode: .now),
-        ])
+        clock.advance(34)
+        await backend.setPlayDelay(nil)
+        await radio.refresh()
+        attemptsAfterDeferredRetry = await backend.playAttempts
+        XCTAssertEqual(attemptsAfterDeferredRetry, attemptsAfterFailedRestart + 1,
+                       "the next retry should run after 40 seconds, without counting the deferred request")
     }
 
     func testPutAwayStaysOutWhenSpotifyWillNotPause() async {
@@ -764,7 +780,7 @@ final class RadioControllerTests: XCTestCase {
         let firstStart = Task { await radio.startNow(mine.id) }
         try? await Task.sleep(for: .milliseconds(20))
         let deferred = await radio.startNow(night.id)
-        XCTAssertTrue(deferred, "a queued request is accepted while the current start finishes")
+        XCTAssertFalse(deferred, "a queued request has not started yet")
         _ = await firstStart.value
         let plays = await backend.plays
         XCTAssertEqual(plays.map(\.stationID), [mine.id, night.id])
