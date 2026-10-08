@@ -32,16 +32,36 @@ final class VibeAtmosphere {
     }
 }
 
+/// The page background: the themed page colour plus two soft glows in the current
+/// artwork colour. The theme (and so the glows) cross-fades whenever the artwork
+/// changes; Reduce Motion swaps instantly.
 struct VibeBackground: View {
     let atmosphere: VibeAtmosphere
     @Environment(\.jukeTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
+        let glow = VibeBackgroundGlow.opacity(dark: theme.isDark, intensity: atmosphere.intensity)
         ZStack {
             theme.bg.color
-            // An overlay, so the 430 pt glow never widens the layout past the screen.
-            Color.clear.overlay { Circle().fill(theme.accent.color.opacity(0.10 + atmosphere.intensity * 0.10)).frame(width: 430, height: 430).blur(radius: 90).offset(x: 150, y: -260) }
-        }.clipped()
-        .animation(reduceMotion ? nil : .easeInOut(duration: 1.2), value: theme.bg).ignoresSafeArea()
+            // Overlays, so the oversized glows never widen the layout past the screen.
+            Color.clear.overlay { Circle().fill(theme.base.color.opacity(glow.primary)).frame(width: 430, height: 430).blur(radius: 90).offset(x: 150, y: -260) }
+            Color.clear.overlay { Circle().fill(theme.base.color.opacity(glow.secondary)).frame(width: 360, height: 360).blur(radius: 100).offset(x: -170, y: 300) }
+        }
+        .clipped()
+        .animation(reduceMotion ? nil : .easeInOut(duration: 1.1), value: theme.base)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 1.1), value: theme.isDark)
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+}
+
+enum VibeBackgroundGlow {
+    /// Glow strength. Text is ink on page colour, so glows stay soft enough to keep
+    /// contrast; the theme's own tint already guarantees AA for the base page colour.
+    static func opacity(dark: Bool, intensity: Double) -> (primary: Double, secondary: Double) {
+        let t = min(1, max(0, intensity))
+        let peak = dark ? 0.42 : 0.30
+        return (peak * (0.45 + 0.55 * t), peak * 0.6 * (0.45 + 0.55 * t))
     }
 }
