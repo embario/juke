@@ -17,6 +17,30 @@ extension PlaybackClient: MemorySpotifyPlaying {
     func state(token: String) async throws -> JukePlaybackState? { try await fetchSpotifyState(token: token) }
 }
 
+/// What the system music player is doing right now.
+struct AppleMusicSnapshot: Equatable, Sendable {
+    /// 16-hex library persistent ID, uppercase or lowercase.
+    var libraryID: String?
+    var storeID: String?
+    var isPlaying: Bool
+    var time: Double
+}
+
+/// Keeps the end-of-moment pause tied to the exact song, like `MemorySegmentGuard` does for Spotify.
+struct AppleSegmentGuard: Sendable {
+    let id: String
+    let endSeconds: Double
+
+    func decision(_ snapshot: AppleMusicSnapshot?) -> MemorySegmentGuard.Decision {
+        guard let snapshot, snapshot.isPlaying, snapshot.time.isFinite else { return .cancel }
+        let matches = MemoryPlaybackRequest.isAppleLibraryID(id)
+            ? snapshot.libraryID?.caseInsensitiveCompare(id) == .orderedSame
+            : snapshot.storeID == id
+        guard matches else { return .cancel }
+        return snapshot.time >= endSeconds ? .pause : .keepWaiting
+    }
+}
+
 /// Plays the song saved with a memory, from the saved moment, and stops at its end.
 /// Spotify goes through Juke's playback API (needs an active device, like radio);
 /// Apple Music uses the system player for library songs. Anything else, or any
@@ -31,7 +55,7 @@ final class MemoryPlayer {
     @ObservationIgnored private let token: @MainActor () -> String?
     @ObservationIgnored private let open: @MainActor (URL) -> Void
     @ObservationIgnored private let playApple: @MainActor (_ id: String, _ start: Double) async throws -> Void
-    @ObservationIgnored private let appleTime: @MainActor () -> Double?
+    @ObservationIgnored private let appleSnapshot: @MainActor () -> AppleMusicSnapshot?
     @ObservationIgnored private let pauseApple: @MainActor () -> Void
     @ObservationIgnored private let sleep: @MainActor (Double) async throws -> Void
     /// Told when a memory song starts, so recognition can ignore it.
@@ -45,17 +69,18 @@ final class MemoryPlayer {
         marked: @escaping @MainActor (MemoryPlaybackMark) -> Void = { _ in },
         open: @escaping @MainActor (URL) -> Void = { UIApplication.shared.open($0) },
         playApple: @escaping @MainActor (String, Double) async throws -> Void = MemoryPlayer.systemPlayApple,
-        appleTime: @escaping @MainActor () -> Double? = { MPMusicPlayerController.systemMusicPlayer.currentPlaybackTime },
+        appleSnapshot: @escaping @MainActor () -> AppleMusicSnapshot? = MemoryPlayer.systemSnapshot,
         pauseApple: @escaping @MainActor () -> Void = { MPMusicPlayerController.systemMusicPlayer.pause() },
         sleep: @escaping @MainActor (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     ) {
         self.spotify = spotify; self.token = token; self.marked = marked; self.open = open
-        self.playApple = playApple; self.appleTime = appleTime; self.pauseApple = pauseApple; self.sleep = sleep
+        self.playApple = playApple; self.appleSnapshot = appleSnapshot; self.pauseApple = pauseApple; self.sleep = sleep
     }
 
     func play(_ song: MemorySong) async {
-        cancel()
+        // A call while another is still starting must not tear down the first one's timing.
         guard !isBusy else { return }
+        cancel()
         message = nil
         marked(MemoryPlaybackMark(providerID: song.providerID, title: song.title, artist: song.artist, startedAt: .now))
         let id = UUID()
@@ -137,8 +162,11 @@ final class MemoryPlayer {
                 while !Task.isCancelled {
                     do { try await self?.sleep(0.5) } catch { return }
                     guard let self, self.operation == id else { return }
-                    guard let time = self.appleTime() else { self.cancel(); return }
-                    if time >= end { self.pauseApple(); self.cancel(); return }
+                    switch AppleSegmentGuard(id: song, endSeconds: end).decision(self.appleSnapshot()) {
+                    case .keepWaiting: continue
+                    case .cancel: self.cancel(); return
+                    case .pause: self.pauseApple(); self.cancel(); return
+                    }
                 }
             }
         } catch {
@@ -151,6 +179,17 @@ final class MemoryPlayer {
         cancel()
         message = explanation
         if let url = request.playbackURL { open(url) }
+    }
+
+    private static func systemSnapshot() -> AppleMusicSnapshot? {
+        let player = MPMusicPlayerController.systemMusicPlayer
+        guard let item = player.nowPlayingItem else { return nil }
+        return AppleMusicSnapshot(
+            libraryID: String(format: "%016llX", item.persistentID),
+            storeID: item.playbackStoreID.isEmpty ? nil : item.playbackStoreID,
+            isPlaying: player.playbackState == .playing,
+            time: player.currentPlaybackTime
+        )
     }
 
     /// Library songs (16-hex persistent IDs) play through the media library;
