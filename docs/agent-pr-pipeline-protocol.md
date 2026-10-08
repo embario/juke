@@ -77,9 +77,13 @@ small script does the polling and a session only runs when there is work for it.
 - On a wake, the reviewer or integrator does section 3 for exactly the listed PRs, then **ends its
   turn and waits**. It does not poll and it does not loop. This replaces the 5-minute poll in
   section 7.
-- Each PR head commit wakes a role once. If nothing happens after 30 minutes the script wakes it
-  once more, and after another 30 minutes it sends the owner one urgent notification
-  (`agent-deck conductor notify --conductor juke --tier urgent`) and stays quiet.
+- Each review round wakes a role once. A round is a new head commit, or the role's label being
+  added again on the same commit (for example when only the description or screenshots were fixed);
+  the script tells them apart by the id of the newest `labeled` event. If nothing happens after
+  30 minutes the script wakes the role once more, and after another 30 minutes it sends the owner one
+  urgent notification (`agent-deck conductor notify --conductor juke --tier urgent`) and stays quiet
+  until the next round. If GitHub's label history cannot be read, the script skips that role for the
+  run and changes nothing.
 - Implementors are not covered: they work from their own task lists, and a PR labelled
   `changes-requested` stays with the implementor that opened it.
 

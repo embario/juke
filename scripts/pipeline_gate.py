@@ -99,34 +99,84 @@ def work_for(role: Role, prs: list) -> list:
     return sorted(items)
 
 
-def key_of(number: int, sha: str) -> str:
-    return f"{number}@{sha}"
+def _json_values(text: str) -> list:
+    """Every JSON value in `text`; `gh api --paginate` prints one array per page back to back."""
+    decoder, pos, values = json.JSONDecoder(), 0, []
+    text = text.strip()
+    while pos < len(text):
+        value, end = decoder.raw_decode(text, pos)
+        values.append(value)
+        pos = end
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+    return values
+
+
+def round_token(run: Runner, repo: str, number: int, label: str) -> Optional[str]:
+    """Id of the newest `labeled` event for `label` on PR `number`, as a string.
+
+    A PR can go changes-requested -> needs-review without its head commit changing (for example
+    when only the description or screenshots were fixed). Every re-entry adds a new `labeled`
+    event, so its id marks a new review round. None means the label history could not be read.
+    """
+    rc, out = run(["gh", "api", "--paginate", f"repos/{repo}/issues/{number}/events?per_page=100"])
+    if rc != 0:
+        return None
+    try:
+        pages = _json_values(out)
+    except ValueError:
+        return None
+    ids = []
+    for page in pages:
+        for event in (page if isinstance(page, list) else []):
+            lab = event.get("label") if isinstance(event, dict) else None
+            if event.get("event") == "labeled" and isinstance(lab, dict) and lab.get("name") == label \
+                    and isinstance(event.get("id"), int):
+                ids.append(event["id"])
+    return str(max(ids)) if ids else "0"
+
+
+def with_rounds(run: Runner, repo: str, role: Role, items: list) -> Optional[list]:
+    """[(number, sha, round)] or None if any PR's label history could not be read."""
+    out = []
+    for number, sha in items:
+        token = round_token(run, repo, number, role.label)
+        if token is None:
+            return None
+        out.append((number, sha, token))
+    return out
+
+
+def key_of(number: int, sha: str, token: str = "0") -> str:
+    return f"{number}@{sha}#{token}"
 
 
 def plan(entries: dict, work: list, now: float, retry_after: float, max_wakes: int) -> dict:
     """Decide what to do for one role. Pure function.
 
-    Returns {"wake": [(n, sha)], "escalate": [(n, sha)], "keep": {key: entry}} where `keep`
-    holds the entries for items still pending (items no longer in `work` are dropped).
+    `work` is [(number, sha, round)]. Returns {"wake": [...], "escalate": [...], "keep": {key: entry}}
+    where `keep` holds the entries for items still pending. A new head commit or a new review round
+    (the label was added again) gives a new key, so it starts fresh; items no longer in `work`
+    are dropped.
     """
     wake, escalate, keep = [], [], {}
-    for number, sha in work:
-        key = key_of(number, sha)
+    for number, sha, token in work:
+        key = key_of(number, sha, token)
         entry = entries.get(key)
         if entry is None:
-            wake.append((number, sha))
+            wake.append((number, sha, token))
             continue
         keep[key] = dict(entry)
         quiet = now - entry["last_wake"] >= retry_after
         if entry["wakes"] < max_wakes and quiet:
-            wake.append((number, sha))
+            wake.append((number, sha, token))
         elif entry["wakes"] >= max_wakes and quiet and not entry.get("escalated"):
-            escalate.append((number, sha))
+            escalate.append((number, sha, token))
     return {"wake": wake, "escalate": escalate, "keep": keep}
 
 
 def wake_message(role: Role, items: list) -> str:
-    refs = ", ".join(f"#{n}@{sha[:12]}" for n, sha in items)
+    refs = ", ".join(f"#{n}@{sha[:12]}" for n, sha, _ in items)
     return (
         f"[pipeline-gate] {role.name}: PRs ready for you: {refs}. "
         "Follow docs/agent-pr-pipeline-protocol.md for your role on exactly these PRs, then end "
@@ -136,7 +186,7 @@ def wake_message(role: Role, items: list) -> str:
 
 
 def escalation_message(role: Role, items: list, minutes: int, wakes: int) -> str:
-    refs = ", ".join(f"#{n}" for n, _ in items)
+    refs = ", ".join(f"#{n}" for n, _, _ in items)
     return (f"Pipeline stuck: {role.name} ({role.session}) has not acted on {refs} "
             f"for {minutes} min after {wakes} wakes. Check that session.")
 
@@ -196,7 +246,14 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
     status = 0
     for role in ROLES:
         entries = state.get(role.name, {})
-        decision = plan(entries, work_for(role, prs), t, retry_after, args.max_wakes)
+        work = with_rounds(run, args.repo, role, work_for(role, prs))
+        if work is None:
+            # Without the label history a re-submission could be missed or a stale round reused,
+            # so skip this role for now and leave its state exactly as it was.
+            say(f"could not read label history for {role.name}; skipped this run")
+            status = 1
+            continue
+        decision = plan(entries, work, t, retry_after, args.max_wakes)
         new_entries = decision["keep"]
         if decision["wake"]:
             text = wake_message(role, decision["wake"])
@@ -205,9 +262,9 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
             else:
                 rc, reply = run(["agent-deck", "session", "send", role.session, "-queue", text])
                 if rc == 0:
-                    say(f"woke {role.session}: " + ", ".join(f"#{n}" for n, _ in decision["wake"]) + f" ({reply})")
-                    for number, sha in decision["wake"]:
-                        key = key_of(number, sha)
+                    say(f"woke {role.session}: " + ", ".join(f"#{n}" for n, _, _ in decision["wake"]) + f" ({reply})")
+                    for number, sha, token in decision["wake"]:
+                        key = key_of(number, sha, token)
                         prev = entries.get(key, {"wakes": 0})
                         new_entries[key] = {"first": prev.get("first", t), "last_wake": t,
                                             "wakes": prev["wakes"] + 1, "escalated": False}
@@ -223,9 +280,9 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
                 rc, reply = run(["agent-deck", "conductor", "notify", "--conductor", args.conductor,
                                  "--tier", "urgent", text])
                 if rc == 0:
-                    say(f"escalated {role.name}: " + ", ".join(f"#{n}" for n, _ in decision["escalate"]))
-                    for number, sha in decision["escalate"]:
-                        key = key_of(number, sha)
+                    say(f"escalated {role.name}: " + ", ".join(f"#{n}" for n, _, _ in decision["escalate"]))
+                    for number, sha, token in decision["escalate"]:
+                        key = key_of(number, sha, token)
                         if key in new_entries:
                             new_entries[key]["escalated"] = True
                 else:
