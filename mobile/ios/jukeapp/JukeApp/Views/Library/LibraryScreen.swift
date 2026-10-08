@@ -67,13 +67,25 @@ struct LibraryScreen: View {
             if item.kind == .artist { ArtistBrowser(title: item.title, spotifyID: item.spotifyId) }
             else { AlbumBrowser(title: item.title, spotifyID: item.spotifyId, artist: item.subtitle) }
         }
-        .confirmationDialog(selected?.title ?? "", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } }), presenting: selected) { item in
-            Button("Play now") { Task { await play(item) } }
-            Button("Start a station from this") {
-                model.coordinator.openNewStation(.init(start: .records, seeds: [item.seed], feelings: []))
-                model.tab = .radio
+        .sheet(item: $selected) { item in
+            VStack(spacing: 14) {
+                VStack(spacing: 2) {
+                    Text(item.title).font(.headline).lineLimit(2)
+                    if let subtitle = item.subtitle { Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+                }.padding(.top, 8)
+                Button { selected = nil; Task { await play(item) } } label: { Label("Play now", systemImage: "play.fill").frame(maxWidth: .infinity) }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                Button {
+                    selected = nil
+                    model.coordinator.openNewStation(.init(start: .records, seeds: [item.seed], feelings: []))
+                    model.tab = .radio
+                } label: { Label("Start a station from this", systemImage: "dot.radiowaves.left.and.right").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered).controlSize(.large)
+                Button("Cancel", role: .cancel) { selected = nil }
             }
-        } message: { Text($0.subtitle ?? "") }
+            .padding(.horizontal, 20).padding(.bottom, 12)
+            .presentationDetents([.height(260)])
+        }
     }
 
     /// Artists and albums open their own screens; songs offer play / start a station.
