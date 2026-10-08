@@ -16,9 +16,12 @@ actor MemoryClient {
     private var fixtureMemories: [MusicMemory] = []
     private var fixtureTags: [String] = []
     private var fixtureMedia: [UUID: (MemoryMedia, Data)] = [:]
+    /// UI-check sample memories (`--uitesting-memories-sample`), loaded on the first list.
+    private var fixtureSamples: (@Sendable () async -> (memories: [MusicMemory], media: [(MemoryMedia, Data)]))?
 
-    init(baseURL: URL? = nil, session: URLSession? = nil, fixtures: Bool = false) {
-        fixedBaseURL = baseURL; self.fixtures = fixtures
+    init(baseURL: URL? = nil, session: URLSession? = nil, fixtures: Bool = false,
+         fixtureSamples: (@Sendable () async -> (memories: [MusicMemory], media: [(MemoryMedia, Data)]))? = nil) {
+        fixedBaseURL = baseURL; self.fixtures = fixtures; self.fixtureSamples = fixtureSamples
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 45
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -51,7 +54,15 @@ actor MemoryClient {
     }
 
     func list(token: String) async throws -> [MusicMemory] {
-        if fixtures { return fixtureMemories.sorted { $0.occurredAt > $1.occurredAt } }
+        if fixtures {
+            if let samples = fixtureSamples {
+                fixtureSamples = nil
+                let loaded = await samples()
+                fixtureMemories += loaded.memories
+                for (media, data) in loaded.media { fixtureMedia[media.id] = (media, data) }
+            }
+            return fixtureMemories.sorted { $0.occurredAt > $1.occurredAt }
+        }
         struct Response: Decodable { let memories: [MusicMemory]; let nextOffset: Int? }
         var memories: [MusicMemory] = []
         var offset = 0
