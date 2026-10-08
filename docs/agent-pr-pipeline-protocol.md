@@ -1,0 +1,107 @@
+# Juke PR pipeline protocol (implementor -> reviewer -> integrator)
+
+Owner: Mario. Version 1, 2026-10-07. This is the owner's standing process for PRs into
+`integration/juke-app`. Every agent in the fleet reads this file at the start of each turn.
+
+## 1. Roles and limits
+
+| Role | Session | May | May NOT |
+|---|---|---|---|
+| Implementor | `juke-implementor`, `juke-ios-port`, others | write code, push to its own branch, open PRs, fix review comments | merge, approve, label `approved`, edit another worker's branch |
+| Reviewer | `juke-reviewer` (Codex, so it is independent of the Claude implementors) | read the repo, check out the PR in its own worktree, run build/tests, post PR reviews/comments, set `approved` / `changes-requested` | push, edit code, merge |
+| Integrator | `juke-integrator` | merge approved PRs into `integration/juke-app`, retarget stacked PRs, update bases | merge anything not approved, touch master or PR #177, force-push |
+| Conductor | `conductor-juke` | assign work, launch/restart workers, escalate to the owner, send digests | do a worker's job inside the PR loop |
+| Owner | Mario | everything, including PR #177 into master | |
+
+Nothing here lets any agent merge into `master`, touch PR #177, edit `/srv/juke-dev` or
+`/srv/juke-prod`, use `--no-verify`, or put secrets in files.
+
+## 2. State lives on GitHub, not in sessions
+
+Labels on the PR are the only workflow state. Sessions may restart or go idle without losing it.
+Create them once (idempotent): `needs-review`, `changes-requested`, `approved`, `blocked`.
+Exactly one of these is on an open PR at a time. One writer per label:
+
+| Label | Set by | Meaning |
+|---|---|---|
+| `needs-review` | implementor | ready for a review of the current head commit |
+| `changes-requested` | reviewer | the reviewer found problems; implementor must fix |
+| `approved` | reviewer | the reviewed commit is good to merge |
+| `blocked` | reviewer or integrator | needs the owner (round cap hit, conflict, unclear spec) |
+
+Use the same GitHub account for all agents, so GitHub's own "Approve" review is unavailable on
+your own PRs. The reviewer therefore posts a normal review/comment and records its verdict as a
+comment in this exact form, plus the label:
+
+```
+VERDICT: APPROVED  <full head SHA>
+VERDICT: CHANGES REQUESTED  <full head SHA>
+```
+
+## 3. The flow
+
+1. **Implementor** finishes a slice, pushes, opens a PR into `integration/juke-app`
+   (never master), adds `needs-review`, and keeps going on the next slice. It does not stop
+   after opening a PR and does not end a turn to report.
+2. **Reviewer** polls every 5 minutes for open PRs with `needs-review` (oldest first, one at a
+   time). It reviews the exact head commit (`gh pr view N --json headRefOid`), then:
+   - good: comment `VERDICT: APPROVED <sha>`, replace the label with `approved`;
+   - problems: post inline comments, comment `VERDICT: CHANGES REQUESTED <sha>`, replace the
+     label with `changes-requested`.
+3. **Implementor** polls for its PRs labelled `changes-requested`, fixes them, pushes, and
+   replaces the label with `needs-review`. Each fix round counts.
+4. **Integrator** polls every 5 minutes for open PRs labelled `approved` and merges one at a
+   time when ALL of these hold:
+   - the latest `VERDICT: APPROVED <sha>` comment's SHA equals the PR's current head SHA
+     (a push after approval voids it: relabel `needs-review` and tell the implementor);
+   - CI on the head commit is green (`gh pr checks N`);
+   - the base is `integration/juke-app` and the PR is mergeable;
+   - no unresolved review thread, and no `blocked` label.
+   Merge with a plain merge commit (no force-push, no squash). For stacked PRs, merge the
+   parent first, then retarget children onto `integration/juke-app` and wait for their CI.
+   After each merge, wait for CI on the base branch to go green before the next merge. If the
+   base goes red, stop merging, label the last merged PR's follow-up `blocked`, and notify the owner.
+
+## 4. Limits that prevent loops and runaway merges
+
+- **Round cap:** after 3 `CHANGES REQUESTED` verdicts on one PR, the reviewer labels it
+  `blocked` and sends an urgent notification. No agent keeps cycling.
+- **One merge at a time**, in dependency order.
+- **Review comes first:** an implementor never labels its own PR `approved`.
+- **The reviewer never edits code.** If it wants a change, it comments.
+- **Idle rule:** an agent that has nothing to do polls again; it does not end its turn or wait
+  to be messaged. It stops only for a `NEED:` blocker.
+
+## 5. What the reviewer checks
+
+1. The PR does what its task spec in `tasks/` says, including every acceptance criterion.
+2. Tests exist for new behavior; CI is green; claims in the PR description match the diff.
+3. No secrets, no weakened security (auth, ATS/TLS, permissions), no `--no-verify` commits.
+4. Matches the repo conventions in `AGENTS.md` and the platform `AGENTS.md`.
+5. For ports from macOS to iOS: behavior parity, and anything not ported is called out.
+6. For anything that cannot be checked from the diff (device behavior, touch, live backend),
+   say so explicitly in the review instead of approving it silently.
+
+## 6. Notifications to the owner (Telegram via the bridge)
+
+- `agent-deck conductor notify --tier urgent "<one line>"`: a PR becomes `blocked`, base CI goes
+  red after a merge, a worker has a `NEED:`, or a decision only the owner can make.
+- `agent-deck conductor notify --tier info "<one line>"`: each merge (`Merged #N: title`) and
+  each approval. Do not send routine polling noise.
+
+## 7. Setup steps (the conductor does these once, then confirms in one paragraph)
+
+1. Create the four labels with `gh label create` (ignore "already exists").
+2. Launch `juke-reviewer` as a Codex session in its own worktree off `origin/integration/juke-app`
+   (read-only workflow: no pushes), with this file as its standing instructions and a 5-minute poll loop.
+3. Re-parent the implementors under `juke-integrator` (or `juke-reviewer` for review wake-ups);
+   confirm the exact `agent-deck` flags with `--help` before using them.
+4. Restart `juke-integrator` with this file as its standing instructions and a 5-minute poll loop.
+5. Tell every implementor to follow section 3 step 1 and 3, and to read this file each turn.
+6. Dry run on the next 2-3 PRs with the owner watching. Auto-merge is on only after the owner
+   says the dry run went well.
+
+## 8. Not covered here
+
+PR #177 (integration -> master), anything in `/srv/juke-prod`, and secrets or signing decisions
+always stay with the owner.
