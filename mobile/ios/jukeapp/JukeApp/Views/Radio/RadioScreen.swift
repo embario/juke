@@ -105,7 +105,7 @@ struct SleeveAndRecord: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            VinylDisc(track: track, size: side).offset(x: discOffset)
+            VinylDisc(track: track, size: side, outOffset: discOffset)
             AsyncImage(url: track?.artworkURL) { $0.resizable().scaledToFill() } placeholder: {
                 ZStack { Color(.secondarySystemBackground); Image(systemName: "music.note").font(.system(size: 44)).foregroundStyle(.secondary) }
             }
