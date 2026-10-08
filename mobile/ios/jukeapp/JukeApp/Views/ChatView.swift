@@ -61,7 +61,11 @@ struct ChatView: View {
                     .background(theme.well.color, in: RoundedRectangle(cornerRadius: 17))
                     .focused($focused)
                     .accessibilityIdentifier("chat.draft")
-                Button { Task { await model.send() } } label: { Image(systemName: "arrow.up").frame(width: 32, height: 32) }
+                Button { Task { await model.send() } } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17))
+                        .frame(width: 32, height: 32)
+                }
                     .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(model.atmosphere.primary)
                     .accessibilityLabel("Send message")
                     .accessibilityIdentifier("chat.send")
