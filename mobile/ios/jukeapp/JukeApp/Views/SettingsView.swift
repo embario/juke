@@ -44,6 +44,13 @@ struct SettingsView: View {
                 Toggle("Identify Around Me", isOn: Binding(get: { model.nowPlaying.isListeningAroundMe }, set: { enabled in Task { await model.nowPlaying.setAroundMe(enabled) } }))
                 Text("iOS does not expose a universal queue or another app's raw audio. Juke reads Apple Music's current item, checks linked Spotify playback through Juke, and uses the microphone only when you enable Around Me.").font(.caption).foregroundStyle(.secondary)
             }
+            Section("Privacy lock") {
+                Picker("Lock after", selection: Bindable(model.lock).lockAfterMinutes) {
+                    Text("Immediately").tag(0); Text("1 minute").tag(1); Text("5 minutes").tag(5); Text("15 minutes").tag(15)
+                }
+                Button("Lock now") { model.lock.lockNow() }
+                Text("Face ID or your passcode is asked when you come back after this long away, and on a fresh launch.").font(.caption).foregroundStyle(.secondary)
+            }
             Section("Chat") {
                 HStack {
                     Text("Text size")

@@ -13,7 +13,17 @@ struct RootView: View {
     private var content: some View {
         ZStack {
             VibeBackground(atmosphere: model.atmosphere)
-            if model.session == nil { SignInView() } else { main }
+            if model.session == nil { SignInView() } else { main.disabled(model.lock.isLocked).accessibilityHidden(model.lock.isLocked) }
+            if model.session != nil, model.lock.isLocked { LockedView() }
+            else if scenePhase != .active, model.session != nil { PrivacyShield() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: model.lock.sceneBecameActive(isAuthenticated: model.session != nil)
+            // Control Center and call banners only make the scene inactive; leaving the app is `.background`.
+            case .background: model.lock.sceneBecameInactive()
+            default: break
+            }
         }
         .onChange(of: model.nowPlaying.track?.id) { _, _ in model.trackChanged() }
     }
@@ -38,6 +48,37 @@ struct RootView: View {
         case .chat: ChatView()
         case .settings: SettingsView()
         }
+    }
+}
+
+/// Covers the app in the app switcher and while the scene is inactive.
+private struct PrivacyShield: View {
+    var body: some View {
+        Rectangle().fill(.regularMaterial).ignoresSafeArea().accessibilityHidden(true)
+    }
+}
+
+private struct LockedView: View {
+    @Environment(VibeAppModel.self) private var model
+    @Environment(\.jukeTheme) private var theme
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.regularMaterial).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(theme.ink.color)
+                Text("Juke is locked").font(.title2.bold()).foregroundStyle(theme.ink.color)
+                Button("Unlock") { Task { await model.lock.unlock() } }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .accessibilityIdentifier("lock.unlock")
+                if let error = model.lock.unlockError {
+                    Text(error).font(.footnote).foregroundStyle(theme.sub.color).multilineTextAlignment(.center)
+                }
+            }
+            .padding(32)
+        }
+        .task { if model.lock.isLocked, model.lock.unlockError == nil, model.session != nil { await model.lock.unlock() } }
+        .accessibilityIdentifier("lock.view")
     }
 }
 
