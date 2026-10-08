@@ -100,7 +100,8 @@ struct VinylDisc: View {
                 func local(_ point: CGPoint) -> CGPoint { CGPoint(x: point.x - frame.minX + slide, y: point.y - frame.minY) }
                 if grab == nil {
                     frozenIdle = idleAngle(at: .now)
-                    grab = VinylSeek.isLabelGrab(local(value.startLocation), in: box) ? .label : .ring
+                    // Put away, the label is hidden under the sleeve: any grab on the exposed rim brings the record back (as on the Mac).
+                    grab = VinylSleeve.grabsLabel(putAway: model.radio.isPutAway, onLabel: VinylSeek.isLabelGrab(local(value.startLocation), in: box)) ? .label : .ring
                     lastAngle = VinylSeek.angle(of: local(value.startLocation), in: box)
                 }
                 switch grab {

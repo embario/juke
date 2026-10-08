@@ -31,4 +31,20 @@ import Testing
         #expect(VinylSleeve.outcome(translation: travel, predicted: travel * 2, putAway: false, travel: travel) == .none)
         #expect(VinylSleeve.outcome(translation: -travel, predicted: -travel * 2, putAway: true, travel: travel) == .none)
     }
+
+    @Test func whenPutAwayAnyGrabOnTheRimResumesInsteadOfSeeking() {
+        #expect(VinylSleeve.grabsLabel(putAway: true, onLabel: false))
+        #expect(VinylSleeve.grabsLabel(putAway: false, onLabel: true))
+        #expect(!VinylSleeve.grabsLabel(putAway: false, onLabel: false))
+    }
+
+    @Test func thePutAwayRecordKeepsARimOutsideTheSleeve() {
+        let side: CGFloat = 196
+        // The sleeve covers 0...side; the record spans offset...offset+side, so this much rim shows.
+        let exposed = VinylSleeve.putAwayOffset(side: side)
+        #expect(exposed >= 24)
+        // A drag out by the commit fraction of the travel crosses the threshold from that rim.
+        let travel = VinylSleeve.travel(out: 130, side: side)
+        #expect(VinylSleeve.outcome(translation: travel * 0.5, predicted: 0, putAway: true, travel: travel) == .resume)
+    }
 }

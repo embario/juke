@@ -14,6 +14,10 @@ enum VinylSleeve {
 
     static func travel(out: CGFloat, side: CGFloat) -> CGFloat { max(1, out - putAwayOffset(side: side)) }
 
+    /// A drag is a label slide (not a seek) when the record is put away, because its label is
+    /// hidden under the sleeve and only the rim shows, or when the finger lands on the label.
+    static func grabsLabel(putAway: Bool, onLabel: Bool) -> Bool { putAway || onLabel }
+
     /// Finger translation to record offset: it follows the finger and resists past the ends.
     static func offset(forTranslation dx: CGFloat, putAway: Bool, travel: CGFloat) -> CGFloat {
         let range: ClosedRange<CGFloat> = putAway ? (-overshoot)...(travel + overshoot) : (-(travel + overshoot))...overshoot
