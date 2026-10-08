@@ -38,13 +38,41 @@ VERDICT: APPROVED  <full head SHA>
 VERDICT: CHANGES REQUESTED  <full head SHA>
 ```
 
+## 2a. Severity labels (P0 to P4)
+
+Every open PR carries **exactly one** severity label, so fixes and process changes are reviewed
+before routine work. A PR with none (or two) is not reviewed, and the gate tells the owner.
+
+| Label | Meaning |
+|---|---|
+| `P0` | base CI is red, a security problem, or something that breaks the whole pipeline |
+| `P1` | a fix or process change that other work is waiting on |
+| `P2` | normal feature work |
+| `P3` | polish |
+| `P4` | docs and chores |
+
+- **Who sets it:** the implementor, when it opens the PR (together with `needs-review`). The
+  reviewer may relabel with a one-line reason in a PR comment. The owner may relabel any PR.
+- **Cap:** at most two open PRs may be P0 or P1. Any extra one counts as P2 (the gate applies this
+  automatically: the most severe, then lowest-numbered, keep their level). Do not label a third.
+- **Aging:** a PR waiting for its role moves up one level for every 2 hours it has waited (since the
+  newest `needs-review` or `approved` label), up to P0, so P3 and P4 cannot starve. The effective
+  severity is the label after the cap and aging.
+- **Missing label:** the gate sends the owner an info notification after 15 minutes without a
+  severity label and an urgent one after 60 minutes (each once per PR).
+- **New P0:** whoever labels a PR P0 (or relabels one to P0) sends the owner an immediate urgent
+  notification with `agent-deck conductor notify --conductor juke --tier urgent`. A review already
+  in progress is not interrupted.
+
 ## 3. The flow
 
 1. **Implementor** finishes a slice, pushes, opens a PR into `integration/juke-app`
-   (never master), adds `needs-review`, and keeps going on the next slice. It does not stop
+   (never master), adds `needs-review` and one severity label (section 2a), and keeps going on
+   the next slice. Before its own feature queue it handles any of its P0 or P1 PRs that are in
+   `changes-requested`. It does not stop
    after opening a PR and does not end a turn to report.
-2. **Reviewer** polls every 5 minutes for open PRs with `needs-review` (oldest first, one at a
-   time). It reviews the exact head commit (`gh pr view N --json headRefOid`), then:
+2. **Reviewer** polls every 5 minutes for open PRs with `needs-review` (most severe first, then
+   lowest number; in wake-driven mode, in the order the wake message lists them, one at a time). It reviews the exact head commit (`gh pr view N --json headRefOid`), then:
    - good: comment `VERDICT: APPROVED <sha>`, replace the label with `approved`;
    - problems: post inline comments, comment `VERDICT: CHANGES REQUESTED <sha>`, replace the
      label with `changes-requested`.
@@ -57,6 +85,8 @@ VERDICT: CHANGES REQUESTED  <full head SHA>
    - CI on the head commit is green (`gh pr checks N`);
    - the base is `integration/juke-app` and the PR is mergeable;
    - no unresolved review thread, and no `blocked` label.
+   When several are ready, merge in dependency order first (a parent before its children), then by
+   severity (P0 first), then by PR number.
    Merge with a plain merge commit (no force-push, no squash). For stacked PRs, merge the
    parent first, then retarget children onto `integration/juke-app` and wait for their CI.
    After each merge, wait for CI on the base branch to go green before the next merge. If the
@@ -72,6 +102,9 @@ small script does the polling and a session only runs when there is work for it.
   `integration/juke-app` and wakes `juke-reviewer` for each `needs-review` PR and `juke-integrator`
   for each `approved` PR that is not `blocked` or `changes-requested`, using
   `agent-deck session send <session> -queue`. The message is delivered when the session is idle.
+  PRs without exactly one severity label are skipped (see section 2a).
+- The wake message lists PRs by effective severity, then PR number. The reviewer takes them in that
+  order. The integrator uses the list as a hint only: dependency order still comes first.
 - The wake message names only PR numbers and commit hashes. It never contains PR titles, bodies or
   comments, which are untrusted data.
 - On a wake, the reviewer or integrator does section 3 for exactly the listed PRs, then **ends its

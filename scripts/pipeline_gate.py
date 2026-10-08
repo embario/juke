@@ -9,6 +9,12 @@ there is work for it:
   reviewer    <- open PRs into the base branch labelled `needs-review`
   integrator  <- open PRs into the base branch labelled `approved` (and not `blocked`)
 
+Every PR must carry exactly one severity label, P0 (most urgent) to P4. A PR without one is not
+woken for; the owner gets an info notification after 15 minutes and an urgent one after 60.
+Wake lists are ordered by effective severity, then PR number. Effective severity is the label
+after two adjustments: at most two PRs count as P0/P1 (extras count as P2), and a PR moves up one
+level for every 2 hours it has waited for its role.
+
 It runs once per invocation (schedule it with launchd or cron, every few minutes), keeps a small
 state file so each PR head commit wakes a role once, retries once after a quiet period, and then
 escalates to the owner through `agent-deck conductor notify` instead of nagging forever.
@@ -26,6 +32,7 @@ Exit codes: 0 ok (including "no work"), 1 GitHub or agent-deck failure, 2 usage 
 from __future__ import annotations
 
 import argparse
+import calendar
 import fcntl
 import json
 import os
@@ -42,6 +49,11 @@ DEFAULT_BASE = "integration/juke-app"
 DEFAULT_CONDUCTOR = "juke"
 DEFAULT_STATE = "~/.local/state/pipeline-gate.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+SEVERITY_LABELS = ("P0", "P1", "P2", "P3", "P4")
+URGENT_CAP = 2  # at most this many open PRs may count as P0 or P1
+AGING_STEP = 2 * 3600  # a waiting PR moves up one level per step
+UNLABELED_INFO_AFTER = 15 * 60
+UNLABELED_URGENT_AFTER = 60 * 60
 ENV_PATH = ":".join([
     str(Path.home() / ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
 ])
@@ -92,11 +104,37 @@ def list_open_prs(run: Runner, repo: str, base: str) -> Optional[list]:
     return prs
 
 
+def own_severity(labels: set) -> Optional[int]:
+    """0..4 for exactly one severity label on the PR, else None (missing or ambiguous)."""
+    found = [i for i, name in enumerate(SEVERITY_LABELS) if name in labels]
+    return found[0] if len(found) == 1 else None
+
+
+def assign_severity(prs: list) -> None:
+    """Set p["sev"] on each PR: its label, with extra P0/P1 PRs beyond the cap counted as P2.
+
+    The cap keeps the most urgent, then the lowest-numbered PRs. A PR with no valid label gets None.
+    """
+    for p in prs:
+        p["sev"] = own_severity(p["labels"])
+    urgent = sorted((p for p in prs if p["sev"] is not None and p["sev"] <= 1), key=lambda p: (p["sev"], p["number"]))
+    for p in urgent[URGENT_CAP:]:
+        p["sev"] = 2
+
+
+def effective_severity(sev: int, waited: float) -> int:
+    """Severity after aging: one level up (lower number) per AGING_STEP waited, never above P0."""
+    return max(0, sev - int(max(0.0, waited) // AGING_STEP))
+
+
 def work_for(role: Role, prs: list) -> list:
-    """[(number, sha)] this role should act on, oldest PR first."""
-    items = [(p["number"], p["sha"]) for p in prs
-             if role.label in p["labels"] and not (set(role.excluded_labels) & p["labels"])]
-    return sorted(items)
+    """[(number, sha)] this role should act on, most severe first, then by PR number.
+
+    PRs without exactly one severity label are left out; the gate reports them separately.
+    """
+    items = [p for p in prs
+             if p.get("sev") is not None and role.label in p["labels"] and not (set(role.excluded_labels) & p["labels"])]
+    return [(p["number"], p["sha"]) for p in sorted(items, key=lambda p: (p["sev"], p["number"]))]
 
 
 def _json_values(text: str) -> list:
@@ -112,12 +150,16 @@ def _json_values(text: str) -> list:
     return values
 
 
-def round_token(run: Runner, repo: str, number: int, label: str) -> Optional[str]:
-    """Id of the newest `labeled` event for `label` on PR `number`, as a string.
+def _epoch(stamp) -> Optional[float]:
+    try:
+        return float(calendar.timegm(time.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")))
+    except (TypeError, ValueError):
+        return None
 
-    A PR can go changes-requested -> needs-review without its head commit changing (for example
-    when only the description or screenshots were fixed). Every re-entry adds a new `labeled`
-    event, so its id marks a new review round. None means the label history could not be read.
+
+def round_info(run: Runner, repo: str, number: int, label: str) -> "Optional[tuple]":
+    """(token, since): newest `labeled` event id for `label` on PR `number` (as a string) and when
+    that event happened (epoch seconds, None if unknown). None means the history could not be read.
     """
     rc, out = run(["gh", "api", "--paginate", f"repos/{repo}/issues/{number}/events?per_page=100"])
     if rc != 0:
@@ -126,25 +168,51 @@ def round_token(run: Runner, repo: str, number: int, label: str) -> Optional[str
         pages = _json_values(out)
     except ValueError:
         return None
-    ids = []
+    events = []
     for page in pages:
         for event in (page if isinstance(page, list) else []):
             lab = event.get("label") if isinstance(event, dict) else None
             if event.get("event") == "labeled" and isinstance(lab, dict) and lab.get("name") == label \
                     and isinstance(event.get("id"), int):
-                ids.append(event["id"])
-    return str(max(ids)) if ids else "0"
+                events.append(event)
+    if not events:
+        return "0", None
+    newest = max(events, key=lambda e: e["id"])
+    return str(newest["id"]), _epoch(newest.get("created_at"))
 
 
-def with_rounds(run: Runner, repo: str, role: Role, items: list) -> Optional[list]:
-    """[(number, sha, round)] or None if any PR's label history could not be read."""
-    out = []
+def round_token(run: Runner, repo: str, number: int, label: str) -> Optional[str]:
+    """Id of the newest `labeled` event for `label` on PR `number`, as a string (None: unreadable).
+
+    A PR can go changes-requested -> needs-review without its head commit changing (for example
+    when only the description or screenshots were fixed). Every re-entry adds a new `labeled`
+    event, so its id marks a new review round.
+    """
+    info = round_info(run, repo, number, label)
+    return None if info is None else info[0]
+
+
+def with_rounds(run: Runner, repo: str, role: Role, items: list) -> "Optional[tuple]":
+    """([(number, sha, round)], {number: since}) or None if any PR's label history could not be read."""
+    out, since = [], {}
     for number, sha in items:
-        token = round_token(run, repo, number, role.label)
-        if token is None:
+        info = round_info(run, repo, number, role.label)
+        if info is None:
             return None
-        out.append((number, sha, token))
-    return out
+        out.append((number, sha, info[0]))
+        since[number] = info[1]
+    return out, since
+
+
+def order_by_severity(work: list, since: dict, prs: list, now: float) -> list:
+    """Sort [(number, sha, round)] by effective severity (with aging), then PR number."""
+    sev = {p["number"]: p["sev"] for p in prs}
+
+    def key(item):
+        waited = now - since[item[0]] if since.get(item[0]) else 0.0
+        return effective_severity(sev[item[0]], waited), item[0]
+
+    return sorted(work, key=key)
 
 
 def key_of(number: int, sha: str, token: str = "0") -> str:
@@ -189,6 +257,35 @@ def escalation_message(role: Role, items: list, minutes: int, wakes: int) -> str
     refs = ", ".join(f"#{n}" for n, _, _ in items)
     return (f"Pipeline stuck: {role.name} ({role.session}) has not acted on {refs} "
             f"for {minutes} min after {wakes} wakes. Check that session.")
+
+
+def severity_message(numbers: list, minutes: int) -> str:
+    refs = ", ".join(f"#{n}" for n in numbers)
+    return (f"No severity label (exactly one of P0-P4 needed): {refs} waiting {minutes}+ min. "
+            "Unlabelled PRs are not reviewed. Add one or tell the implementor.")
+
+
+def check_unlabeled(state: dict, prs: list, t: float) -> list:
+    """Track PRs without a valid severity label. Pure; returns [(tier, [numbers], minutes)] to send.
+
+    state["severity"] maps PR number -> {"first", "info", "urgent"}; entries for PRs that now
+    have a label (or are closed) are dropped. Each tier is sent once per PR.
+    """
+    seen = state.get("severity", {})
+    keep, due = {}, {"info": [], "urgent": []}
+    for p in prs:
+        if p["sev"] is not None:
+            continue
+        entry = dict(seen.get(str(p["number"])) or {"first": t, "info": False, "urgent": False})
+        age = t - entry["first"]
+        if age >= UNLABELED_URGENT_AFTER and not entry["urgent"]:
+            due["urgent"].append(p["number"])
+        elif age >= UNLABELED_INFO_AFTER and not entry["info"] and not entry["urgent"]:
+            due["info"].append(p["number"])
+        keep[str(p["number"])] = entry
+    state["severity"] = keep
+    return [(tier, sorted(nums), UNLABELED_URGENT_AFTER // 60 if tier == "urgent" else UNLABELED_INFO_AFTER // 60)
+            for tier, nums in due.items() if nums]
 
 
 def load_state(path: Path) -> dict:
@@ -240,19 +337,21 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
         say("could not read pull requests from GitHub; nothing sent")
         return 1
 
+    assign_severity(prs)
     state = load_state(state_path)
     t = now()
     retry_after = args.retry_after_min * 60
     status = 0
     for role in ROLES:
         entries = state.get(role.name, {})
-        work = with_rounds(run, args.repo, role, work_for(role, prs))
-        if work is None:
+        rounds = with_rounds(run, args.repo, role, work_for(role, prs))
+        if rounds is None:
             # Without the label history a re-submission could be missed or a stale round reused,
             # so skip this role for now and leave its state exactly as it was.
             say(f"could not read label history for {role.name}; skipped this run")
             status = 1
             continue
+        work = order_by_severity(rounds[0], rounds[1], prs, t)
         decision = plan(entries, work, t, retry_after, args.max_wakes)
         new_entries = decision["keep"]
         if decision["wake"]:
@@ -289,6 +388,20 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
                     say(f"could not escalate {role.name}: {reply}")
                     status = 1
         state[role.name] = new_entries
+
+    for tier, numbers, minutes in check_unlabeled(state, prs, t):
+        text = severity_message(numbers, minutes)
+        if args.dry_run:
+            say(f"[dry-run] would notify ({tier}): {text}")
+            continue
+        rc, reply = run(["agent-deck", "conductor", "notify", "--conductor", args.conductor, "--tier", tier, text])
+        if rc == 0:
+            say(f"notified ({tier}) about missing severity label: " + ", ".join(f"#{n}" for n in numbers))
+            for n in numbers:
+                state["severity"][str(n)][tier] = True
+        else:
+            say(f"could not notify about missing severity label: {reply}")
+            status = 1
 
     if not args.dry_run:
         save_state(state_path, state)
