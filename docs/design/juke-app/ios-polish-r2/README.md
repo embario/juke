@@ -1,18 +1,19 @@
 # Round 2 simulator evidence
 
-## B — Chat Done and Send (in progress)
+## B — Chat Done and Send
 
-Not verified on device. The preliminary iPhone 17e screenshot uses the DEBUG local-preview account, with no credentials or live chat requests. It shows the new Done row and empty-draft Send with the software keyboard visible, before the final explicit 44-point Done hit-area adjustment (the visible layout is unchanged).
+Not verified on device. Screenshots use the DEBUG local-preview account, with no credentials or live chat requests.
 
-`Round3.reference.html` includes Radio, Memories and Browse, but no Chat screen or phone keyboard. The reference snapshot is a static rendering of the HTML template and its embedded `Component.renderVals()` using light-theme defaults; the untracked `support.js` runtime is absent from the repository. Final side-by-side comparisons are pending.
+- `b-chat-iPhone-18-Pro.png` and `b-comparison-iPhone-18-Pro.png`: final code, iPhone 18 Pro / iOS 27.0, software keyboard visible (empty draft, Send correctly disabled).
+- `b-chat-iPhone-17e-preliminary.png` and its comparison: small-phone keyboard layout before the final explicit 44-point Done hit-area adjustment; the visible layout is unchanged. A final small-phone capture is pending.
+- Multiline-draft, automated UI interaction and accessibility XXXL screenshots remain pending. The focused Pro UI test is running; the normal and large-text UI test cases are included in `ChatViewUITests.swift`.
 
-The three composer logic tests passed. The added UI tests are intended to verify that Done and Send are hittable, have non-overlapping frames, and remain above the keyboard with multiline drafts and accessibility XXXL text. Done dismisses the keyboard and preserves the draft; focusing the draft makes both controls available again. **UI tests and final screenshots remain unverified:** simulator startup/installation and the test host stalled below app code in simulator `dyld` cache mapping.
+`Round3.reference.html` has Radio, Memories and Browse, but no Chat screen or phone keyboard. Its Radio view provides the palette and rounded-surface reference. `b-round3-reference.png` is a static rendering of the HTML template and embedded `Component.renderVals()` with light-theme defaults; the untracked `support.js` runtime is absent from the repository.
 
-Recovery handoff (2026-10-08):
-- Dedicated Pro: `7AE170F3-FA62-4580-98F1-606F9242267E`; boot/install failed, then shutdown requested.
-- Unused dedicated small phone: `064D2ADD-8490-428C-AB38-2191BCABB7A7` (Shutdown).
-- Working small-phone baseline: `2D03DD7D-7F07-4887-8EF8-90FAC4A96700`; final build succeeded; fixture launch PID 10118, final script launch PID 13902, stalled test host PID 36457.
-- Final successful build logs: `logs/ios-build-jukeapp-2D03DD7D-7F07-4887-8EF8-90FAC4A96700-20261008-175549.log` and `logs/ios-build-jukeapp-7AE170F3-FA62-4580-98F1-606F9242267E-20261008-180122.log`.
+Three composer logic tests passed: empty/whitespace drafts, nonblank/multiline drafts and the in-flight send guard. Final build script runs passed on iPhone 17e and iPhone 18 Pro. Initial simulator/test stalls were caused by host memory pressure (conductor diagnosis), rather than an app/runtime defect. After the conductor reduced booted simulators, Pro installation/launch and capture completed. Verification now uses one simulator at a time, shutting each down before booting another.
+
+Local validation records:
 - Passing logic tests: `/tmp/juke-chat-unit.xcresult`, `/tmp/juke-chat-unit.log`.
-- Interrupted UI runs: `/tmp/juke-chat-pro.log`, `/tmp/juke-chat-small.log`; simulator diagnosis: `/tmp/chat-small-host-sample.txt`, `/tmp/chat-simctl-install-sample.txt`.
-- Coordinate simulator recovery with the conductor before restarting shared services; implementer-2 is using the existing Pro simulators.
+- Final small-phone build: `logs/ios-build-jukeapp-2D03DD7D-7F07-4887-8EF8-90FAC4A96700-20261008-175549.log`.
+- Resumed Pro build: `logs/ios-build-jukeapp-6A9957BE-0ED2-41D6-A5B5-FEC3022A7BF7-20261008-180956.log`; fixture launch PID 72258.
+- Resumed Pro UI test: `/tmp/juke-chat-pro-resumed.log`, `/tmp/juke-chat-pro-resumed.xcresult`.
