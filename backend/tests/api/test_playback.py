@@ -153,6 +153,30 @@ class PlaybackAPITests(APITestCase):
         self.assertTrue(response.data['is_playing'])
 
     @patch('catalog.services.playback.spotipy.Spotify')
+    def test_state_reports_track_type_by_default(self, mock_spotify):
+        client = mock_spotify.return_value
+        client.current_playback.return_value = self._playback_payload()
+
+        response = self.client.get(f'{self.playback_url}state/', data={'provider': 'spotify'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['currently_playing_type'], 'track')
+        self.assertEqual(response.data['track']['id'], 'track-123')
+
+    @patch('catalog.services.playback.spotipy.Spotify')
+    def test_state_reports_episode_without_track(self, mock_spotify):
+        client = mock_spotify.return_value
+        payload = self._playback_payload()
+        payload['currently_playing_type'] = 'episode'
+        payload['item'] = {'id': 'ep-1', 'uri': 'spotify:episode:ep-1', 'name': 'A podcast', 'duration_ms': 1000}
+        client.current_playback.return_value = payload
+
+        response = self.client.get(f'{self.playback_url}state/', data={'provider': 'spotify'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['currently_playing_type'], 'episode')
+        self.assertTrue(response.data['is_playing'])
+        self.assertIsNone(response.data['track'])
+
+    @patch('catalog.services.playback.spotipy.Spotify')
     def test_state_endpoint_returns_no_content_when_idle(self, mock_spotify):
         client = mock_spotify.return_value
         client.current_playback.return_value = None
