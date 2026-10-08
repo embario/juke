@@ -55,7 +55,21 @@ final class VibeAppModel {
         #else
         let fixtures = false
         #endif
-        let store = fixtures ? MemoryStore(client: MemoryClient(fixtures: true)) : MemoryStore()
+        let store: MemoryStore
+        if fixtures {
+            #if DEBUG
+            var samples: (@Sendable () async -> (memories: [MusicMemory], media: [(MemoryMedia, Data)]))?
+            if ProcessInfo.processInfo.arguments.contains("--uitesting-memories-sample") {
+                samples = { @Sendable in await MemorySampleData.make() }
+            }
+            let client = MemoryClient(fixtures: true, fixtureSamples: samples)
+            #else
+            let client = MemoryClient(fixtures: true)
+            #endif
+            store = MemoryStore(client: client)
+        } else {
+            store = MemoryStore()
+        }
         memories = store
         recognitionFeed = NowPlayingRecognitionFeed(nowPlaying)
         recognition = .live(
