@@ -121,3 +121,13 @@ Execution mode: **ASYNC**. Follow `docs/agent-pr-pipeline-protocol.md`. Rank is 
 - Completed: spec written (this file).
 - Next: start A and B (P1), then queues per Execution Notes.
 - Blockers: none.
+
+### PR B — Chat keyboard controls (implementer-1)
+
+- PR: #212 (`juke-app/chat-keyboard-done`), P1, author:codex, needs-review. Implements group B only; `Refs #210` leaves the overall round-2 issue open.
+- Done has a dedicated leading row and a 44-point tap target in the bottom composer inset. Send stays beside the draft; its icon size is fixed so accessibility text does not push it outside its circle. Keyboard dismissal preserves the draft.
+- The view and model share the whitespace/in-flight send guard. Three composer unit tests passed.
+- Final UI tests passed: iPhone 18 Pro normal text; iPhone 17e normal and accessibility XXXL text. Checks cover 44-point targets, screen bounds, non-overlap, keyboard clearance, draft preservation and refocusing.
+- Evidence: `docs/design/juke-app/ios-polish-r2/`, including multiline-draft keyboard screenshots and side-by-side Round3 comparisons. Round3 has no Chat screen; its static Radio view is the styling reference. Not verified on device; no live chat requests.
+- Final builds used `scripts/build_and_run_ios.sh -p jukeapp` with explicit simulator targets. Initial host-memory-pressure stalls resolved by reducing simulator concurrency; no CoreSimulatorService restart. Both B simulators were shut down after verification; implementer-2's simulator was untouched.
+- Next: finish CI/review/merge through the pipeline; other round-2 groups remain outstanding.
