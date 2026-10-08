@@ -35,6 +35,8 @@ final class VibeAppModel {
     var memoryPlayback: MemoryPlaybackMark?
     /// Plays a memory's saved song and moment.
     let memoryPlayer: MemoryPlayer
+    /// Previous / play-pause / next for the player shown on every tab.
+    let transport: PlayerTransport
     /// Album-art colour feeding `JukeTheme`.
     let artwork = ArtworkPalette()
     /// DEBUG screenshots: pins the artwork colour (`--uitesting-artwork-hex=RRGGBB`).
@@ -99,6 +101,8 @@ final class VibeAppModel {
             )
         }
         memoryPlayer = MemoryPlayer(token: { accessToken.get() })
+        let nowPlaying = nowPlaying
+        transport = PlayerTransport(radio: radio, token: { accessToken.get() }, externalIsPlaying: { nowPlaying.isPlaying })
         memoryPlayer.marked = { [weak self] in self?.memoryPlayback = $0 }
         radio.onTrackChange = { [weak self] track in
             self?.radioTrackChanged(track)
