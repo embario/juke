@@ -31,10 +31,13 @@ class AssignTaskTest(unittest.TestCase):
         self.runner = FakeRunner()
         self.runner.fleet = fleet()
         self.slept = []
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state = str(Path(self.tmp.name) / "state.json")
 
     def assign(self, *argv):
         out = io.StringIO()
-        rc = at.main(list(argv), run=self.runner, out=out, sleep=self.slept.append)
+        rc = at.main(["--state", self.state, *argv], run=self.runner, out=out, sleep=self.slept.append)
         return rc, out.getvalue()
 
     def batch(self, *tasks, extra=()):
@@ -114,6 +117,23 @@ class AssignTaskTest(unittest.TestCase):
         self.assertEqual((rc, self.runner.sent), (1, []))
         self.assertIn("could not set", out)
 
+    def test_failed_restart_is_retried_before_the_next_task_is_sent(self):
+        self.runner.restart_rc = 1
+        rc, out = self.assign(I2, "P1", "urgent")
+        self.assertEqual((rc, self.runner.sent), (1, []))
+        self.assertIn("could not restart juke-implementer-2", out)
+        # The model is stored now, so only the remembered restart tells the next run apart.
+        self.runner.session(I2)["status"] = "running"
+        rc, _ = self.assign(I2, "P1", "urgent")
+        self.assertEqual((rc, self.runner.sent), (3, []))    # restart still owed, session busy: deferred
+        self.runner.session(I2)["status"] = "waiting"
+        self.runner.restart_rc = 0
+        rc, _ = self.assign(I2, "P1", "urgent")
+        self.assertEqual((rc, len(self.runner.sent)), (0, 1))
+        self.assertEqual([c[2] for c in self.runner.commands], ["set", "restart", "restart"])
+        self.assign(I2, "P0", "next")
+        self.assertEqual(len(self.restarts()), 2)  # no further restart once it succeeded
+
     # ---- rule 2: several tasks, ordered and batched -------------------------------------------
     def test_tasks_are_sent_p0_to_p4_within_a_profile(self):
         rc, _ = self.batch((I2, "P4", "docs"), (I2, "P2", "feature"), (I2, "P3", "polish"))
@@ -192,7 +212,7 @@ class AssignTaskTest(unittest.TestCase):
             return result
 
         out = io.StringIO()
-        rc = at.main([I1, "P3", "small"], run=run, out=out, sleep=self.slept.append)
+        rc = at.main(["--state", self.state, I1, "P3", "small"], run=run, out=out, sleep=self.slept.append)
         self.assertEqual(rc, 0)
         self.assertEqual([c for c in self.runner.commands if c[0] == "tmux"],
                          [["tmux", "send-keys", "-t", "tmux-i1", "Enter"]])
@@ -205,6 +225,25 @@ class AssignTaskTest(unittest.TestCase):
         self.assertIn("not confirmed: send S1", out)
         self.assertEqual(self.slept, [5.0, 5.0])
         self.assertEqual([c for c in self.runner.commands if c[0] == "tmux"], [])
+
+    def test_send_that_was_not_delivered_is_a_failure(self):
+        self.runner.send_states["S1"] = "failed"
+        rc, out = self.assign(I1, "P3", "small")
+        self.assertEqual(rc, 1)
+        self.assertIn("failed: send S1 to juke-implementer-1 was not delivered", out)
+
+    def test_unreadable_send_status_is_not_reported_as_submitted(self):
+        rc, out = self.assign("--submit-wait-sec", "5", I1, "P3", "small")  # no status for S1
+        self.assertEqual(rc, 3)
+        self.assertIn("not confirmed: send S1", out)
+
+    def test_task_enter_cannot_submit_is_not_reported_as_submitted(self):
+        self.runner.send_states["S1"] = "typed"
+        self.runner.panes["tmux-i1"] = "\u203a [assign-task] P3 task for juke-implementer-1. The task text follows."
+        rc, out = self.assign("--submit-wait-sec", "60", I1, "P3", "small")
+        self.assertEqual(rc, 3)
+        self.assertEqual(len([c for c in self.runner.commands if c[0] == "tmux"]), 3)
+        self.assertIn("not confirmed: send S1", out)
 
     def test_claude_sends_are_not_followed_up(self):
         rc, _ = self.assign(I2, "P2", "feature")

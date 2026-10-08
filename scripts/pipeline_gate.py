@@ -292,10 +292,46 @@ def profile_commands(session: str, info: dict, want: Profile) -> list:
     return cmds
 
 
-def apply_profile(run: Runner, session: str, info: dict, want: Profile, dry_run: bool,
-                  say: Callable[[str], None]) -> bool:
-    """Store `want` on an idle session and restart it. True when the session now has that profile."""
+def restarts_path(state_path) -> Path:
+    """File listing sessions whose profile is stored but whose restart did not succeed yet."""
+    return Path(str(Path(os.path.expanduser(str(state_path)))) + ".restarts")
+
+
+def owed_restarts(path: Optional[Path]) -> set:
+    if path is None:
+        return set()
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return set()
+    return {name for name in data if isinstance(name, str)} if isinstance(data, list) else set()
+
+
+def _set_owed(path: Optional[Path], session: str, owed: bool) -> None:
+    if path is None:
+        return
+    names = owed_restarts(path)
+    names = names | {session} if owed else names - {session}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(sorted(names)))
+
+
+def switch_commands(session: str, info: dict, want: Profile, restarts: Optional[Path] = None) -> list:
+    """Like profile_commands, plus a bare restart when an earlier restart of `session` failed.
+
+    Once the settings are stored, agent-deck reports the wanted profile even though the running
+    process still has the old one. `restarts` remembers that the restart is still owed.
+    """
     cmds = profile_commands(session, info, want)
+    if not cmds and session in owed_restarts(restarts):
+        cmds = [["agent-deck", "session", "restart", session]]
+    return cmds
+
+
+def apply_profile(run: Runner, session: str, info: dict, want: Profile, dry_run: bool,
+                  say: Callable[[str], None], restarts: Optional[Path] = None) -> bool:
+    """Store `want` on an idle session and restart it. True when the session now runs that profile."""
+    cmds = switch_commands(session, info, want, restarts)
     if not cmds:
         return True
     if info["tool"] != want.tool:
@@ -306,11 +342,17 @@ def apply_profile(run: Runner, session: str, info: dict, want: Profile, dry_run:
         for cmd in cmds:
             say(f"[dry-run] would run: {' '.join(shlex.quote(c) for c in cmd)}")
         return True
-    for cmd in cmds:
+    for cmd in cmds[:-1]:
         rc, reply = run(cmd)
         if rc != 0:
             say(f"could not set {session} to {label}: {reply}")
             return False
+    _set_owed(restarts, session, True)  # settings are stored from here on; only a restart applies them
+    rc, reply = run(cmds[-1])
+    if rc != 0:
+        say(f"could not restart {session} as {label} (will retry before giving it work): {reply}")
+        return False
+    _set_owed(restarts, session, False)
     say(f"restarted {session} as {label}")
     return True
 
@@ -340,14 +382,22 @@ def send_state(run: Runner, send_id: str) -> Optional[str]:
 
 
 def nudge_send(run: Runner, send_id: str, tmux: str, marker: str, dry_run: bool = False) -> str:
-    """Finish one queued send to a Codex session. Returns "done", "pending" or "nudged".
+    """Finish one queued send to a Codex session.
+
+    Returns "done" (submitted), "failed" (agent-deck typed nothing; sending again is safe),
+    "unknown" (the status could not be read), "pending" (not typed yet, or still in the box) or
+    "nudged" (Enter was just pressed; not yet confirmed).
 
     "typed" means agent-deck put the text in the input box but could not submit it. If the box
     still shows our message, press Enter there.
     """
     state = send_state(run, send_id)
-    if state in ("landed", "submitted", "failed", None):
+    if state in ("landed", "submitted"):
         return "done"
+    if state == "failed":
+        return "failed"
+    if state is None:
+        return "unknown"
     if state != "typed" or not tmux:
         return "pending"
     if not composer_holds(run, tmux, marker):
@@ -360,15 +410,31 @@ def nudge_send(run: Runner, send_id: str, tmux: str, marker: str, dry_run: bool 
 
 def nudge_pending_sends(run: Runner, state: dict, fleet: dict, t: float, dry_run: bool,
                         say: Callable[[str], None]) -> None:
-    """Check every remembered Codex send and submit the ones still sitting in the input box."""
+    """Check every remembered Codex send and submit the ones still sitting in the input box.
+
+    A send that failed, or that Enter could not submit, makes its PRs due again at once (their
+    `last_wake` is cleared), so the normal retry and escalation rules take over instead of the
+    wake counting as delivered.
+    """
+    def due_again(rec: dict, why: str) -> None:
+        entries = state.get(rec.get("role") or "") or {}
+        for key in rec.get("keys") or []:
+            if key in entries:
+                entries[key]["last_wake"] = 0
+        say(f"wake {why} for {rec.get('session')}; its PRs are due again")
+
     keep = {}
     for send_id, rec in (state.get("sends") or {}).items():
-        if t - rec.get("at", t) > SEND_MAX_AGE or rec.get("nudges", 0) >= MAX_NUDGES:
+        if t - rec.get("at", t) > SEND_MAX_AGE:
             continue
         tmux = (fleet.get(rec.get("session")) or {}).get("tmux", "")
-        result = nudge_send(run, send_id, tmux, WAKE_MARKER, dry_run)
+        result = nudge_send(run, send_id, tmux, WAKE_MARKER, dry_run or rec.get("nudges", 0) >= MAX_NUDGES)
         if result == "done":
             continue
+        if result == "failed" or (result == "pending" and rec.get("nudges", 0) >= MAX_NUDGES):
+            if not dry_run:
+                due_again(rec, "was not delivered" if result == "failed" else f"still not submitted after {MAX_NUDGES} tries")
+                continue
         if result == "nudged":
             rec = {**rec, "nudges": rec.get("nudges", 0) + 1}
             say(f"pressed Enter in {rec.get('session')} to submit a typed wake")
@@ -376,13 +442,15 @@ def nudge_pending_sends(run: Runner, state: dict, fleet: dict, t: float, dry_run
     state["sends"] = keep
 
 
-def send_wake(run: Runner, session: str, text: str, fleet: Optional[dict], state: dict, t: float) -> "tuple[int, str]":
+def send_wake(run: Runner, session: str, text: str, fleet: Optional[dict], state: dict, t: float,
+              role: str = "", keys: Optional[list] = None) -> "tuple[int, str]":
     """Queue `text` for `session`. A send to a Codex session is remembered so it can be submitted later."""
     rc, reply = run(["agent-deck", "session", "send", session, "-queue", text])
     tool = ((fleet or {}).get(session) or {}).get("tool") or getattr((PROFILES.get(session) or {}).get("default"), "tool", "")
     found = re.search(r"Queued\s+(\S+)", reply or "")
     if rc == 0 and tool == "codex" and found:
-        state.setdefault("sends", {})[found.group(1)] = {"session": session, "at": t, "nudges": 0}
+        state.setdefault("sends", {})[found.group(1)] = {"session": session, "at": t, "nudges": 0,
+                                                         "role": role, "keys": list(keys or [])}
     return rc, reply
 
 
@@ -560,8 +628,13 @@ def plan_reviews(entries: dict, work: list, sev: dict, authors: dict, states: di
         if pick is not None:
             wake.setdefault(pick, []).append(item)
             effort[pick] = need
-        elif avoid is None and waited >= retry_after * max_wakes and not keep[key_of(*item)].get("escalated"):
-            escalate.append(item)  # no reviewer has been free for it at all
+        else:
+            # Nobody can take it now. Do not let it sit forever: a PR never woken for counts from
+            # when it was first seen, a retry that cannot be delivered from its last wake.
+            entry = keep[key_of(*item)]
+            stuck_for = waited if avoid is None else now - entry["last_wake"]
+            if stuck_for >= retry_after * max_wakes and not entry.get("escalated"):
+                escalate.append(item)
     return {"wake": wake, "effort": effort, "escalate": escalate, "keep": keep}
 
 
@@ -676,14 +749,15 @@ def run_reviews(args, run: Runner, say: Callable[[str], None], role: Role, state
     new_entries, status = decision["keep"], 0
     for session, items in decision["wake"].items():
         want = (PROFILES.get(session) or {}).get("raised" if decision["effort"][session] == "high" else "default")
-        if want is not None and not apply_profile(run, session, sessions[session], want, args.dry_run, say):
+        if want is not None and not apply_profile(run, session, sessions[session], want, args.dry_run, say,
+                                                  restarts_path(args.state)):
             status = 1  # not woken and not recorded, so the next run tries again
             continue
         text = wake_message(role, items)
         if args.dry_run:
             say(f"[dry-run] would wake {session}: {text}")
             continue
-        rc, reply = send_wake(run, session, text, sessions, state, t)
+        rc, reply = send_wake(run, session, text, sessions, state, t, role.name, [key_of(*item) for item in items])
         if rc != 0:
             say(f"could not wake {session}: {reply}")
             status = 1
@@ -760,7 +834,8 @@ def run_gate(args, state_path: Path, run: Runner, now: Callable[[], float], say:
             if args.dry_run:
                 say(f"[dry-run] would wake {role.session}: {text}")
             else:
-                rc, reply = send_wake(run, role.session, text, cache[0] if cache else None, state, t)
+                rc, reply = send_wake(run, role.session, text, cache[0] if cache else None, state, t,
+                                      role.name, [key_of(*item) for item in decision["wake"]])
                 if rc == 0:
                     say(f"woke {role.session}: " + ", ".join(f"#{n}" for n, _, _ in decision["wake"]) + f" ({reply})")
                     for number, sha, token in decision["wake"]:

@@ -24,7 +24,8 @@ Safety:
     session the script waits and presses Enter in its tmux pane if the input box still shows the
     task (same check as the gate).
 
-Exit codes: 0 everything sent, 1 agent-deck failure, 2 usage error (nothing sent),
+Exit codes: 0 everything sent, 1 agent-deck failure (including a send that was not delivered or a
+restart that failed; the restart is remembered and retried), 2 usage error (nothing sent),
 3 something was deferred or could not be confirmed as submitted.
 """
 from __future__ import annotations
@@ -104,26 +105,32 @@ def batches(tasks: list) -> dict:
 def confirm_codex_sends(run, pending: dict, fleet: dict, wait: float, poll: float, sleep, say) -> bool:
     """Wait for queued sends to a Codex session to be submitted, pressing Enter when needed.
 
-    pending: {send id: session}. Returns True when every send is done.
+    pending: {send id: session}. Returns "ok" when every send was submitted, "failed" when
+    agent-deck reported that one was not delivered, else "unconfirmed". Only a send that
+    agent-deck reports as submitted, or whose text has left the input box, counts as submitted.
     """
     nudges = {send_id: 0 for send_id in pending}
-    waited = 0.0
+    waited, failed = 0.0, False
     while pending:
         for send_id, session in list(pending.items()):
             tmux = (fleet.get(session) or {}).get("tmux", "")
-            result = pg.nudge_send(run, send_id, tmux, TASK_MARKER)
+            result = pg.nudge_send(run, send_id, tmux, TASK_MARKER, dry_run=nudges[send_id] >= pg.MAX_NUDGES)
             if result == "nudged":
                 nudges[send_id] += 1
                 say(f"pressed Enter in {session} to submit the typed task")
-            if result == "done" or nudges[send_id] >= pg.MAX_NUDGES:
+            elif result == "done":
                 del pending[send_id]
+            elif result == "failed":
+                say(f"failed: send {send_id} to {session} was not delivered; assign the task again")
+                del pending[send_id]
+                failed = True
         if not pending or waited >= wait:
             break
         sleep(poll)
         waited += poll
     for send_id, session in pending.items():
-        say(f"not confirmed: send {send_id} to {session} is still waiting; check `agent-deck session send-status {send_id}`")
-    return not pending
+        say(f"not confirmed: send {send_id} to {session} was not submitted; check `agent-deck session send-status {send_id}`")
+    return "failed" if failed else "unconfirmed" if pending else "ok"
 
 
 def main(argv: Optional[list] = None, run: pg.Runner = pg.default_run, out=sys.stdout,
@@ -132,6 +139,8 @@ def main(argv: Optional[list] = None, run: pg.Runner = pg.default_run, out=sys.s
     ap.add_argument("task", nargs="*", metavar="SESSION SEVERITY TASK")
     ap.add_argument("--batch", help="JSON file with a list of {session, severity, task} ('-' for stdin)")
     ap.add_argument("--dry-run", action="store_true", help="print what would run; change nothing")
+    ap.add_argument("--state", default=pg.DEFAULT_STATE,
+                    help="the gate's state file; restarts that failed are remembered next to it")
     ap.add_argument("--submit-wait-sec", type=int, default=180,
                     help="how long to wait for a send to a Codex session to be submitted")
     try:
@@ -154,6 +163,7 @@ def main(argv: Optional[list] = None, run: pg.Runner = pg.default_run, out=sys.s
         say("could not read agent-deck sessions; nothing sent")
         return 1
 
+    restarts = pg.restarts_path(args.state)
     status, deferred, pending = 0, False, {}
     for session, groups in batches(tasks).items():
         first, later = groups[0], [item for group in groups[1:] for item in group]
@@ -164,12 +174,12 @@ def main(argv: Optional[list] = None, run: pg.Runner = pg.default_run, out=sys.s
             continue
         want = pg.profile_for(session, first[0][0])
         idle = info["status"] in pg.IDLE_STATUSES
-        if pg.profile_commands(session, info, want) and not idle:
+        if pg.switch_commands(session, info, want, restarts) and not idle:
             say(f"{session}: needs {want.model} / {want.effort} but is {info['status'] or 'not running'}; "
                 f"a model switch restarts the session, so its {sum(len(g) for g in groups)} task(s) are deferred")
             deferred = True
             continue
-        if not pg.apply_profile(run, session, info, want, args.dry_run, say):
+        if not pg.apply_profile(run, session, info, want, args.dry_run, say, restarts):
             status = 1
             continue
         for sev, text in first:
@@ -191,8 +201,10 @@ def main(argv: Optional[list] = None, run: pg.Runner = pg.default_run, out=sys.s
                 f"assign it again when the session is idle): {text}")
             deferred = True
 
-    if pending and not confirm_codex_sends(run, pending, fleet, args.submit_wait_sec, 5.0, sleep, say):
-        deferred = True
+    if pending:
+        outcome = confirm_codex_sends(run, pending, fleet, args.submit_wait_sec, 5.0, sleep, say)
+        status = status or (1 if outcome == "failed" else 0)
+        deferred = deferred or outcome == "unconfirmed"
     return status or (3 if deferred else 0)
 
 

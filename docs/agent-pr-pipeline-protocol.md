@@ -174,6 +174,11 @@ small script does the polling and a session only runs when there is work for it.
   being submitted. The script remembers each send to a Codex session and, on a later run, presses
   Enter in that session's tmux pane, at most three times, and only if `agent-deck session
   send-status` reports `typed` and the input box still shows the script's own message.
+  A send that agent-deck reports as failed, or that Enter could not submit, does not count as
+  delivered: its PRs become due again at once.
+- **Restarts.** If the profile was stored but the restart failed, the script remembers the owed
+  restart (a `.restarts` file next to its state file, shared with `assign_task.py`) and retries it
+  before that session gets any work.
 - The wake message lists PRs by effective severity, then PR number. The reviewer takes them in that
   order. The integrator uses the list as a hint only: dependency order still comes first.
 - The wake message names only PR numbers and commit hashes. It never contains PR titles, bodies or
@@ -188,7 +193,8 @@ small script does the polling and a session only runs when there is work for it.
   otherwise the same one; a reviewer that is still running is left alone), and after another
   30 minutes it sends the owner one urgent notification
   (`agent-deck conductor notify --conductor juke --tier urgent`) and stays quiet until the next
-  round. A PR that no reviewer has been free to take for 60 minutes is escalated the same way. If GitHub's label history cannot be read, the script skips that role for the
+  round. A PR that no reviewer has been free to take for 60 minutes, or whose retry cannot be
+  delivered for 60 minutes (its reviewer stopped and the other is busy), is escalated the same way. If GitHub's label history cannot be read, the script skips that role for the
   run and changes nothing.
 - Implementors are not covered: they work from their own task lists, and a PR labelled
   `changes-requested` stays with the implementor that opened it.

@@ -63,6 +63,7 @@ class FakeRunner:
         self.send_states = {}  # send id -> state reported by `session send-status`
         self.panes = {}  # tmux session -> captured pane text
         self.set_rc = 0
+        self.restart_rc = 0
         self.calls, self.send_cmds = [], []  # every command, and the full `session send` commands
         self.labeled_at = None  # epoch seconds stamped on every labeled event, or None
         self.rounds = {}  # PR number -> how many times its label was (re-)added
@@ -103,9 +104,10 @@ class FakeRunner:
             return self.fleet_rc, json.dumps(self.fleet)
         if cmd[:3] in (["agent-deck", "session", "set"], ["agent-deck", "session", "restart"]):
             self.commands.append(cmd)
-            if self.set_rc == 0 and cmd[2] == "set":
+            rc = self.set_rc if cmd[2] == "set" else self.restart_rc
+            if rc == 0 and cmd[2] == "set":
                 self._set(cmd)
-            return self.set_rc, "ok" if self.set_rc == 0 else "refused"
+            return rc, "ok" if rc == 0 else "refused"
         if cmd[:3] == ["agent-deck", "session", "send-status"]:
             state = self.send_states.get(cmd[3])
             return (0, json.dumps({"send_id": cmd[3], "state": state})) if state else (2, "unknown id")
@@ -495,6 +497,26 @@ class GateTest(unittest.TestCase):
         self.run_gate(runner)
         self.assertEqual([s for s, _ in runner.sent], [R1, R1])
 
+    def test_retry_that_cannot_be_delivered_is_escalated(self):
+        for original in ("error", None):  # the first reviewer stopped, or was removed
+            with self.subTest(original=original):
+                state = str(Path(self.tmp.name) / f"state-{original}.json")
+                runner = FakeRunner(gh_json((10, SHA_A, ["needs-review"])))
+                self.run_gate(runner, "--state", state)       # woke reviewer-1
+                if original is None:
+                    runner.fleet = [item for item in runner.fleet if item["title"] != R1]
+                else:
+                    runner.session(R1)["status"] = original
+                runner.session(R2)["status"] = "running"      # and the other one is busy
+                self.clock.t += 31 * 60
+                self.run_gate(runner, "--state", state)
+                self.assertEqual((len(runner.sent), runner.notified), (1, []))
+                self.clock.t += 30 * 60
+                self.run_gate(runner, "--state", state)
+                self.run_gate(runner, "--state", state)
+                self.assertEqual((len(runner.sent), runner.notify_tiers), (1, ["urgent"]))
+                self.assertIn("#10", runner.notified[0])
+
     def test_reviewer_still_working_is_not_reassigned_but_a_hung_one_is_escalated(self):
         runner = FakeRunner(gh_json((10, SHA_A, ["needs-review"])))
         self.run_gate(runner)
@@ -566,6 +588,23 @@ class GateTest(unittest.TestCase):
         runner.set_rc = 0
         rc, _ = self.run_gate(runner)
         self.assertEqual((rc, len(runner.sent)), (0, 1))
+
+    def test_failed_restart_is_retried_before_the_reviewer_gets_work(self):
+        # The settings are stored, so agent-deck already reports the wanted profile; only the
+        # remembered restart shows that the running process is still on the old one.
+        runner = FakeRunner(gh_json((10, SHA_A, ["needs-review", "P1"])))
+        runner.restart_rc = 1
+        rc, out = self.run_gate(runner)
+        self.assertEqual((rc, runner.sent), (1, []))
+        self.assertIn("could not restart juke-reviewer-1", out)
+        rc, _ = self.run_gate(runner)                       # still failing: still no wake
+        self.assertEqual((rc, runner.sent), (1, []))
+        runner.restart_rc = 0
+        rc, _ = self.run_gate(runner)
+        self.assertEqual((rc, len(runner.sent_to(R1))), (0, 1))
+        self.assertEqual([c[2] for c in runner.commands], ["set", "restart", "restart", "restart"])
+        self.run_gate(runner)
+        self.assertEqual(len([c for c in runner.commands if c[2] == "restart"]), 3)  # nothing owed any more
 
     def test_dry_run_shows_the_profile_change_without_making_it(self):
         runner = FakeRunner(gh_json((10, SHA_A, ["needs-review", "P0"])))
@@ -650,6 +689,39 @@ class GateTest(unittest.TestCase):
             self.clock.t += 180
             self.run_gate(runner)
         self.assertEqual(len(self.enters(runner)), pg.MAX_NUDGES)
+
+    def test_failed_codex_wake_makes_the_pr_due_again(self):
+        runner = FakeRunner(gh_json((10, SHA_A, ["needs-review"])))
+        self.run_gate(runner)
+        runner.send_states["S1"] = "failed"   # agent-deck typed nothing
+        self.clock.t += 180
+        _, out = self.run_gate(runner)
+        self.assertIn("was not delivered", out)
+        self.assertEqual(len(runner.sent), 2)  # woken again at once, not after 30 minutes
+        self.assertEqual(self.enters(runner), [])
+
+    def test_codex_wake_enter_cannot_submit_makes_the_pr_due_again(self):
+        runner = FakeRunner(gh_json((10, SHA_A, ["needs-review"])))
+        self.run_gate(runner)
+        runner.send_states["S1"] = "typed"
+        runner.panes["tmux-r1"] = self.CODEX_BOX
+        runner.session(R2)["status"] = "running"
+        outs = []
+        for _ in range(pg.MAX_NUDGES + 1):
+            self.clock.t += 180
+            outs.append(self.run_gate(runner)[1])
+        self.assertIn(f"still not submitted after {pg.MAX_NUDGES} tries", outs[-1])
+        self.assertEqual(len(self.enters(runner)), pg.MAX_NUDGES)
+        self.assertEqual(len(runner.sent), 2)  # counted as not delivered: the wake is sent again
+
+    def test_unreadable_send_status_keeps_the_send_for_the_next_run(self):
+        runner = FakeRunner(gh_json((10, SHA_A, ["needs-review"])))
+        self.run_gate(runner)                  # S1 has no status the fake can report
+        self.clock.t += 180
+        self.run_gate(runner)
+        self.assertEqual(json.loads(Path(self.state).read_text())["sends"].keys(), {"S1"})
+        self.assertEqual(len(runner.sent), 1)
+        self.assertEqual(pg.nudge_send(runner, "S1", "tmux-r1", pg.WAKE_MARKER), "unknown")
 
     def test_claude_wakes_are_never_followed_by_enter(self):
         runner = FakeRunner(gh_json((10, SHA_A, ["needs-review", "author:codex"]), (11, SHA_B, ["approved"])))
