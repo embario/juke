@@ -5,6 +5,7 @@ import UIKit
 struct MemoriesScreen: View {
     @Environment(VibeAppModel.self) private var model
     @State private var composing = false
+    @State private var detailID: UUID?
 
     var body: some View {
         let store = model.memories
@@ -40,7 +41,17 @@ struct MemoriesScreen: View {
         .navigationTitle("Memories")
         .toolbar { ToolbarItem(placement: .primaryAction) { Button { composing = true } label: { Image(systemName: "plus") }.accessibilityLabel("New memory") } }
         .refreshable { await store.refresh() }
-        .task(id: model.session?.account.id) { await store.refresh() }
+        .task(id: model.session?.account.id) {
+            await store.refresh()
+            #if DEBUG
+            // `--uitesting-memory-detail=N` opens the Nth memory (for screenshots).
+            if let value = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-memory-detail=") })?.dropFirst(26), let index = Int(value) {
+                for _ in 0..<60 where store.memories.count <= index { try? await Task.sleep(for: .milliseconds(100)) }
+                if store.memories.indices.contains(index) { detailID = store.memories[index].id }
+            }
+            #endif
+        }
+        .navigationDestination(item: $detailID) { id in if let memory = store.memories.first(where: { $0.id == id }) { MemoryDetail(memory: memory) } }
         .overlay { if store.isLoading, store.memories.isEmpty { ProgressView() } }
         .sheet(isPresented: $composing) { MemoryComposer() }
     }
