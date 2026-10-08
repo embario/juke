@@ -9,6 +9,7 @@ struct LibraryScreen: View {
     @State private var loading = false
     @State private var error: String?
     @State private var selected: Radio.CrateItem?
+    @State private var browsing: Radio.CrateItem?
     @State private var focus = 0
     @State private var loadTask: Task<Void, Never>?
     @AppStorage("juke.library.crateView") private var showsCrate = true
@@ -27,7 +28,7 @@ struct LibraryScreen: View {
                 if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
                 if loading { ProgressView().frame(maxWidth: .infinity) }
                 if showsCrate, !items.isEmpty {
-                    CrateView(items: items, mode: CrateMode(CrateFlipDirection(rawValue: flipRaw) ?? .sideToSide), onSelect: { selected = $0 }, focus: $focus)
+                    CrateView(items: items, mode: CrateMode(CrateFlipDirection(rawValue: flipRaw) ?? .sideToSide), onSelect: { open($0) }, focus: $focus)
                     if items.indices.contains(focus) {
                         VStack(spacing: 2) {
                             Text(items[focus].title).font(.headline).lineLimit(1)
@@ -37,7 +38,7 @@ struct LibraryScreen: View {
                 } else {
                     LazyVGrid(columns: columns, spacing: 14) {
                         ForEach(items) { item in
-                            Button { selected = item } label: { CrateCard(item: item) }.buttonStyle(.plain)
+                            Button { open(item) } label: { CrateCard(item: item) }.buttonStyle(.plain)
                         }
                     }
                 }
@@ -62,12 +63,40 @@ struct LibraryScreen: View {
             kind = request.kind
             reload(resetFocus: true)
         }
-        .confirmationDialog(selected?.title ?? "", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } }), presenting: selected) { item in
-            Button("Start a station from this") {
-                model.coordinator.openNewStation(.init(start: .records, seeds: [item.seed], feelings: []))
-                model.tab = .radio
+        .navigationDestination(item: $browsing) { item in
+            if item.kind == .artist { ArtistBrowser(title: item.title, spotifyID: item.spotifyId) }
+            else { AlbumBrowser(title: item.title, spotifyID: item.spotifyId, artist: item.subtitle) }
+        }
+        .sheet(item: $selected) { item in
+            VStack(spacing: 14) {
+                VStack(spacing: 2) {
+                    Text(item.title).font(.headline).lineLimit(2)
+                    if let subtitle = item.subtitle { Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+                }.padding(.top, 8)
+                Button { selected = nil; Task { await play(item) } } label: { Label("Play now", systemImage: "play.fill").frame(maxWidth: .infinity) }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                Button {
+                    selected = nil
+                    model.coordinator.openNewStation(.init(start: .records, seeds: [item.seed], feelings: []))
+                    model.tab = .radio
+                } label: { Label("Start a station from this", systemImage: "dot.radiowaves.left.and.right").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered).controlSize(.large)
+                Button("Cancel", role: .cancel) { selected = nil }
             }
-        } message: { Text($0.subtitle ?? "") }
+            .padding(.horizontal, 20).padding(.bottom, 12)
+            .presentationDetents([.height(260)])
+        }
+    }
+
+    /// Artists and albums open their own screens; songs offer play / start a station.
+    private func open(_ item: Radio.CrateItem) {
+        if item.kind == .track { selected = item } else { browsing = item }
+    }
+
+    private func play(_ item: Radio.CrateItem) async {
+        guard let token = model.session?.accessToken else { return }
+        do { _ = try await PlaybackClient().play(token: token, spotifyID: item.spotifyId, kind: "tracks", deviceID: nil) }
+        catch { self.error = (error as? LocalizedError)?.errorDescription ?? "Spotify couldn’t play that." }
     }
 
     /// "Open the album/artist" from the sleeve: search for it and bring it to the front.
@@ -95,7 +124,21 @@ struct LibraryScreen: View {
         guard model.session != nil else { return }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--uitesting") {
-            items = (1...9).map { Radio.CrateItem(id: Radio.ID("\($0)"), kind: kind, spotifyId: "fixture\($0)", title: "Record \($0)", subtitle: "Fixture artist", artworkUrl: nil, track: nil) }
+            if let name = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-kind=") })?.dropFirst(17),
+               let launchKind = Radio.SeedKind(rawValue: String(name)), launchKind != kind, browsing == nil { kind = launchKind; return }
+            // The first record matches the catalog fixtures so browsing (artist -> albums -> tracks) works offline.
+            let known: [Radio.SeedKind: (String, String, String?)] = [
+                .album: ("1weenld61qoidwYuZ1GESA", "Kind of Blue", "Miles Davis"), .artist: ("0kbYTNQb4Pb1rPbbaF0pT4", "Miles Davis", nil),
+                .track: ("0aWMVrwxPNYkKmFthzmpRi", "Blue in Green", "Miles Davis"),
+            ]
+            items = (1...9).map { index in
+                if index == 1, let (id, title, subtitle) = known[kind] {
+                    return Radio.CrateItem(id: Radio.ID("\(index)"), kind: kind, spotifyId: id, title: title, subtitle: subtitle, artworkUrl: nil, track: nil)
+                }
+                return Radio.CrateItem(id: Radio.ID("\(index)"), kind: kind, spotifyId: "fixture\(index)", title: "Record \(index)", subtitle: "Fixture artist", artworkUrl: nil, track: nil)
+            }
+            // `--uitesting-browse` opens the first record's screen (for screenshots).
+            if ProcessInfo.processInfo.arguments.contains("--uitesting-browse"), browsing == nil, selected == nil { open(items[0]) }
             return
         }
         #endif

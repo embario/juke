@@ -5,6 +5,7 @@ import UIKit
 struct MemoriesScreen: View {
     @Environment(VibeAppModel.self) private var model
     @State private var composing = false
+    @State private var detailID: UUID?
 
     var body: some View {
         let store = model.memories
@@ -24,10 +25,13 @@ struct MemoriesScreen: View {
             }
             ForEach(store.memories) { memory in
                 NavigationLink { MemoryDetail(memory: memory) } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(memory.displayTitle).font(.headline).lineLimit(1)
-                        Text(memory.occurredAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
-                        if let song = memory.songs.first { Label("\(song.title) — \(song.artist)", systemImage: "music.note").font(.subheadline).lineLimit(1) }
+                    HStack(spacing: 12) {
+                        MemoryThumbnail(memory: memory)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(memory.displayTitle).font(.headline).lineLimit(1)
+                            Text(memory.occurredAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                            if let song = memory.songs.first { Label("\(song.title) — \(song.artist)", systemImage: "music.note").font(.subheadline).lineLimit(1) }
+                        }
                     }
                 }
             }
@@ -37,7 +41,17 @@ struct MemoriesScreen: View {
         .navigationTitle("Memories")
         .toolbar { ToolbarItem(placement: .primaryAction) { Button { composing = true } label: { Image(systemName: "plus") }.accessibilityLabel("New memory") } }
         .refreshable { await store.refresh() }
-        .task(id: model.session?.account.id) { await store.refresh() }
+        .task(id: model.session?.account.id) {
+            await store.refresh()
+            #if DEBUG
+            // `--uitesting-memory-detail=N` opens the Nth memory (for screenshots).
+            if let value = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-memory-detail=") })?.dropFirst(26), let index = Int(value) {
+                for _ in 0..<60 where store.memories.count <= index { try? await Task.sleep(for: .milliseconds(100)) }
+                if store.memories.indices.contains(index) { detailID = store.memories[index].id }
+            }
+            #endif
+        }
+        .navigationDestination(item: $detailID) { id in if let memory = store.memories.first(where: { $0.id == id }) { MemoryDetail(memory: memory) } }
         .overlay { if store.isLoading, store.memories.isEmpty { ProgressView() } }
         #if DEBUG
         .onAppear { if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--uitesting-memory-step=") }) { composing = true } }
@@ -68,7 +82,10 @@ private struct MemoryDetail: View {
                 Label {
                     VStack(alignment: .leading) { Text(song.title); Text(song.artist).font(.caption).foregroundStyle(.secondary)
                         if let segment = song.segmentDescription { Text(segment).font(.caption2).foregroundStyle(.tertiary) } }
-                } icon: { Image(systemName: "music.note") }
+                } icon: {
+                    AsyncImage(url: song.artworkURL) { $0.resizable().scaledToFill() } placeholder: { Image(systemName: "music.note") }
+                        .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 6))
+                }
                 .swipeActions { Button("Play") { Task { await model.memoryPlayer.play(song) } }.tint(.accentColor) }
                 .overlay(alignment: .trailing) {
                     Button { Task { await model.memoryPlayer.play(song) } } label: {
@@ -121,14 +138,16 @@ private struct MemoryMediaThumb: View {
         ZStack {
             Color.secondary.opacity(0.15)
             if let image { Image(uiImage: image).resizable().scaledToFill() }
-            else if failed || media.kind != "image" { Image(systemName: media.kind == "video" ? "play.rectangle" : "photo").foregroundStyle(.secondary) }
+            else if failed || (media.kind != "image" && media.kind != "video") { Image(systemName: media.kind == "video" ? "play.rectangle" : "photo").foregroundStyle(.secondary) }
             else { ProgressView() }
         }
         .frame(width: 160, height: 160).clipShape(RoundedRectangle(cornerRadius: 12))
         .task {
-            guard media.kind == "image" else { return }
-            do { let url = try await model.memories.localMediaURL(media); image = UIImage(contentsOfFile: url.path) }
-            catch { failed = true }
+            do {
+                let url = try await model.memories.localMediaURL(media)
+                image = media.kind == "video" ? await MemoryImageDecoder.videoFrame(url, maxPixel: 480) : MemoryImageDecoder.downsampled(url, maxPixel: 960)
+                if image == nil { failed = true }
+            } catch { failed = true }
         }
         .accessibilityLabel(media.kind == "video" ? "Video attachment" : "Photo attachment")
     }
