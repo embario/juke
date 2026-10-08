@@ -37,6 +37,13 @@ struct RadioStatusLine: View {
                 .foregroundStyle(theme.sub.color)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+        } else if radio.isPausedForEpisode, let notice = radio.notice {
+            VStack(spacing: 6) {
+                line(notice)
+                Button("Resume station") { Task { await radio.togglePlayPause() } }
+                    .buttonStyle(.link)
+                    .accessibilityIdentifier("radio.resumeStation")
+            }
         } else if let notice = radio.notice {
             line(notice)
         } else if source == .local {
