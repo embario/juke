@@ -27,6 +27,8 @@ final class VibeAppModel {
     let memories: MemoryStore
     /// Quietly turns songs played elsewhere into `recognized` taste events.
     let recognition: BackgroundRecognizer
+    /// `BackgroundRecognizer` holds its feed weakly, so the model owns it.
+    @ObservationIgnored private let recognitionFeed: NowPlayingRecognitionFeed
     /// The song last started from Memories; recognition ignores it for a while.
     var memoryPlayback: MemoryPlaybackMark?
     /// Album-art colour feeding `JukeTheme`.
@@ -49,6 +51,7 @@ final class VibeAppModel {
         #endif
         let store = fixtures ? MemoryStore(client: MemoryClient(fixtures: true)) : MemoryStore()
         memories = store
+        recognitionFeed = NowPlayingRecognitionFeed(nowPlaying)
         recognition = .live(
             api: api,
             enabled: { UserDefaults.standard.object(forKey: JukeRecognitionSetting.key) as? Bool ?? true },
@@ -83,7 +86,7 @@ final class VibeAppModel {
         recognition.isRadioPlaying = { [weak radio] in (radio?.isOnAir ?? false) && (radio?.isPlaying ?? false) }
         recognition.isRadioTrack = { [weak radio] id in radio?.track?.spotifyId == id || radio?.queuedTrack?.spotifyId == id }
         recognition.memoryPlayback = { [weak self] in self?.memoryPlayback }
-        recognition.follow(NowPlayingRecognitionFeed(nowPlaying))
+        recognition.follow(recognitionFeed)
         #if DEBUG
         if fixtures, ProcessInfo.processInfo.arguments.contains("--uitesting-authenticated") {
             let preview = JukeSession(account: .localPreview, accessToken: "ui-test-token", authenticatedAt: .now)
