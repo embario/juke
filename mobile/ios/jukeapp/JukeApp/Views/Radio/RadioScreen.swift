@@ -45,6 +45,7 @@ private struct FirstRunCard: View {
 
 private struct NowPlayingCard: View {
     @Environment(VibeAppModel.self) private var model
+    @State private var visibleHeight: CGFloat = 900
 
     var body: some View {
         let radio = model.radio
@@ -52,7 +53,7 @@ private struct NowPlayingCard: View {
             VStack(spacing: 14) {
                 StationHeader()
                 if radio.isPutAway { PutAwayCard() }
-                SleeveAndRecord(track: radio.track)
+                SleeveAndRecord(track: radio.track, side: RadioLayout.sleeveSide(visibleHeight: visibleHeight))
                 VStack(spacing: 4) {
                     Text(radio.track?.title ?? "Nothing playing").font(.title2.bold()).multilineTextAlignment(.center).lineLimit(2)
                     Text(radio.track?.artist ?? "Press play to start your station").foregroundStyle(.secondary).lineLimit(1)
@@ -70,6 +71,7 @@ private struct NowPlayingCard: View {
             }
             .padding(.horizontal, 20).padding(.vertical, 12)
         }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height - $0.contentInsets.top - $0.contentInsets.bottom } action: { _, height in visibleHeight = height }
         .refreshable { await radio.refresh() }
     }
 }
@@ -102,9 +104,9 @@ private struct StationHeader: View {
 struct SleeveAndRecord: View {
     @Environment(VibeAppModel.self) private var model
     let track: Radio.Track?
-    private let side: CGFloat = 196
+    var side: CGFloat = RadioLayout.maxSleeve
     /// How far the record slides out; its label must stay mostly clear of the sleeve to be grabbable.
-    private let discOffset: CGFloat = 130
+    private var discOffset: CGFloat { RadioLayout.discOffset(side: side) }
 
     var body: some View {
         ZStack(alignment: .leading) {

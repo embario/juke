@@ -40,7 +40,7 @@ struct RootView: View {
                         .scrollContentBackground(.hidden)
                         .containerBackground(for: .navigation) { VibeBackground(atmosphere: model.atmosphere) }
                 }
-                    .safeAreaInset(edge: .bottom) { if tab != .radio { MiniPlayerPill() } }
+                    .safeAreaInset(edge: .bottom) { if tab.showsMiniPlayer { MiniPlayerPill() } }
                     .tabItem { Label(tab.title, systemImage: tab.symbol) }
                     .tag(tab)
             }

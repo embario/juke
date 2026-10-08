@@ -30,6 +30,7 @@
 		3EE939F898879EF316C15867 /* RadioFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3CF032BFA0B09411D0D144 /* RadioFixtures.swift */; };
 		3F25DD23765E9AD578032E19 /* ArtworkPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF36F6FBDFC81079CD29354 /* ArtworkPalette.swift */; };
 		4AC98C0DFF8412F697AAB101 /* PlaybackClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FE559BAC09BB81E1E8FE02 /* PlaybackClient.swift */; };
+		4D3DBFBF0A0681FAE675E15B /* RadioLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E2C68B40CE5764B9801DEE5 /* RadioLayoutTests.swift */; };
 		51C1AA76A9E7B6C6DC9F70CE /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232321C24A61172302B65A98 /* LibraryScreen.swift */; };
 		549DBA54BE005F15E2E66A6B /* AppConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE582E003D53E3852308ECD5 /* AppConfigurationTests.swift */; };
 		55BF6C28C2BECC020CFAD031 /* AppLockController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76C23B3E7823A358F8612D54 /* AppLockController.swift */; };
@@ -67,6 +68,7 @@
 		D63ED27A030893E78DD6BF1C /* VinylSleeve.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F9A813D17F4C1D158B1B44 /* VinylSleeve.swift */; };
 		D76D5AD39ECFBC34C06D1C60 /* JukeAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AD8EFC5D113D36B01EB5143 /* JukeAccount.swift */; };
 		DB6412ACFD6ECFEFCBCD81DB /* VinylSleeveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DB66BABF56038A7254EF4AC /* VinylSleeveTests.swift */; };
+		E298FEBF6B7919242B13F9BC /* RadioLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = D39DFB353209C74CCA48C029 /* RadioLayout.swift */; };
 		E36382F00A364C43A27BE605 /* JukeColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB368E6681DD70150304DE3 /* JukeColor.swift */; };
 		E461B4C32B074D44F1EC1AE3 /* CrateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E315CDD9222485F7F50E0FA /* CrateView.swift */; };
 		EA970A8ED034FAE673764AF4 /* JukeTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA9A50FCED3B82025BBD29D6 /* JukeTab.swift */; };
@@ -116,6 +118,7 @@
 		441A6EF51DC997D3F68BE925 /* VibeAtmosphere.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeAtmosphere.swift; sourceTree = "<group>"; };
 		45A3B1A70127936170F883D8 /* AppearanceChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceChoice.swift; sourceTree = "<group>"; };
 		49F15D334686FB7C6312F27C /* JukeApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JukeApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4E2C68B40CE5764B9801DEE5 /* RadioLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioLayoutTests.swift; sourceTree = "<group>"; };
 		4E315CDD9222485F7F50E0FA /* CrateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrateView.swift; sourceTree = "<group>"; };
 		519103EDE64C494F7F99E002 /* MemoryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryClient.swift; sourceTree = "<group>"; };
 		57FE559BAC09BB81E1E8FE02 /* PlaybackClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackClient.swift; sourceTree = "<group>"; };
@@ -155,6 +158,7 @@
 		D07AD88AFE1EDB2AED9BDFCB /* LibraryBrowsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryBrowsing.swift; sourceTree = "<group>"; };
 		D0A406F1C52A2B99310D5669 /* PrivacyWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyWindow.swift; sourceTree = "<group>"; };
 		D1D281CD5C7E68083E03D47C /* MemoryJourneyFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryJourneyFlow.swift; sourceTree = "<group>"; };
+		D39DFB353209C74CCA48C029 /* RadioLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioLayout.swift; sourceTree = "<group>"; };
 		D959AF221770C159D84E4250 /* JukeAPI+Radio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JukeAPI+Radio.swift"; sourceTree = "<group>"; };
 		D9A80EB926BAA892A1457707 /* MemoryPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPlayer.swift; sourceTree = "<group>"; };
 		E063B16365CC39C5A8811EB2 /* ServerSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSelectionTests.swift; sourceTree = "<group>"; };
@@ -181,6 +185,7 @@
 				67FCB93FD26FE75A6E12C695 /* MemoryThumbnailTests.swift */,
 				CB8A86FED0C799F9C642AD85 /* NowPlayingRecognitionFeedTests.swift */,
 				BBB5EC0C699F85EFAA959DF0 /* PlaybackAuthTests.swift */,
+				4E2C68B40CE5764B9801DEE5 /* RadioLayoutTests.swift */,
 				E063B16365CC39C5A8811EB2 /* ServerSelectionTests.swift */,
 				8239F90A43E27AF281B3A1E7 /* VibeBackgroundGlowTests.swift */,
 				1DB66BABF56038A7254EF4AC /* VinylSleeveTests.swift */,
@@ -251,6 +256,7 @@
 			isa = PBXGroup;
 			children = (
 				BF764F2CA5B5785D08B7D0D7 /* FMDialView.swift */,
+				D39DFB353209C74CCA48C029 /* RadioLayout.swift */,
 				1E86866E5F50638D1FCDE22A /* RadioScreen.swift */,
 				352AD2D41149E314BCF53B22 /* StationSheet.swift */,
 				E8FEA42EF9468EFBD6362AC5 /* VinylDisc.swift */,
@@ -459,6 +465,7 @@
 				1FC2CF7C1B532774B2C6AFAA /* MemoryThumbnailTests.swift in Sources */,
 				EB94342776BB3BB5D8BF329D /* NowPlayingRecognitionFeedTests.swift in Sources */,
 				711938BFC51755C8A89492C1 /* PlaybackAuthTests.swift in Sources */,
+				4D3DBFBF0A0681FAE675E15B /* RadioLayoutTests.swift in Sources */,
 				8FBBC7289E3FC51B4938AC60 /* ServerSelectionTests.swift in Sources */,
 				1BD8769844187145B8815322 /* VibeBackgroundGlowTests.swift in Sources */,
 				DB6412ACFD6ECFEFCBCD81DB /* VinylSleeveTests.swift in Sources */,
@@ -512,6 +519,7 @@
 				83BA564234CF6E364266DA57 /* PrivacyWindow.swift in Sources */,
 				1E762619BB115E55CDDEDCDB /* RadioController.swift in Sources */,
 				3EE939F898879EF316C15867 /* RadioFixtures.swift in Sources */,
+				E298FEBF6B7919242B13F9BC /* RadioLayout.swift in Sources */,
 				A395E50688F9535C39E1D655 /* RadioMath.swift in Sources */,
 				CB5B0B9316AF6DFC4F58C477 /* RadioModels.swift in Sources */,
 				27BBC41638BE52E6B6CC56AD /* RadioScreen.swift in Sources */,
