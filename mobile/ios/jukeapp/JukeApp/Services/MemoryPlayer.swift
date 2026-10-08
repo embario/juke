@@ -34,14 +34,15 @@ final class MemoryPlayer {
     @ObservationIgnored private let appleTime: @MainActor () -> Double?
     @ObservationIgnored private let pauseApple: @MainActor () -> Void
     @ObservationIgnored private let sleep: @MainActor (Double) async throws -> Void
-    @ObservationIgnored private let marked: @MainActor (MemoryPlaybackMark) -> Void
+    /// Told when a memory song starts, so recognition can ignore it.
+    @ObservationIgnored var marked: @MainActor (MemoryPlaybackMark) -> Void
     @ObservationIgnored private var operation: UUID?
     @ObservationIgnored private var watcher: Task<Void, Never>?
 
     init(
         spotify: any MemorySpotifyPlaying = PlaybackClient(),
         token: @escaping @MainActor () -> String?,
-        marked: @escaping @MainActor (MemoryPlaybackMark) -> Void,
+        marked: @escaping @MainActor (MemoryPlaybackMark) -> Void = { _ in },
         open: @escaping @MainActor (URL) -> Void = { UIApplication.shared.open($0) },
         playApple: @escaping @MainActor (String, Double) async throws -> Void = MemoryPlayer.systemPlayApple,
         appleTime: @escaping @MainActor () -> Double? = { MPMusicPlayerController.systemMusicPlayer.currentPlaybackTime },

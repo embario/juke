@@ -54,7 +54,6 @@ final class VibeAppModel {
         let store = fixtures ? MemoryStore(client: MemoryClient(fixtures: true)) : MemoryStore()
         memories = store
         recognitionFeed = NowPlayingRecognitionFeed(nowPlaying)
-        memoryPlayer = MemoryPlayer(token: { accessToken.get() }, marked: { [weak self] in self?.memoryPlayback = $0 })
         recognition = .live(
             api: api,
             enabled: { UserDefaults.standard.object(forKey: JukeRecognitionSetting.key) as? Bool ?? true },
@@ -81,6 +80,8 @@ final class VibeAppModel {
                 saveMemory: saveMemory
             )
         }
+        memoryPlayer = MemoryPlayer(token: { accessToken.get() })
+        memoryPlayer.marked = { [weak self] in self?.memoryPlayback = $0 }
         radio.onTrackChange = { [weak self] track in
             self?.radioTrackChanged(track)
             self?.recognition.noteRadioTrack(track?.spotifyId)
