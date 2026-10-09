@@ -238,6 +238,28 @@ class VibeAPITests(APITestCase):
         feed = self.client.get('/api/v1/vibe/encrypted-chat-records')
         self.assertEqual(feed.data['envelopes'], [])
 
+    def test_message_safety_notice_acknowledgement_syncs_per_account(self):
+        payload = self.envelope()
+        payload['kind'] = 'messageSafetyNotice'
+        saved = self.client.put(
+            f"/api/v1/vibe/encrypted-chat-records/{payload['recordID']}",
+            payload,
+            format='json',
+        )
+        self.assertEqual(saved.status_code, status.HTTP_201_CREATED)
+
+        other = JukeUser.objects.create_user(username='other-notice', email='other-notice@example.com', password='pass1234')
+        other_token = Token.objects.get(user=other)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {other_token.key}')
+        other_feed = self.client.get('/api/v1/vibe/encrypted-chat-records')
+        self.assertEqual(other_feed.status_code, status.HTTP_200_OK)
+        self.assertEqual(other_feed.data['envelopes'], [])
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+        account_feed = self.client.get('/api/v1/vibe/encrypted-chat-records')
+        self.assertEqual(account_feed.status_code, status.HTTP_200_OK)
+        self.assertEqual(account_feed.data['envelopes'], [payload])
+
     def test_encrypted_put_rejects_stale_or_ambiguous_overwrite(self):
         payload = self.envelope(modified_at=800000100.0)
         url = f"/api/v1/vibe/encrypted-chat-records/{payload['recordID']}"
