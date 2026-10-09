@@ -23,7 +23,7 @@ struct AlbumDetailView: View {
         }
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .background(VibeBackground(atmosphere: model.atmosphere))
-        .task { await load() }
+        .task { model.recents.record(kind: .album, spotifyID: spotifyID, title: title, subtitle: artist); await load() }
         #if DEBUG
         .onChange(of: stateIsLoaded) { _, loaded in
             // `--uitesting-album-tracks` opens with the tracklist down (for screenshots).

@@ -5,7 +5,9 @@ struct LibraryScreen: View {
     @Environment(VibeAppModel.self) private var model
     @State private var kind: Radio.SeedKind = .track
     @State private var query = ""
-    @State private var items: [Radio.CrateItem] = []
+    /// The crate or the search results as the server sent them, and the query they answer.
+    @State private var fetched: [Radio.CrateItem] = []
+    @State private var fetchedQuery = ""
     @State private var loading = false
     @State private var error: String?
     @State private var selected: Radio.CrateItem?
@@ -16,6 +18,10 @@ struct LibraryScreen: View {
     @AppStorage("juke.settings.crateFlipDirection") private var flipRaw = CrateFlipDirection.sideToSide.rawValue
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
+    /// Without a search: recent resources first, topped up from the crate while the history is short.
+    private var items: [Radio.CrateItem] {
+        fetchedQuery.isEmpty ? RecentLibrary.library(kind: kind, recents: model.recents.items, fill: fetched) : fetched
+    }
     private var crateMode: CrateMode { CrateMode(CrateFlipDirection(rawValue: flipRaw) ?? .sideToSide) }
 
     var body: some View {
@@ -92,11 +98,14 @@ struct LibraryScreen: View {
 
     /// Artists and albums open their own screens; songs offer play / start a station.
     private func open(_ item: Radio.CrateItem) {
+        model.recents.record(item)
+        focus = 0   // what was just opened is first when the Library comes back; Radio's own plays leave the crate alone
         if item.kind == .track { selected = item } else { browsing = item }
     }
 
     private func play(_ item: Radio.CrateItem) async {
         guard let token = model.session?.accessToken else { return }
+        model.recents.record(item)
         do { _ = try await PlaybackClient().play(token: token, spotifyID: item.spotifyId, kind: "tracks", deviceID: nil) }
         catch { self.error = (error as? LocalizedError)?.errorDescription ?? "Spotify couldn’t play that." }
     }
@@ -133,25 +142,30 @@ struct LibraryScreen: View {
                 .album: ("1weenld61qoidwYuZ1GESA", "Kind of Blue", "Miles Davis"), .artist: ("0kbYTNQb4Pb1rPbbaF0pT4", "Miles Davis", nil),
                 .track: ("0aWMVrwxPNYkKmFthzmpRi", "Blue in Green", "Miles Davis"),
             ]
-            items = (1...9).map { index in
+            fetched = (1...9).map { index in
                 if index == 1, let (id, title, subtitle) = known[kind] {
                     return Radio.CrateItem(id: Radio.ID("\(index)"), kind: kind, spotifyId: id, title: title, subtitle: subtitle, artworkUrl: nil, track: nil)
                 }
                 return Radio.CrateItem(id: Radio.ID("\(index)"), kind: kind, spotifyId: "fixture\(index)", title: "Record \(index)", subtitle: "Fixture artist", artworkUrl: nil, track: nil)
             }
             // `--uitesting-browse` opens the first record's screen (for screenshots).
-            if ProcessInfo.processInfo.arguments.contains("--uitesting-browse"), browsing == nil, selected == nil { open(items[0]) }
+            if ProcessInfo.processInfo.arguments.contains("--uitesting-browse"), browsing == nil, selected == nil { open(fetched[0]) }
             return
         }
         #endif
         loading = true; error = nil
         defer { if !Task.isCancelled { loading = false } }
         do {
-            items = try await model.api.crate(kind: kind, query: query)
+            fetched = try await model.api.crate(kind: kind, query: query)
+            fetchedQuery = query
             applyFocusRequest()
         }
         catch is CancellationError { return }
-        catch { items = []; self.error = (error as? LocalizedError)?.errorDescription ?? "The crate could not be loaded." }
+        catch {
+            fetched = []; fetchedQuery = query
+            // Recent resources still show without the server; only an empty Library reports the failure.
+            if !(fetchedQuery.isEmpty && !items.isEmpty) { self.error = (error as? LocalizedError)?.errorDescription ?? "The crate could not be loaded." }
+        }
     }
 }
 
