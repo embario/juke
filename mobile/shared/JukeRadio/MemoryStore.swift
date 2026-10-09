@@ -87,6 +87,32 @@ final class MemoryStore {
         reusableTags = MemoryDraft.normalizedTags(reusableTags + updated.tags)
     }
 
+    /// Saves a new description (an empty one clears it).
+    func updateDescription(_ text: String, for memory: MusicMemory) async throws {
+        try await apply(to: memory, text: text, mediaIDs: nil)
+    }
+
+    /// Adds already-uploaded attachments after the memory's current ones.
+    func attach(_ media: [MemoryMedia], to memory: MusicMemory) async throws {
+        let known = Set(memory.media.map(\.id))
+        let ids = memory.media.map(\.id) + media.map(\.id).filter { !known.contains($0) }
+        try await apply(to: memory, text: nil, mediaIDs: ids)
+    }
+
+    /// Removes one attachment from the memory (the server deletes the file).
+    func detach(_ media: MemoryMedia, from memory: MusicMemory) async throws {
+        try await apply(to: memory, text: nil, mediaIDs: memory.media.map(\.id).filter { $0 != media.id })
+    }
+
+    private func apply(to memory: MusicMemory, text: String?, mediaIDs: [UUID]?) async throws {
+        guard let token else { throw MemoryServiceError(message: "Sign in to change this memory.") }
+        let requestGeneration = generation
+        let updated = try await client.update(memory: memory, text: text, mediaIDs: mediaIDs, token: token)
+        guard generation == requestGeneration else { throw CancellationError() }
+        mutationVersion += 1
+        memories = memories.map { $0.id == memory.id ? updated : $0 }
+    }
+
     func delete(_ memory: MusicMemory) async throws {
         guard let token else { throw MemoryServiceError(message: "Sign in before deleting a memory.") }
         let requestGeneration = generation

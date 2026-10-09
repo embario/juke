@@ -1,0 +1,98 @@
+import XCTest
+
+final class MemoryDetailUITests: XCTestCase {
+    @MainActor
+    private func openBeachMemory(extra: [String] = []) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitesting", "--uitesting-authenticated", "--uitesting-tab=memories", "--uitesting-memories-sample"] + extra
+        app.launch()
+        let card = app.descendants(matching: .any).matching(identifier: "memory.card").firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        for _ in 0..<5 where !card.label.hasPrefix("Beach with the family") { app.buttons["memory.deck.next"].tap() }
+        XCTAssertTrue(card.label.hasPrefix("Beach with the family"))
+        card.tap()
+        XCTAssertTrue(app.buttons["memory.playMoment"].waitForExistence(timeout: 5))
+        return app
+    }
+
+    @MainActor
+    func testDetailShowsDescriptionPhotosTagsAndARingedPlayAtTheRightOfItsCapsule() {
+        let app = openBeachMemory()
+        XCTAssertTrue(app.staticTexts["memory.description"].exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "memory.photo").firstMatch.waitForExistence(timeout: 5), "the photo renders")
+        XCTAssertTrue(app.staticTexts["memory.media.summary"].label.contains("1 photo"))
+        XCTAssertTrue(app.staticTexts["#summer"].exists && app.staticTexts["#family"].exists)
+        add(shot("Memory-detail-top"))
+
+        let capsule = app.descendants(matching: .any).matching(identifier: "memory.songCapsule").firstMatch
+        let play = app.buttons["memory.playMoment"]
+        XCTAssertTrue(capsule.exists)
+        XCTAssertGreaterThanOrEqual(play.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(play.frame.height, 44)
+        XCTAssertLessThanOrEqual(capsule.frame.maxX - play.frame.maxX, 20, "Play sits against the capsule's right edge")
+        XCTAssertGreaterThan(play.frame.midX, capsule.frame.midX + capsule.frame.width * 0.3, "and not in the middle")
+    }
+
+    @MainActor
+    func testAtTheLargestTextSizePlayStaysReachableAndAtTheCapsuleEdge() {
+        let app = openBeachMemory(extra: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"])
+        let play = app.buttons["memory.playMoment"]
+        for _ in 0..<6 where !play.isHittable { app.swipeUp() }
+        XCTAssertTrue(play.isHittable, "Play is reachable by scrolling")
+        let capsule = app.descendants(matching: .any).matching(identifier: "memory.songCapsule").firstMatch
+        XCTAssertLessThanOrEqual(capsule.frame.maxX - play.frame.maxX, 24)
+        XCTAssertGreaterThanOrEqual(play.frame.height, 43.9)
+        add(shot("Memory-detail-AccessibilityXXXL"))
+    }
+
+    @MainActor
+    func testTheDescriptionCanBeEditedAndPersists() {
+        let app = openBeachMemory()
+        app.buttons["memory.description.edit"].tap()
+        let field = app.textViews["memory.description.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        for _ in 0..<4 where !field.isHittable { app.swipeUp() }
+        let save = app.buttons["memory.description.save"]
+        XCTAssertFalse(save.isEnabled, "nothing changed yet")
+        field.tap()
+        field.typeText(" We stayed for sunset.")
+        XCTAssertTrue(save.isEnabled)
+        add(shot("Memory-detail-editing-description"))
+        save.tap()
+        let text = app.staticTexts["memory.description"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        XCTAssertTrue(text.label.contains("We stayed for sunset."), text.label)
+        // Leaving and coming back shows the saved text.
+        app.navigationBars.buttons.firstMatch.tap()
+        app.descendants(matching: .any).matching(identifier: "memory.card").firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["memory.description"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["memory.description"].label.contains("We stayed for sunset."))
+    }
+
+    @MainActor
+    func testTagsCanBeAddedFromTheFieldAndFromSuggestions() {
+        let app = openBeachMemory()
+        let tagField = app.textFields["memory.tag.field"]
+        for _ in 0..<6 where !tagField.isHittable { app.swipeUp() }
+        tagField.tap()
+        tagField.typeText("sunset\n")  // Return submits; the Add button can sit under the keyboard
+        XCTAssertTrue(app.staticTexts["#sunset"].waitForExistence(timeout: 5))
+        let suggestion = app.buttons["Add tag beach"]
+        XCTAssertTrue(suggestion.exists, "classifier suggestions are one tap away")
+        add(shot("Memory-detail-tags"))
+        suggestion.tap()
+        XCTAssertTrue(app.staticTexts["#beach"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Add tag beach"].exists, "an adopted suggestion is no longer offered")
+        app.buttons["Remove sunset"].tap()
+        let gone = NSPredicate(format: "exists == false")
+        expectation(for: gone, evaluatedWith: app.staticTexts["#sunset"])
+        waitForExpectations(timeout: 5)
+    }
+
+    private func shot(_ name: String) -> XCTAttachment {
+        let attachment = XCTAttachment(screenshot: XCUIApplication().screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        return attachment
+    }
+}
