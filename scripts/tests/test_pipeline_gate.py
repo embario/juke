@@ -670,6 +670,30 @@ class GateTest(unittest.TestCase):
             self.run_gate(runner)
         self.assertEqual(self.enters(runner), [])
 
+    CLAUDE_BOX = ("  earlier output\n\n\u276f [pipeline-gate] reviewer: PRs ready for you: #10@aaaaaaaaaaaa. Follow\n"
+                  "  docs/...\n\n  bypass permissions on")
+
+    def test_claude_wake_left_in_the_box_is_submitted_with_enter(self):
+        runner = FakeRunner(gh_json((10, SHA_A, ["needs-review", "author:codex"])))
+        self.run_gate(runner)
+        self.assertEqual(self.enters(runner), [])
+        runner.send_states["S1"] = "queued"   # agent-deck never reports it typed or submitted
+        runner.panes["tmux-r2"] = self.CLAUDE_BOX
+        self.clock.t += 180
+        _, out = self.run_gate(runner)
+        self.assertEqual(self.enters(runner), [["tmux", "send-keys", "-t", "tmux-r2", "Enter"]])
+        self.assertIn("pressed Enter in juke-reviewer-2", out)
+
+    def test_claude_wake_is_left_alone_when_the_box_does_not_show_it(self):
+        runner = FakeRunner(gh_json((10, SHA_A, ["needs-review", "author:codex"])))
+        self.run_gate(runner)
+        runner.send_states["S1"] = "queued"
+        for pane in ("\u276f ", "\u276f [pipeline-gate] reviewer: old wake\n\n\u276f 1. Yes\n  2. No", ""):
+            runner.panes["tmux-r2"] = pane
+            self.clock.t += 180
+            self.run_gate(runner)
+        self.assertEqual(self.enters(runner), [])
+
     def test_landed_or_still_queued_codex_wake_is_left_alone(self):
         runner = FakeRunner(gh_json((10, SHA_A, ["needs-review"])))
         self.run_gate(runner)
@@ -741,10 +765,15 @@ class GateTest(unittest.TestCase):
         self.run_gate(runner)
         self.assertEqual(len(self.enters(runner)), 1)  # submitted once the pane can be read again
 
-    def test_claude_wakes_are_never_followed_by_enter(self):
+    def test_claude_wakes_are_tracked_but_not_followed_by_enter_when_delivered(self):
         runner = FakeRunner(gh_json((10, SHA_A, ["needs-review", "author:codex"]), (11, SHA_B, ["approved"])))
         self.run_gate(runner)
         self.assertEqual(sorted(s for s, _ in runner.sent), ["juke-integrator", R2])
+        for send_id in ("S1", "S2"):
+            runner.send_states[send_id] = "landed"
+        self.clock.t += 180
+        self.run_gate(runner)
+        self.assertEqual(self.enters(runner), [])
         self.assertEqual(json.loads(Path(self.state).read_text()).get("sends", {}), {})
 
     def test_dry_run_does_not_press_enter(self):

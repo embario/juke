@@ -100,7 +100,7 @@ PREFERRED_WAIT = 20 * 60  # how long a PR waits for its preferred reviewer befor
 IDLE_STATUSES = ("waiting", "idle")
 BUSY_STATUSES = ("running", "starting")
 WAKE_MARKER = "[pipeline-gate]"
-COMPOSER_PROMPT = "\u203a"  # the character Codex draws in front of its input box
+COMPOSER_PROMPTS = ("\u203a", "\u276f")  # what Codex and Claude draw in front of their input box
 MAX_NUDGES = 3
 SEND_MAX_AGE = 2 * 3600
 
@@ -362,7 +362,7 @@ def apply_profile(run: Runner, session: str, info: dict, want: Profile, dry_run:
 
 
 def composer_holds(run: Runner, tmux: str, marker: str) -> Optional[bool]:
-    """True when the Codex input box in tmux pane `tmux` still shows a message containing `marker`,
+    """True when the Codex or Claude input box in tmux pane `tmux` still shows a message containing `marker`,
     False when the pane was read and it does not, None when the pane could not be read.
 
     Only the last prompt line is checked, so an approval dialog or an empty box is never answered.
@@ -370,7 +370,7 @@ def composer_holds(run: Runner, tmux: str, marker: str) -> Optional[bool]:
     rc, out = run(["tmux", "capture-pane", "-p", "-t", tmux])
     if rc != 0:
         return None
-    prompts = [line for line in out.splitlines() if line.lstrip().startswith(COMPOSER_PROMPT)]
+    prompts = [line for line in out.splitlines() if line.lstrip().startswith(COMPOSER_PROMPTS)]
     return bool(prompts) and marker in prompts[-1]
 
 
@@ -386,15 +386,17 @@ def send_state(run: Runner, send_id: str) -> Optional[str]:
     return data.get("state") if isinstance(data, dict) else None
 
 
-def nudge_send(run: Runner, send_id: str, tmux: str, marker: str, dry_run: bool = False) -> str:
-    """Finish one queued send to a Codex session.
+def nudge_send(run: Runner, send_id: str, tmux: str, marker: str, dry_run: bool = False,
+               any_state: bool = False) -> str:
+    """Finish one queued send to a Codex or Claude session.
 
     Returns "done" (submitted), "failed" (agent-deck typed nothing; sending again is safe),
     "unknown" (the status could not be read), "pending" (not typed yet, or still in the box) or
     "nudged" (Enter was just pressed; not yet confirmed).
 
     "typed" means agent-deck put the text in the input box but could not submit it. If the box
-    still shows our message, press Enter there.
+    still shows our message, press Enter there. A Claude session can also stay "queued" with the
+    text sitting in its box, so for those (`any_state`) any unfinished state is checked the same way.
     """
     state = send_state(run, send_id)
     if state in ("landed", "submitted"):
@@ -403,7 +405,7 @@ def nudge_send(run: Runner, send_id: str, tmux: str, marker: str, dry_run: bool 
         return "failed"
     if state is None:
         return "unknown"
-    if state != "typed":
+    if state != "typed" and not any_state:
         return "pending"
     holds = composer_holds(run, tmux, marker) if tmux else None
     if holds is None:
@@ -436,7 +438,8 @@ def nudge_pending_sends(run: Runner, state: dict, fleet: dict, t: float, dry_run
         if t - rec.get("at", t) > SEND_MAX_AGE:
             continue
         tmux = (fleet.get(rec.get("session")) or {}).get("tmux", "")
-        result = nudge_send(run, send_id, tmux, WAKE_MARKER, dry_run or rec.get("nudges", 0) >= MAX_NUDGES)
+        result = nudge_send(run, send_id, tmux, WAKE_MARKER, dry_run or rec.get("nudges", 0) >= MAX_NUDGES,
+                            any_state=rec.get("tool") == "claude")
         if result == "done":
             continue
         if result == "failed" or (result == "pending" and rec.get("nudges", 0) >= MAX_NUDGES):
@@ -452,12 +455,12 @@ def nudge_pending_sends(run: Runner, state: dict, fleet: dict, t: float, dry_run
 
 def send_wake(run: Runner, session: str, text: str, fleet: Optional[dict], state: dict, t: float,
               role: str = "", keys: Optional[list] = None) -> "tuple[int, str]":
-    """Queue `text` for `session`. A send to a Codex session is remembered so it can be submitted later."""
+    """Queue `text` for `session`. The send is remembered so a wake left in the input box can be submitted later."""
     rc, reply = run(["agent-deck", "session", "send", session, "-queue", text])
     tool = ((fleet or {}).get(session) or {}).get("tool") or getattr((PROFILES.get(session) or {}).get("default"), "tool", "")
     found = re.search(r"Queued\s+(\S+)", reply or "")
-    if rc == 0 and tool == "codex" and found:
-        state.setdefault("sends", {})[found.group(1)] = {"session": session, "at": t, "nudges": 0,
+    if rc == 0 and tool in ("codex", "claude") and found:
+        state.setdefault("sends", {})[found.group(1)] = {"session": session, "at": t, "nudges": 0, "tool": tool,
                                                          "role": role, "keys": list(keys or [])}
     return rc, reply
 
