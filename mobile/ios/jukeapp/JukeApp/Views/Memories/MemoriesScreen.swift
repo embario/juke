@@ -11,46 +11,31 @@ struct MemoriesScreen: View {
 
     var body: some View {
         let store = model.memories
-        List {
-            if let error = store.error { Text(error).foregroundStyle(.secondary) }
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("A THOUGHT").font(.caption.bold()).tracking(1.4).foregroundStyle(model.atmosphere.primary)
-                    Text(store.insights.question).font(.title3.weight(.semibold))
-                    ForEach(store.insights.connections.prefix(3)) { connection in
-                        Label("\(connection.label) · \(connection.count)", systemImage: connection.kind == "person" ? "person" : "link").font(.footnote).foregroundStyle(.secondary)
-                    }
-                }.padding(.vertical, 4)
-            }
-            if store.memories.isEmpty, !store.isLoading {
-                ContentUnavailableView("No memories yet", systemImage: "photo.on.rectangle.angled", description: Text("Save a song with the moment it belongs to."))
-            }
-            ForEach(store.memories) { memory in
-                NavigationLink { MemoryDetail(memory: memory) } label: {
-                    HStack(spacing: 12) {
-                        MemoryThumbnail(memory: memory)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(memory.displayTitle).font(.headline).lineLimit(1)
-                            Text(memory.occurredAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
-                            if let song = memory.songs.first { Label("\(song.title) — \(song.artist)", systemImage: "music.note").font(.subheadline).lineLimit(1) }
+        ScrollView {
+            VStack(spacing: 0) {
+                if let error = store.error { Text(error).font(.footnote).foregroundStyle(.secondary).padding(.horizontal) }
+                if store.memories.isEmpty {
+                    if !store.isLoading {
+                        ContentUnavailableView {
+                            Label("No memories yet", systemImage: "photo.on.rectangle.angled")
+                        } description: {
+                            Text("Save a song with the moment it belongs to.")
+                        } actions: {
+                            Button("New memory") { composing = true }.buttonStyle(.borderedProminent)
+                                .accessibilityIdentifier("memory.empty.new")
                         }
-                        Spacer(minLength: 0)
-                        if model.memoryPlayer.current?.memoryID == memory.id {
-                            Image(systemName: "waveform").foregroundStyle(model.atmosphere.primary)
-                                .accessibilityLabel("Playing").accessibilityIdentifier("memory.playing")
-                        }
+                        .frame(maxWidth: .infinity, minHeight: 420)
                     }
-                }
-                .swipeActions(edge: .trailing) {
-                    Button("Delete", systemImage: "trash", role: .destructive) {
-                        memoryToDelete = memory
-                        showingDeleteConfirmation = true
-                    }
-                    .accessibilityIdentifier("memory.delete")
+                } else {
+                    MemoryDeckView(
+                        memories: store.memories, question: store.insights.question,
+                        open: { detailID = $0.id },
+                        delete: { memoryToDelete = $0; showingDeleteConfirmation = true }
+                    )
+                    .containerRelativeFrame(.vertical, alignment: .center)
                 }
             }
         }
-        .scrollContentBackground(.hidden)
         .background(VibeBackground(atmosphere: model.atmosphere))
         .navigationTitle("Memories")
         .toolbar { ToolbarItem(placement: .primaryAction) { Button { composing = true } label: { Image(systemName: "plus") }.accessibilityLabel("New memory") } }
