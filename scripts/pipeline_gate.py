@@ -72,8 +72,12 @@ URGENT_CAP = 2  # at most this many open PRs may count as P0 or P1
 AGING_STEP = 2 * 3600  # a waiting PR moves up one level per step
 UNLABELED_INFO_AFTER = 15 * 60
 UNLABELED_URGENT_AFTER = 60 * 60
+# launchd gives jobs a minimal PATH. `agent-deck session restart` needs `sysctl` (it reads kern.boottime
+# to tell whether a session still owns processes from an earlier boot) and that lives in /usr/sbin, so
+# /usr/sbin and /sbin must be here or every restart is refused ("executable file not found").
 ENV_PATH = ":".join([
     str(Path.home() / ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
+    "/usr/sbin", "/sbin",
 ])
 
 
