@@ -238,6 +238,28 @@ class VibeAPITests(APITestCase):
         feed = self.client.get('/api/v1/vibe/encrypted-chat-records')
         self.assertEqual(feed.data['envelopes'], [])
 
+    def test_message_safety_notice_acknowledgement_syncs_per_account(self):
+        payload = self.envelope()
+        payload['kind'] = 'messageSafetyNotice'
+        saved = self.client.put(
+            f"/api/v1/vibe/encrypted-chat-records/{payload['recordID']}",
+            payload,
+            format='json',
+        )
+        self.assertEqual(saved.status_code, status.HTTP_201_CREATED)
+
+        other = JukeUser.objects.create_user(username='other-notice', email='other-notice@example.com', password='pass1234')
+        other_token = Token.objects.get(user=other)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {other_token.key}')
+        other_feed = self.client.get('/api/v1/vibe/encrypted-chat-records')
+        self.assertEqual(other_feed.status_code, status.HTTP_200_OK)
+        self.assertEqual(other_feed.data['envelopes'], [])
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+        account_feed = self.client.get('/api/v1/vibe/encrypted-chat-records')
+        self.assertEqual(account_feed.status_code, status.HTTP_200_OK)
+        self.assertEqual(account_feed.data['envelopes'], [payload])
+
     def test_encrypted_put_rejects_stale_or_ambiguous_overwrite(self):
         payload = self.envelope(modified_at=800000100.0)
         url = f"/api/v1/vibe/encrypted-chat-records/{payload['recordID']}"
@@ -273,6 +295,29 @@ class VibeAPITests(APITestCase):
             format='json',
         )
         self.assertEqual(rejected.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch('openai.OpenAI')
+    @patch('django.conf.settings.OPENAI_API_KEY', 'test-openai-key')
+    @patch('django.conf.settings.VIBE_CHAT_MODEL', 'test-model')
+    def test_chat_service_defaults_to_short_replies(self, openai_client):
+        from vibe.services import generate_chat_response
+
+        response = openai_client.return_value.chat.completions.create.return_value
+        response.choices[0].message.content = '  A compact, helpful reply.  '
+
+        reply = generate_chat_response(
+            message='Why does this song feel nostalgic?',
+            current_track='Blue in Green',
+            listener_name='Listener',
+        )
+
+        self.assertEqual(reply, 'A compact, helpful reply.')
+        request = openai_client.return_value.chat.completions.create.call_args.kwargs
+        # Keep the fuller-answer headroom when someone explicitly asks for detail;
+        # the system prompt keeps the normal response short.
+        self.assertEqual(request['max_tokens'], 180)
+        self.assertIn('one to three short sentences', request['messages'][0]['content'])
+        self.assertIn('explicitly asks for detail', request['messages'][0]['content'])
 
     def test_vibe_routes_accept_mac_bearer_token(self):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.token.key}')

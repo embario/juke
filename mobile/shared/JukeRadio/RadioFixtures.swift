@@ -120,8 +120,10 @@ actor RadioFixturePlayback: RadioPlaybackControlling {
         }
     }
 
-    func start(_ track: Radio.Track) { episodePlaying = false; current = track; progress = 0; playing = true; updatedAt = Date() }
-    func enqueue(_ track: Radio.Track) { queue.append(track) }
+    private var known: [String: Radio.Track] = [:]
+
+    func start(_ track: Radio.Track) { known[track.spotifyId] = track; episodePlaying = false; current = track; progress = 0; playing = true; updatedAt = Date() }
+    func enqueue(_ track: Radio.Track) { known[track.spotifyId] = track; queue.append(track) }
 
     func state() async throws -> RadioPlaybackSnapshot? {
         settle()
@@ -145,7 +147,8 @@ actor RadioFixturePlayback: RadioPlaybackControlling {
     }
     func play(trackID: String, at position: TimeInterval, deviceID: String?) async throws -> RadioPlaybackSnapshot? {
         settle()
-        if !deviceSleeps, current?.spotifyId == trackID { progress = position; playing = true }
+        guard let track = current?.spotifyId == trackID ? current : known[trackID] else { throw JukeAPIError.notFound(code: nil, detail: nil) }
+        if !deviceSleeps { current = track; progress = position; playing = true }
         return try await state()
     }
     func next(deviceID: String?) async throws {

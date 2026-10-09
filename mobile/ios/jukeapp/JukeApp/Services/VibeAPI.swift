@@ -61,10 +61,21 @@ actor VibeAPI {
     }
 
     func encryptedChanges(token: String) async throws -> [EncryptedEnvelope] {
-        var request = URLRequest(url: baseURL.appending(path: "vibe/encrypted-chat-records")); request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw CocoaError(.fileReadUnknown) }
-        return try JSONDecoder().decode(ChangeSet.self, from: data).envelopes
+        var cursor: String?
+        var envelopes: [EncryptedEnvelope] = []
+        repeat {
+            var components = URLComponents(url: baseURL.appending(path: "vibe/encrypted-chat-records"), resolvingAgainstBaseURL: false)!
+            if let cursor { components.queryItems = [.init(name: "cursor", value: cursor)] }
+            var request = URLRequest(url: components.url!)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw CocoaError(.fileReadUnknown) }
+            let page = try JSONDecoder().decode(ChangeSet.self, from: data)
+            envelopes.append(contentsOf: page.envelopes)
+            guard !page.envelopes.isEmpty, let next = page.cursor, next != cursor else { break }
+            cursor = next
+        } while true
+        return envelopes
     }
 
     private func post<Body: Encodable, Reply: Decodable>(_ path: String, body: Body, token: String, response: Reply.Type) async throws -> Reply {

@@ -97,6 +97,9 @@ final class RadioController {
     @ObservationIgnored private var userPaused = false
     @ObservationIgnored private var currentTrackSkipped = false
     @ObservationIgnored private var recentTrackIDs: [String] = []
+    /// Songs radio already played, oldest first, for Previous.
+    @ObservationIgnored private(set) var playedHistory: [Radio.Track] = []
+    @ObservationIgnored private var replayingPrevious = false
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var started = false
     /// Bumped on sign-out; responses from an older session are dropped.
@@ -252,6 +255,7 @@ final class RadioController {
         deviceID = nil
         deviceName = nil
         recentTrackIDs = []
+        playedHistory = []
         knownPicks = [:]
         staleQueuedIDs = []
         expectedTrackID = nil
@@ -607,6 +611,38 @@ final class RadioController {
         }
         await post(.skip, track: playing, positionMs: milliseconds(position(at: now())))
         await advance()
+    }
+
+    /// Replays the song that played before this one on the station. With no
+    /// earlier song it restarts the current one.
+    func previous() async {
+        guard isOnAir, track != nil, !isBusy else { return }
+        guard let prior = playedHistory.last else { await seek(to: 0); return }
+        do {
+            _ = try await playback.play(trackID: prior.spotifyId, at: 0, deviceID: deviceID ?? preferences.lastDeviceID)
+        } catch {
+            issue = RadioIssue.from(error, stationName: currentStation?.name ?? "Radio")
+            return
+        }
+        playedHistory.removeLast()
+        replayingPrevious = true
+        currentTrackSkipped = true
+        expectedTrackID = prior.spotifyId
+        expectationDeadline = now().addingTimeInterval(Self.startGracePeriod)
+        issue = nil
+        userPaused = false
+        // A paused or unanswered song is over: this is a new start, watched like any other.
+        isResuming = false
+        missedStates = 0
+        resumeFailed = false
+        resumeNamesSong = false
+        restoredPause = false
+        preferences.pausedSession = nil
+        setTrack(prior)
+        replayingPrevious = false
+        setPosition(0, playing: true)
+        preferences.wasPlaying = true
+        ensurePolling()
     }
 
     /// Moves on to the next song without logging a skip (the keep-out menu
@@ -1165,6 +1201,10 @@ final class RadioController {
 
     private func setTrack(_ next: Radio.Track?) {
         guard next != track else { return }
+        if !replayingPrevious, let old = track, next != nil, old.spotifyId != next?.spotifyId {
+            playedHistory.append(old)
+            if playedHistory.count > 20 { playedHistory.removeFirst(playedHistory.count - 20) }
+        }
         track = next
         onTrackChange?(next)
     }

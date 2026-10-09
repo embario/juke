@@ -32,30 +32,53 @@ struct ChatView: View {
             .onChange(of: model.messages.count) { _, _ in withAnimation { proxy.scrollTo("bottom") } }
             .onChange(of: focused) { _, isFocused in if isFocused { withAnimation { proxy.scrollTo("bottom") } } }
         }
-        // The composer is the only bottom inset on this screen (the now-playing pill is
-        // hidden here), so the message list ends exactly above it and above the keyboard.
+        // The composer (with the player above it, or its controls beside Done while the
+        // keyboard is up) is the only bottom inset on this screen, so the message list
+        // ends exactly above it and above the keyboard.
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         .navigationTitle("Chat")
         #if DEBUG
         .onAppear { if ProcessInfo.processInfo.arguments.contains("--uitesting-focus-chat") { focused = true } }
         #endif
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focused = false }
-            }
-        }
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom) {
-            TextField("Ask about what you're hearing…", text: Bindable(model).draft, axis: .vertical)
-                .lineLimit(1...4).padding(12)
-                .background(theme.well.color, in: RoundedRectangle(cornerRadius: 17))
-                .focused($focused)
-            Button { Task { await model.send() } } label: { Image(systemName: "arrow.up").frame(width: 32, height: 32) }
-                .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(model.atmosphere.primary)
-                .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        VStack(alignment: .leading, spacing: 0) {
+            // Own both controls in this inset: the system keyboard toolbar can
+            // occupy the same trailing space as Send on compact phones.
+            if focused {
+                HStack {
+                    Button { focused = false } label: {
+                        Text("Done")
+                            .font(.body.weight(.semibold))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                        .accessibilityLabel("Dismiss keyboard")
+                        .accessibilityIdentifier("chat.dismissKeyboard")
+                    Spacer()
+                    // Keep the player reachable while typing, without the full island.
+                    PlayerControlButtons()
+                }
+            } else {
+                MiniPlayerPill(embedded: true)
+            }
+            HStack(alignment: .bottom, spacing: 12) {
+                TextField("Ask about what you're hearing…", text: Bindable(model).draft, axis: .vertical)
+                    .lineLimit(1...4).padding(12)
+                    .background(theme.well.color, in: RoundedRectangle(cornerRadius: 17))
+                    .focused($focused)
+                    .accessibilityIdentifier("chat.draft")
+                Button { Task { await model.send() } } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17))
+                        .frame(width: 32, height: 32)
+                }
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(model.atmosphere.primary)
+                    .accessibilityLabel("Send message")
+                    .accessibilityIdentifier("chat.send")
+                    .disabled(!ChatComposer.canSend(draft: model.draft, isSending: model.isSending))
+            }
         }
         .padding(.horizontal).padding(.vertical, 8)
         .background(.bar)

@@ -342,6 +342,40 @@ final class RadioControllerTests: XCTestCase {
         XCTAssertEqual(events.map(\.event), [.skip, .play], "a skipped song is not 'complete'")
     }
 
+    func testPreviousReplaysThePrecedingStationSong() async {
+        let radio = await onAir()
+        await radio.skip()
+        XCTAssertEqual(radio.track, second)
+        await radio.previous()
+        let calls = await playback.calls
+        XCTAssertEqual(calls.last, "play:\(first.spotifyId)@0:-")
+        XCTAssertEqual(radio.track, first)
+        XCTAssertTrue(radio.isPlaying)
+        // Going back does not stack the song we left, so a second Previous has nothing earlier.
+        XCTAssertTrue(radio.playedHistory.isEmpty)
+        XCTAssertTrue(radio.isPlaying)
+        await radio.previous()
+        let after = await playback.calls
+        XCTAssertEqual(after.last, "seek:0", "with no earlier song Previous restarts this one")
+    }
+
+    func testPreviousFromAPausedSongStartsTheEarlierSongAndForgetsThePause() async {
+        let radio = await onAir()
+        await radio.skip()
+        clock.advance(20)
+        await playback.set(playing(second, at: 20))
+        await radio.refresh()
+        await radio.pause()
+        XCTAssertEqual(radio.status, .paused)
+        await playback.set(nil)
+        await radio.previous()
+        let calls = await playback.calls
+        XCTAssertEqual(calls.last, "play:\(first.spotifyId)@0:device-1", "the device radio last heard from is named")
+        XCTAssertEqual(radio.track, first)
+        XCTAssertEqual(radio.status, .playing)
+        XCTAssertNil(RadioPreferences(defaults: defaults).pausedSession, "the paused song is not brought back after a relaunch")
+    }
+
     func testKeepOutNeverPlayArtistSendsTheArtistID() async {
         let radio = await onAir()
         await radio.keepOut(.neverArtist)

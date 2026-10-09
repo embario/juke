@@ -6,6 +6,8 @@ struct MemoriesScreen: View {
     @Environment(VibeAppModel.self) private var model
     @State private var composing = false
     @State private var detailID: UUID?
+    @State private var memoryToDelete: MusicMemory?
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         let store = model.memories
@@ -34,12 +36,36 @@ struct MemoriesScreen: View {
                         }
                     }
                 }
+                .swipeActions(edge: .trailing) {
+                    Button("Delete", systemImage: "trash", role: .destructive) {
+                        memoryToDelete = memory
+                        showingDeleteConfirmation = true
+                    }
+                    .accessibilityIdentifier("memory.delete")
+                }
             }
         }
         .scrollContentBackground(.hidden)
         .background(VibeBackground(atmosphere: model.atmosphere))
         .navigationTitle("Memories")
         .toolbar { ToolbarItem(placement: .primaryAction) { Button { composing = true } label: { Image(systemName: "plus") }.accessibilityLabel("New memory") } }
+        .confirmationDialog("Delete this memory?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button("Delete Memory", role: .destructive) {
+                guard let memoryToDelete else { return }
+                Task {
+                    do {
+                        try await store.delete(memoryToDelete)
+                        if detailID == memoryToDelete.id { detailID = nil }
+                        self.memoryToDelete = nil
+                    } catch {
+                        store.error = error.localizedDescription
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { memoryToDelete = nil }
+        } message: {
+            if let memoryToDelete { Text("\(memoryToDelete.displayTitle) will be permanently deleted.") }
+        }
         .refreshable { await store.refresh() }
         .task(id: model.session?.account.id) {
             await store.refresh()

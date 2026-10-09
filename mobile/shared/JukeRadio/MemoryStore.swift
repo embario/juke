@@ -87,6 +87,15 @@ final class MemoryStore {
         reusableTags = MemoryDraft.normalizedTags(reusableTags + updated.tags)
     }
 
+    func delete(_ memory: MusicMemory) async throws {
+        guard let token else { throw MemoryServiceError(message: "Sign in before deleting a memory.") }
+        let requestGeneration = generation
+        try await client.delete(memory, token: token)
+        guard generation == requestGeneration else { throw CancellationError() }
+        mutationVersion += 1
+        memories.removeAll { $0.id == memory.id }
+    }
+
     func upload(_ data: Data, filename: String, contentType: String) async throws -> MemoryMedia {
         guard let token else { throw MemoryServiceError(message: "Sign in to attach media.") }
         let requestGeneration = generation

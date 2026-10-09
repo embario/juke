@@ -186,12 +186,14 @@ private struct Transport: View {
 
     var body: some View {
         let radio = model.radio
-        HStack(spacing: 36) {
+        HStack(spacing: 26) {
             Menu {
                 Button("Save this moment", systemImage: "bookmark") { Task { await radio.saveMoment() } }
                 Button("Put the record away", systemImage: "tray.and.arrow.down") { Task { await radio.putAway() } }
                 Button("Lyrics", systemImage: "text.quote") { lyricsSoon = true }
             } label: { Image(systemName: "ellipsis.circle").font(.title2) }
+            Button { Task { await radio.previous() } } label: { Image(systemName: "backward.fill").font(.title2) }
+                .accessibilityLabel("Previous song")
             Button { Task { await radio.togglePlayPause() } } label: {
                 Image(systemName: radio.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 64))
             }
@@ -275,32 +277,102 @@ struct IssueView: View {
     }
 }
 
-/// Compact player shown above the tab bar on every tab except Radio.
-struct MiniPlayerPill: View {
+/// Previous, play/pause and next for whatever is playing. Disabled (but visible)
+/// when the sound comes from a source Juke cannot control.
+struct PlayerControlButtons: View {
     @Environment(VibeAppModel.self) private var model
 
     var body: some View {
-        let radio = model.radio
-        if radio.isOnAir, let track = radio.track {
-            HStack(spacing: 11) {
-                AsyncImage(url: track.artworkURL) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.15) }
-                    .frame(width: 42, height: 42).clipShape(RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(track.title).font(.subheadline.bold()).lineLimit(1)
-                    // A paused song stays here with its controls; the line says why nothing is playing.
-                    Text(radio.status.caption ?? track.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        .accessibilityIdentifier("miniPlayer.status")
-                }
-                Spacer()
-                Button { Task { await radio.togglePlayPause() } } label: { Image(systemName: radio.isPlaying ? "pause.fill" : "play.fill").font(.title3) }
-                    .accessibilityLabel(radio.isPlaying ? "Pause" : "Play")
-                Button { Task { await radio.skip() } } label: { Image(systemName: "forward.fill").font(.title3) }
-                    .accessibilityLabel("Next song")
-            }
-            .padding(10).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18)).padding(.horizontal).padding(.bottom, 4)
-            .contentShape(Rectangle()).onTapGesture { model.tab = .radio }
-        } else {
-            NowPlayingPill()
+        let transport = model.transport
+        HStack(spacing: 0) {
+            control("backward.fill", "Previous song", id: "player.previous") { await transport.press(.previous) }
+            control(transport.isPlaying ? "pause.fill" : "play.fill", transport.isPlaying ? "Pause" : "Play", id: "player.playPause") { await transport.press(.playPause) }
+            control("forward.fill", "Next song", id: "player.next") { await transport.press(.next) }
         }
+        .disabled(!transport.isControllable)
+        .onChange(of: model.nowPlaying.isPlaying) { _, _ in transport.observed() }
+        .alert("Playback", isPresented: Binding(get: { transport.message != nil }, set: { if !$0 { transport.message = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(transport.message ?? "") }
+    }
+
+    private func control(_ symbol: String, _ label: String, id: String, action: @escaping () async -> Void) -> some View {
+        Button { Task { await action() } } label: { Image(systemName: symbol).font(.title3) }
+            .buttonStyle(.plain)
+            .frame(width: 36, height: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel(label)
+            .accessibilityIdentifier(id)
+    }
+}
+
+/// Persistent player shown above the tab bar on every tab except Radio (which has
+/// its own) and inside Chat's composer (`embedded`).
+/// Always offers previous, play/pause and next, whatever is playing.
+struct MiniPlayerPill: View {
+    @Environment(VibeAppModel.self) private var model
+    var embedded = false
+
+    var body: some View {
+        let radio = model.radio
+        HStack(spacing: 8) {
+            if radio.isOnAir, let track = radio.track {
+                MiniPlayerArtwork(url: track.artworkURL, local: nil, tint: model.atmosphere.primary)
+                // A paused song stays here with its controls; the line says why nothing is playing.
+                titles(track.title, radio.status.caption ?? track.artist)
+            } else {
+                MiniPlayerArtwork(url: model.nowPlaying.track?.artworkURL, local: model.nowPlaying.track?.localArtwork, tint: model.atmosphere.primary)
+                titles(model.nowPlaying.track?.title ?? "Listening for music",
+                       model.nowPlaying.track.map { "\($0.artist) · \($0.source)" } ?? model.nowPlaying.status)
+            }
+            Spacer(minLength: 0)
+            PlayerControlButtons()
+            if !radio.isOnAir {
+                Menu {
+                    Button(model.nowPlaying.isListeningAroundMe ? "Stop Around Me" : "Identify Around Me") { Task { await model.nowPlaying.setAroundMe(!model.nowPlaying.isListeningAroundMe) } }
+                    Text("Apple Music and connected Spotify playback are checked automatically while Juke is active.")
+                } label: { Image(systemName: "ellipsis.circle").font(.title3).frame(width: 30, height: 44) }
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: MiniPlayerStyle.cornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: MiniPlayerStyle.cornerRadius).strokeBorder(.primary.opacity(MiniPlayerStyle.borderOpacity), lineWidth: MiniPlayerStyle.borderWidth))
+        .shadow(color: .black.opacity(MiniPlayerStyle.shadowOpacity), radius: MiniPlayerStyle.shadowRadius, y: 4)
+        .padding(.horizontal, embedded ? 0 : 16).padding(.top, embedded ? 2 : 6).padding(.bottom, embedded ? 6 : 8)
+        .contentShape(Rectangle())
+        .onTapGesture { if radio.isOnAir { model.tab = .radio } }
+        .background { Color.clear.accessibilityIdentifier("player.island") }
+    }
+
+    private func titles(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.subheadline.bold()).lineLimit(1)
+            Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .accessibilityIdentifier("miniPlayer.status")
+        }
+    }
+}
+
+/// Island styling, kept in one place so the separation from page content is testable.
+enum MiniPlayerStyle {
+    static let cornerRadius: CGFloat = 20
+    static let borderWidth: CGFloat = 1
+    static let borderOpacity: Double = 0.22
+    static let shadowOpacity: Double = 0.22
+    static let shadowRadius: CGFloat = 12
+}
+
+private struct MiniPlayerArtwork: View {
+    let url: URL?
+    let local: UIImage?
+    let tint: Color
+
+    var body: some View {
+        Group {
+            if let local { Image(uiImage: local).resizable().scaledToFill() }
+            else if let url { AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.15) } }
+            else { tint.opacity(0.2).overlay(Image(systemName: "waveform")) }
+        }
+        .frame(width: 42, height: 42).clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }

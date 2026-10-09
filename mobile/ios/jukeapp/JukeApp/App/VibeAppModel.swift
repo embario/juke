@@ -35,6 +35,8 @@ final class VibeAppModel {
     var memoryPlayback: MemoryPlaybackMark?
     /// Plays a memory's saved song and moment.
     let memoryPlayer: MemoryPlayer
+    /// Previous / play-pause / next for the player shown on every tab.
+    let transport: PlayerTransport
     /// Album-art colour feeding `JukeTheme`.
     let artwork = ArtworkPalette()
     /// DEBUG screenshots: pins the artwork colour (`--uitesting-artwork-hex=RRGGBB`).
@@ -99,6 +101,9 @@ final class VibeAppModel {
             )
         }
         memoryPlayer = MemoryPlayer(token: { accessToken.get() })
+        let nowPlaying = nowPlaying
+        transport = PlayerTransport(radio: radio, token: { accessToken.get() }, externalIsPlaying: { nowPlaying.isPlaying },
+                                    externalSource: { TransportSource(trackSource: nowPlaying.track?.source) })
         memoryPlayer.marked = { [weak self] in self?.memoryPlayback = $0 }
         radio.onTrackChange = { [weak self] track in
             self?.radioTrackChanged(track)
@@ -133,6 +138,12 @@ final class VibeAppModel {
                     await radio.pause()
                     if resumes { try? await Task.sleep(for: .seconds(1)); await radio.resume() }
                 }
+            }
+            // Screenshots of the player with radio off air: `--uitesting-now-playing=spotify|apple|aroundme`.
+            if let value = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-now-playing=") })?.dropFirst(24) {
+                let source = ["apple": "Apple Music", "aroundme": "Shazam · Around Me"][String(value)] ?? "Spotify"
+                nowPlaying.track = NowPlayingTrack(id: "ui-\(value)", title: "Blue in Green", artist: "Miles Davis", album: "Kind of Blue",
+                                                   artworkURL: nil, localArtwork: nil, source: source)
             }
             if let hex = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-artwork-hex=") })?.dropFirst(24) {
                 artworkOverride = RGB(hex: "#" + hex)
@@ -186,7 +197,8 @@ final class VibeAppModel {
 
     func send() async {
         guard let session, let token = session.accessToken else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines); guard !text.isEmpty, !isSending else { return }
+        guard ChatComposer.canSend(draft: draft, isSending: isSending) else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         draft = ""; isSending = true; defer { isSending = false }
         do {
             try await store(text, role: "user")
@@ -215,7 +227,7 @@ final class VibeAppModel {
         messages.append(ChatLine(id: id, role: role, content: text, createdAt: createdAt))
         if let token = session?.accessToken {
             do { try await vibe.upload(.init(recordID: id, accountID: accountID, kind: "chatMessage", ciphertext: sealed, modifiedAt: createdAt, encryptionVersion: 1), token: token) }
-            catch { errorMessage = "This message is safe on this iPhone; encrypted sync will retry when Neptune is reachable." }
+            catch { presentMessageSafetyNotice(accountID: accountID, token: token) }
         }
     }
 
@@ -233,13 +245,40 @@ final class VibeAppModel {
         guard let session, let token = session.accessToken else { return }
         do {
             let incoming = try await vibe.encryptedChanges(token: token)
+            let acknowledged = incoming.contains { $0.accountID == session.account.id && $0.kind == MessageSafetyNotice.recordKind }
+            if acknowledged { MessageSafetyNotice.markShown(for: session.account.id) }
+            else if MessageSafetyNotice.hasBeenShown(for: session.account.id) {
+                await uploadMessageSafetyAcknowledgement(accountID: session.account.id, token: token)
+            }
             let existing = try context.fetch(FetchDescriptor<EncryptedChatMessage>())
             let ids = Set(existing.map(\.id)); let vault = ChatVault(accountID: session.account.id)
             for envelope in incoming where !ids.contains(envelope.recordID) && envelope.accountID == session.account.id {
+                guard envelope.kind == "chatMessage" else { continue }
                 guard let payload = try? await vault.open(envelope.ciphertext, id: envelope.recordID) else { continue }
                 context.insert(EncryptedChatMessage(id: envelope.recordID, accountID: envelope.accountID, role: payload.role, encryptedContent: envelope.ciphertext, trackIdentity: payload.trackIdentity, createdAt: payload.createdAt))
             }
             try context.save()
         } catch { }
+    }
+
+    private func presentMessageSafetyNotice(accountID: String, token: String) {
+        guard MessageSafetyNotice.markShown(for: accountID) else { return }
+        errorMessage = MessageSafetyNotice.message
+        if !ProcessInfo.processInfo.arguments.contains("--uitesting") {
+            Task { await uploadMessageSafetyAcknowledgement(accountID: accountID, token: token) }
+        }
+    }
+
+    private func uploadMessageSafetyAcknowledgement(accountID: String, token: String) async {
+        let id = MessageSafetyNotice.recordID(for: accountID)
+        let createdAt = Date()
+        let payload = PrivateChatPayload(role: "messageSafetyNotice", content: "shown", trackIdentity: nil, createdAt: createdAt)
+        do {
+            let ciphertext = try await ChatVault(accountID: accountID).seal(payload, id: id)
+            try await vibe.upload(
+                .init(recordID: id, accountID: accountID, kind: MessageSafetyNotice.recordKind, ciphertext: ciphertext, modifiedAt: createdAt, encryptionVersion: 1),
+                token: token
+            )
+        } catch { /* The local per-account flag prevents repeats; the next session retries sync. */ }
     }
 }

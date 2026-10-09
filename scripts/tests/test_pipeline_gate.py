@@ -774,5 +774,31 @@ class GateTest(unittest.TestCase):
         self.assertFalse(Path(self.state).exists())
 
 
+class SubprocessEnvironmentTest(unittest.TestCase):
+    """The gate runs under launchd with a minimal PATH; `agent-deck session restart` needs sysctl."""
+
+    def test_path_includes_the_sbin_directories(self):
+        dirs = pg.ENV_PATH.split(":")
+        self.assertIn("/usr/sbin", dirs)
+        self.assertIn("/sbin", dirs)
+
+    def test_default_run_finds_sysctl_even_when_the_caller_has_a_minimal_path(self):
+        import os
+        import shutil
+        if shutil.which("sysctl", path="/usr/sbin:/sbin") is None:
+            self.skipTest("sysctl is not installed on this host")
+        saved = os.environ.get("PATH")
+        os.environ["PATH"] = "/usr/bin:/bin"  # what launchd hands a job: no /usr/sbin
+        try:
+            rc, out = pg.default_run(["sh", "-c", "command -v sysctl"])
+        finally:
+            if saved is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = saved
+        self.assertEqual(rc, 0, out)
+        self.assertIn("sysctl", out)
+
+
 if __name__ == "__main__":
     unittest.main()

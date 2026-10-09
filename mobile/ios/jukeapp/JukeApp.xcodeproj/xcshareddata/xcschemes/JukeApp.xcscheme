@@ -64,6 +64,17 @@
                ReferencedContainer = "container:JukeApp.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "4C1528524579FE811E85CC31"
+               BuildableName = "JukeAppUITests.xctest"
+               BlueprintName = "JukeAppUITests"
+               ReferencedContainer = "container:JukeApp.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

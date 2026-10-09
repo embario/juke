@@ -117,6 +117,18 @@ actor MemoryClient {
         return try await send("memories/\(memory.id.uuidString.lowercased())/", method: "PATCH", data: Self.encoder().encode(Body(tags: tags, excludedTags: excluded)), token: token, as: MusicMemory.self)
     }
 
+    func delete(_ memory: MusicMemory, token: String) async throws {
+        if fixtures {
+            fixtureMemories.removeAll { $0.id == memory.id }
+            return
+        }
+        var request = URLRequest(url: baseURL.appending(path: "memories/\(memory.id.uuidString.lowercased())/"))
+        request.httpMethod = "DELETE"
+        request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        try Self.validate(response, data: data)
+    }
+
     func upload(data: Data, filename: String, contentType: String, token: String) async throws -> MemoryMedia {
         guard data.count <= 50 * 1_024 * 1_024 else { throw MemoryServiceError(message: "Choose a photo or video smaller than 50 MB.") }
         if fixtures {

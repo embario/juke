@@ -132,7 +132,7 @@ protocol RadioPlaybackControlling: Sendable {
     /// when it reported none (no player took the command).
     @discardableResult
     func resume(deviceID: String?) async throws -> RadioPlaybackSnapshot?
-    /// Starts one song at `position`. Unlike `resume` this does not depend on what Spotify
+    /// Starts one song at `position` (a paused song again, or the preceding station song). Unlike `resume` this does not depend on what Spotify
     /// remembers, so it also works after the Spotify app was reopened.
     @discardableResult
     func play(trackID: String, at position: TimeInterval, deviceID: String?) async throws -> RadioPlaybackSnapshot?
