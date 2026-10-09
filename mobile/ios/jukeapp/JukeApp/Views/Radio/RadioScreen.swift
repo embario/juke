@@ -67,6 +67,11 @@ private struct NowPlayingCard: View {
                     Text(radio.track?.title ?? "Nothing playing").font(.title2.bold()).multilineTextAlignment(.center).lineLimit(2)
                     Text(radio.track?.artist ?? "Press play to start your station").foregroundStyle(.secondary).lineLimit(1)
                     if let album = radio.track?.album { Text(album).font(.caption).foregroundStyle(.tertiary).lineLimit(1) }
+                    // "Paused" or "Waiting for Spotify…"; a missing device is explained by `IssueView` below.
+                    if radio.status == .paused || radio.status == .resuming, let caption = radio.status.caption {
+                        Text(caption).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("radio.status")
+                    }
                 }
                 ProgressScrubber()
                 Transport()
@@ -255,7 +260,12 @@ struct IssueView: View {
                 Text(issue.message).font(.callout).multilineTextAlignment(.center)
                 switch issue {
                 case .noActiveDevice:
-                    Button("Open Spotify") { if let url = URL(string: "spotify://") { openURL(url) } }.buttonStyle(.bordered)
+                    // Only the Spotify app itself can wake a player iOS has suspended. Radio resumes when Juke is active again.
+                    Button("Open Spotify") {
+                        model.radio.willOpenSpotify()
+                        if let url = URL(string: "spotify://") { openURL(url) }
+                    }
+                    .buttonStyle(.bordered).accessibilityIdentifier("radio.openSpotify")
                 case .spotifyNotLinked:
                     Button("Connect Spotify") { openURL(AppConfiguration.currentFrontendURL) }.buttonStyle(.bordered)
                 default: EmptyView()
@@ -308,7 +318,8 @@ struct MiniPlayerPill: View {
         HStack(spacing: 8) {
             if radio.isOnAir, let track = radio.track {
                 MiniPlayerArtwork(url: track.artworkURL, local: nil, tint: model.atmosphere.primary)
-                titles(track.title, track.artist)
+                // A paused song stays here with its controls; the line says why nothing is playing.
+                titles(track.title, radio.status.caption ?? track.artist)
             } else {
                 MiniPlayerArtwork(url: model.nowPlaying.track?.artworkURL, local: model.nowPlaying.track?.localArtwork, tint: model.atmosphere.primary)
                 titles(model.nowPlaying.track?.title ?? "Listening for music",
@@ -337,6 +348,7 @@ struct MiniPlayerPill: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.subheadline.bold()).lineLimit(1)
             Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .accessibilityIdentifier("miniPlayer.status")
         }
     }
 }

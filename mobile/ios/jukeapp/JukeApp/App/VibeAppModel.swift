@@ -129,6 +129,16 @@ final class VibeAppModel {
             if ProcessInfo.processInfo.arguments.contains("--uitesting-radio-putaway") {
                 Task { try? await Task.sleep(for: .seconds(2)); await radio.putAway() }
             }
+            // `--uitesting-radio-pause` pauses the song; `--uitesting-radio-resume` then presses play again
+            // (with `--uitesting-radio-device-asleep` Spotify ignores it, as a suspended Spotify app does).
+            let resumes = ProcessInfo.processInfo.arguments.contains("--uitesting-radio-resume")
+            if resumes || ProcessInfo.processInfo.arguments.contains("--uitesting-radio-pause") {
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    await radio.pause()
+                    if resumes { try? await Task.sleep(for: .seconds(1)); await radio.resume() }
+                }
+            }
             // Screenshots of the player with radio off air: `--uitesting-now-playing=spotify|apple|aroundme`.
             if let value = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-now-playing=") })?.dropFirst(24) {
                 let source = ["apple": "Apple Music", "aroundme": "Shazam · Around Me"][String(value)] ?? "Spotify"

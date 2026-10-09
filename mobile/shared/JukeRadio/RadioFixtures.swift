@@ -108,6 +108,9 @@ actor RadioFixturePlayback: RadioPlaybackControlling {
     private var updatedAt = Date()
     /// `--uitesting-episode`: Spotify is playing a podcast until radio starts a station.
     private var episodePlaying = ProcessInfo.processInfo.arguments.contains("--uitesting-episode")
+    /// `--uitesting-radio-device-asleep`: a paused player disappears, and Spotify ignores play
+    /// (the Spotify app was suspended).
+    private let deviceSleeps = ProcessInfo.processInfo.arguments.contains("--uitesting-radio-device-asleep")
 
     private func settle() {
         if playing { progress += Date().timeIntervalSince(updatedAt) }
@@ -121,10 +124,6 @@ actor RadioFixturePlayback: RadioPlaybackControlling {
 
     func start(_ track: Radio.Track) { known[track.spotifyId] = track; episodePlaying = false; current = track; progress = 0; playing = true; updatedAt = Date() }
     func enqueue(_ track: Radio.Track) { known[track.spotifyId] = track; queue.append(track) }
-    func play(trackID: String, deviceID: String?) async throws {
-        guard let track = known[trackID] else { throw JukeAPIError.notFound(code: nil, detail: nil) }
-        start(track)
-    }
 
     func state() async throws -> RadioPlaybackSnapshot? {
         settle()
@@ -134,14 +133,24 @@ actor RadioFixturePlayback: RadioPlaybackControlling {
             episode.contentType = "episode"
             return episode
         }
-        guard let current else { return nil }
+        guard let current, playing || !deviceSleeps else { return nil }
         return RadioPlaybackSnapshot(trackID: current.spotifyId, title: current.title, artist: current.artist, artistID: current.artistId,
                                      album: current.album, albumID: current.albumId, durationMs: current.durationMs,
                                      progressMs: Int(progress * 1000), isPlaying: playing, deviceID: "ui-test-device", deviceName: "Test Mac")
     }
 
     func pause(deviceID: String?) async throws { settle(); playing = false }
-    func resume(deviceID: String?) async throws { settle(); playing = true }
+    func resume(deviceID: String?) async throws -> RadioPlaybackSnapshot? {
+        settle()
+        if !deviceSleeps { playing = true }
+        return try await state()
+    }
+    func play(trackID: String, at position: TimeInterval, deviceID: String?) async throws -> RadioPlaybackSnapshot? {
+        settle()
+        guard let track = current?.spotifyId == trackID ? current : known[trackID] else { throw JukeAPIError.notFound(code: nil, detail: nil) }
+        if !deviceSleeps { current = track; progress = position; playing = true }
+        return try await state()
+    }
     func next(deviceID: String?) async throws {
         settle()
         if !queue.isEmpty { current = queue.removeFirst() }
