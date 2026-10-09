@@ -23,6 +23,16 @@ import Testing
         #expect(recents.first?.title == "A (again)", "the latest details replace the old entry")
     }
 
+    @Test func recordingAgainWithoutDetailsKeepsTheEarlierArtworkAndSubtitle() {
+        let withArt = Radio.CrateItem(id: "1", kind: .album, spotifyId: "alb", title: "Kind of Blue", subtitle: "Miles Davis", artworkUrl: "https://i.example/a.jpg", track: nil)
+        let bare = Radio.CrateItem(id: "2", kind: .album, spotifyId: "alb", title: "Kind of Blue", subtitle: nil, artworkUrl: nil, track: nil)
+        let recents = RecentLibrary.record(bare, into: RecentLibrary.record(withArt, into: []))
+        #expect(recents.count == 1)
+        #expect(recents.first?.artworkUrl == "https://i.example/a.jpg" && recents.first?.subtitle == "Miles Davis")
+        let newer = Radio.CrateItem(id: "3", kind: .album, spotifyId: "alb", title: "Kind of Blue", subtitle: nil, artworkUrl: "https://i.example/b.jpg", track: nil)
+        #expect(RecentLibrary.record(newer, into: recents).first?.artworkUrl == "https://i.example/b.jpg", "new artwork replaces the old")
+    }
+
     @Test func theSameIDInAnotherKindIsAnotherResource() {
         var recents = RecentLibrary.record(item(.artist, "x"), into: [])
         recents = RecentLibrary.record(item(.album, "x"), into: recents)

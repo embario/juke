@@ -136,7 +136,14 @@ struct ArtistDetailView: View {
             resolution = .loaded(catalog)
             // The bio and top songs load beside the catalog; one failing does not hide the other.
             Task {
-                do { details = .loaded(try await client.artist(id: pk, token: token)) }
+                do {
+                    let detail = try await client.artist(id: pk, token: token)
+                    details = .loaded(detail)
+                    // Related artists arrive with a catalog id only; they join the history once their Spotify id is known.
+                    if spotifyID.isEmpty, let id = detail.spotifyID {
+                        model.recents.record(kind: .artist, spotifyID: id, title: title, artworkURL: detail.artworkURL?.absoluteString)
+                    }
+                }
                 catch is CancellationError { return }
                 catch { details = .failed((error as? LocalizedError)?.errorDescription ?? "The artist’s details couldn’t be loaded.") }
             }

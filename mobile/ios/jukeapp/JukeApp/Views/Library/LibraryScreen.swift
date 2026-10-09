@@ -5,8 +5,9 @@ struct LibraryScreen: View {
     @Environment(VibeAppModel.self) private var model
     @State private var kind: Radio.SeedKind = .track
     @State private var query = ""
-    /// The crate or the search results as the server sent them.
+    /// The crate or the search results as the server sent them, and the query they answer.
     @State private var fetched: [Radio.CrateItem] = []
+    @State private var fetchedQuery = ""
     @State private var loading = false
     @State private var error: String?
     @State private var selected: Radio.CrateItem?
@@ -19,7 +20,7 @@ struct LibraryScreen: View {
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
     /// Without a search: recent resources first, topped up from the crate while the history is short.
     private var items: [Radio.CrateItem] {
-        query.isEmpty ? RecentLibrary.library(kind: kind, recents: model.recents.items, fill: fetched) : fetched
+        fetchedQuery.isEmpty ? RecentLibrary.library(kind: kind, recents: model.recents.items, fill: fetched) : fetched
     }
     private var crateMode: CrateMode { CrateMode(CrateFlipDirection(rawValue: flipRaw) ?? .sideToSide) }
 
@@ -63,7 +64,6 @@ struct LibraryScreen: View {
         .searchable(text: $query, prompt: "Search Spotify")
         .onSubmit(of: .search) { reload(resetFocus: true) }
         .onChange(of: kind) { _, _ in reload(resetFocus: true) }
-        .onChange(of: model.recents.items) { _, _ in if query.isEmpty { focus = 0 } }
         .onChange(of: query) { _, value in if value.isEmpty { reload(resetFocus: true) } }
         .task(id: model.session?.account.id) { await load() }
         .onChange(of: model.coordinator.libraryFocus) { _, request in
@@ -99,6 +99,7 @@ struct LibraryScreen: View {
     /// Artists and albums open their own screens; songs offer play / start a station.
     private func open(_ item: Radio.CrateItem) {
         model.recents.record(item)
+        focus = 0   // what was just opened is first when the Library comes back; Radio's own plays leave the crate alone
         if item.kind == .track { selected = item } else { browsing = item }
     }
 
@@ -156,13 +157,14 @@ struct LibraryScreen: View {
         defer { if !Task.isCancelled { loading = false } }
         do {
             fetched = try await model.api.crate(kind: kind, query: query)
+            fetchedQuery = query
             applyFocusRequest()
         }
         catch is CancellationError { return }
         catch {
-            fetched = []
+            fetched = []; fetchedQuery = query
             // Recent resources still show without the server; only an empty Library reports the failure.
-            if !(query.isEmpty && !items.isEmpty) { self.error = (error as? LocalizedError)?.errorDescription ?? "The crate could not be loaded." }
+            if !(fetchedQuery.isEmpty && !items.isEmpty) { self.error = (error as? LocalizedError)?.errorDescription ?? "The crate could not be loaded." }
         }
     }
 }

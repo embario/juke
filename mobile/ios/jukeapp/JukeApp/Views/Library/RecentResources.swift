@@ -18,10 +18,16 @@ enum RecentLibrary {
                         subtitle: item.subtitle, artworkUrl: item.artworkUrl, track: item.track)
     }
 
-    /// Puts `item` first, drops its earlier entry and keeps at most `cap` per kind.
+    /// Puts `item` first, drops its earlier entry and keeps at most `cap` per kind. The latest details win,
+    /// but what the new entry lacks (artwork, subtitle, song payload) is kept from the earlier one: a detail
+    /// screen knows less about a resource than the crate row it was opened from.
     static func record(_ item: Radio.CrateItem, into recents: [Radio.CrateItem]) -> [Radio.CrateItem] {
         guard !item.spotifyId.isEmpty else { return recents }
-        let new = normalised(item)
+        let earlier = recents.first { key($0) == key(item) }
+        let new = normalised(Radio.CrateItem(
+            id: item.id, kind: item.kind, spotifyId: item.spotifyId, title: item.title,
+            subtitle: item.subtitle ?? earlier?.subtitle, artworkUrl: item.artworkUrl ?? earlier?.artworkUrl,
+            track: item.track ?? earlier?.track))
         var result = [new] + recents.filter { key($0) != key(new) }
         var seen: [Radio.SeedKind: Int] = [:]
         result = result.filter { entry in
