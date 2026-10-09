@@ -11,28 +11,29 @@ struct MemoriesScreen: View {
 
     var body: some View {
         let store = model.memories
-        ScrollView {
-            VStack(spacing: 0) {
-                if let error = store.error { Text(error).font(.footnote).foregroundStyle(.secondary).padding(.horizontal) }
-                if store.memories.isEmpty {
-                    if !store.isLoading {
-                        ContentUnavailableView {
-                            Label("No memories yet", systemImage: "photo.on.rectangle.angled")
-                        } description: {
-                            Text("Save a song with the moment it belongs to.")
-                        } actions: {
-                            Button("New memory") { composing = true }.buttonStyle(.borderedProminent)
-                                .accessibilityIdentifier("memory.empty.new")
+        GeometryReader { screen in
+            ScrollView {
+                VStack(spacing: 0) {
+                    if let error = store.error { Text(error).font(.footnote).foregroundStyle(.secondary).padding(.horizontal) }
+                    if store.memories.isEmpty {
+                        if !store.isLoading {
+                            ContentUnavailableView {
+                                Label("No memories yet", systemImage: "photo.on.rectangle.angled")
+                            } description: {
+                                Text("Save a song with the moment it belongs to.")
+                            } actions: {
+                                Button("New memory") { composing = true }.buttonStyle(.borderedProminent)
+                                    .accessibilityIdentifier("memory.empty.new")
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 420)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 420)
+                    } else {
+                        MemoryDeckView(
+                            memories: store.memories, question: store.insights.question, minHeight: screen.size.height,
+                            open: { detailID = $0.id },
+                            delete: { memoryToDelete = $0; showingDeleteConfirmation = true }
+                        )
                     }
-                } else {
-                    MemoryDeckView(
-                        memories: store.memories, question: store.insights.question,
-                        open: { detailID = $0.id },
-                        delete: { memoryToDelete = $0; showingDeleteConfirmation = true }
-                    )
-                    .containerRelativeFrame(.vertical, alignment: .center)
                 }
             }
         }

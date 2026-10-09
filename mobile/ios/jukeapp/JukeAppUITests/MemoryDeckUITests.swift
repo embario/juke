@@ -76,6 +76,39 @@ final class MemoryDeckUITests: XCTestCase {
         add(shot("Memory-opened-from-card"))
     }
 
+    /// At accessibility text sizes the card grows and the page scrolls: the buttons (the alternative to the
+    /// swipe and long-press gestures) must be reachable and clear of the player island.
+    @MainActor
+    func testControlsStayReachableAtLargeTextSizes() {
+        for size in ["UICTContentSizeCategoryAccessibilityL", "UICTContentSizeCategoryAccessibilityXXXL"] {
+            let app = launch(sample + ["-UIPreferredContentSizeCategoryName", size])
+            let card = topCard(app)
+            XCTAssertTrue(card.waitForExistence(timeout: 10), size)
+            add(shot("Memories-deck-\(size.replacingOccurrences(of: "UICTContentSizeCategory", with: ""))-top"))
+
+            let next = app.buttons["memory.deck.next"]
+            for _ in 0..<8 where !next.isHittable {
+                // Drag in the page margin, clear of the card (which takes sideways swipes) and of the player island.
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.6)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.1)))
+            }
+            XCTAssertTrue(next.isHittable, "\(size): the arrows are reachable by scrolling")
+            let island = app.descendants(matching: .any).matching(identifier: "player.island").firstMatch
+            for id in ["memory.deck.previous", "memory.deck.next", "memory.deck.shuffle", "memory.menu"] {
+                let button = app.buttons[id]
+                XCTAssertTrue(button.exists && button.isHittable, "\(size): \(id)")
+                XCTAssertGreaterThanOrEqual(button.frame.height, 43.9)
+                if island.exists { XCTAssertLessThanOrEqual(button.frame.maxY, island.frame.minY, "\(size): \(id) is not under the player island") }
+            }
+            XCTAssertTrue(app.staticTexts["memory.position"].isHittable, size)
+            add(shot("Memories-deck-\(size.replacingOccurrences(of: "UICTContentSizeCategory", with: ""))-controls"))
+
+            let first = app.staticTexts["memory.position"].label
+            next.tap()
+            XCTAssertNotEqual(app.staticTexts["memory.position"].label, first, "\(size): Next works")
+            app.terminate()
+        }
+    }
+
     @MainActor
     func testWithoutMemoriesTheDeckGivesWayToAnInvitation() {
         let app = launch(["--uitesting", "--uitesting-authenticated", "--uitesting-tab=memories"])

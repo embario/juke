@@ -138,6 +138,17 @@ import Testing
         #expect(MemoryDeckStyle.shouldAdvance(translation: 30, predicted: 400), "a quick flick counts")
     }
 
+    @Test func onlyMostlySidewaysDragsMoveTheCard() {
+        #expect(MemoryDeckStyle.isSideways(CGSize(width: 90, height: 20)))
+        #expect(!MemoryDeckStyle.isSideways(CGSize(width: 20, height: 90)), "a vertical drag is a page scroll")
+        #expect(!MemoryDeckStyle.isSideways(CGSize(width: 50, height: 50)), "a diagonal drag is left to the page")
+        #expect(!MemoryDeckStyle.isSideways(.zero))
+    }
+
+    @Test func theDeckReservesRoomForThePlayerIsland() {
+        #expect(MemoryDeckStyle.islandInset >= 96, "the island (~60pt) plus the tab bar (~64pt) overlap the page bottom")
+    }
+
     @Test func subtitleAndAccessibilityLabelNameTheMemory() {
         let song = MemorySong(title: "So What", artist: "Miles Davis", provider: "spotify", providerID: nil)
         let plain = memory(), placed = memory(place: "Lake George", songs: [song])
