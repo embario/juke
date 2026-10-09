@@ -60,6 +60,16 @@ enum CrateLayout {
     /// The prototype's 560 ms settle.
     static let settleDuration = 0.56
 
+    /// Extra space above the Library crate so rear sleeves cannot draw over
+    /// the Songs / Artists / Albums selector. The front-to-back stack reaches
+    /// six records behind the focused sleeve, whose y offset is -120 pt.
+    static func libraryTopClearance(for mode: CrateMode) -> CGFloat {
+        guard mode == .frontToBack else { return 0 }
+        let crateFrameHeight = wellHeight + 40
+        let highestSleeveTop = (crateFrameHeight - mode.sleeveSize) / 2 - 6 * 20
+        return max(0, -highestSleeveTop) + 16
+    }
+
     /// Fractional focus while dragging: dragging towards the start (left or up)
     /// moves deeper into the crate.
     static func position(focus: Int, dragDelta: CGFloat, mode: CrateMode) -> CGFloat {

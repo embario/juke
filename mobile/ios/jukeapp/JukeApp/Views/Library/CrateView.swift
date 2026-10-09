@@ -39,6 +39,7 @@ struct CrateView: View {
         .sensoryFeedback(.selection, trigger: focus)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(items.indices.contains(focus) ? "\(items[focus].title), record \(focus + 1) of \(items.count)" : "Empty crate")
+        .accessibilityIdentifier("library.crate")
         .accessibilityAdjustableAction { direction in
             focus = CrateLayout.clamp(focus + (direction == .increment ? 1 : -1), count: items.count)
         }
