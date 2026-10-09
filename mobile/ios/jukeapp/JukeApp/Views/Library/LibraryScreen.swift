@@ -16,6 +16,7 @@ struct LibraryScreen: View {
     @AppStorage("juke.settings.crateFlipDirection") private var flipRaw = CrateFlipDirection.sideToSide.rawValue
 
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 14)]
+    private var crateMode: CrateMode { CrateMode(CrateFlipDirection(rawValue: flipRaw) ?? .sideToSide) }
 
     var body: some View {
         ScrollView {
@@ -28,7 +29,8 @@ struct LibraryScreen: View {
                 if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
                 if loading { ProgressView().frame(maxWidth: .infinity) }
                 if showsCrate, !items.isEmpty {
-                    CrateView(items: items, mode: CrateMode(CrateFlipDirection(rawValue: flipRaw) ?? .sideToSide), onSelect: { open($0) }, focus: $focus)
+                    CrateView(items: items, mode: crateMode, onSelect: { open($0) }, focus: $focus)
+                        .padding(.top, CrateLayout.libraryTopClearance(for: crateMode))
                     if items.indices.contains(focus) {
                         VStack(spacing: 2) {
                             Text(items[focus].title).font(.headline).lineLimit(1)

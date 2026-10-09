@@ -35,4 +35,12 @@ import Testing
         #expect(LibraryBrowsing.duration(562_000) == "9:22")
         #expect(LibraryBrowsing.duration(nil) == nil)
     }
+
+    @Test func frontToBackLibraryCrateReservesSpaceAboveThePicker() {
+        #expect(CrateLayout.libraryTopClearance(for: .sideToSide) == 0)
+        #expect(CrateLayout.libraryTopClearance(for: .frontToBack) == 88)
+
+        let frontToBackTop = (CrateLayout.wellHeight + 40 - CrateMode.frontToBack.sleeveSize) / 2 - 6 * 20
+        #expect(frontToBackTop + CrateLayout.libraryTopClearance(for: .frontToBack) >= 16)
+    }
 }

@@ -1,8 +1,7 @@
-# PR P: New Station record type picker
+# PR P: Library front-to-back crate spacing
 
-- Standard size: [iPhone 18 Pro, iOS 27.0](p-picker-iphone-18-pro-ios-27.png)
-- Large accessibility text on the smaller phone: [iPhone 17e, iOS 27.0](p-picker-iphone-17e-large-text-ios-27.png)
-- Round 3 visual reference: [Radio screen](../b-round3-reference.png)
-- The Round 3 reference shows the app's shared visual language; it does not include the New Station wizard or this picker.
-- The picker uses its horizontal layout when all three labels fit and changes to stacked full-width options when the available width is too small. All three labels remain readable in both captures.
+- [iPhone 18 Pro, iOS 27.0](p-library-iphone-18-pro-ios-27.png): Songs, Artists, and Albums remain readable above the Library crate.
+- [iPhone 17e, iOS 27.0, accessibility text](p-library-iphone-17e-accessibility-text-ios-27.png): all three selector labels remain visible at the largest accessibility text size.
+- The screenshots were compared with [Round 3 reference](../b-round3-reference.png), rendered from `Round3.reference.html`. That reference shows the app's shared visual language; it does not depict the Library crate.
+- `LibraryBrowsingTests.frontToBackLibraryCrateReservesSpaceAboveThePicker` verifies the crate's top-clearance calculation.
 - **Not verified on device.** Both captures are from iOS simulators.

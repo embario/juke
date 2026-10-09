@@ -179,7 +179,10 @@ struct NewStationScreen: View {
 
     private var recordsPage: some View {
         VStack(spacing: 10) {
-            recordKindPicker
+            Picker("Type", selection: $kind) {
+                Text("Songs").tag(Radio.SeedKind.track); Text("Artists").tag(Radio.SeedKind.artist); Text("Albums").tag(Radio.SeedKind.album)
+            }
+            .pickerStyle(.segmented).padding(.horizontal, 20)
             TextField("Search for a song, artist or album", text: $query)
                 .textFieldStyle(.roundedBorder).submitLabel(.search).padding(.horizontal, 20)
                 .onSubmit { Task { await search() } }
@@ -193,41 +196,6 @@ struct NewStationScreen: View {
             .listStyle(.plain).scrollContentBackground(.hidden).scrollDismissesKeyboard(.interactively)
         }
         .task(id: kind) { await search() }
-    }
-
-    private var recordKindPicker: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                recordKindButton(.track, title: "Songs").fixedSize(horizontal: true, vertical: false)
-                recordKindButton(.artist, title: "Artists").fixedSize(horizontal: true, vertical: false)
-                recordKindButton(.album, title: "Albums").fixedSize(horizontal: true, vertical: false)
-            }
-            VStack(spacing: 8) {
-                recordKindButton(.track, title: "Songs")
-                recordKindButton(.artist, title: "Artists")
-                recordKindButton(.album, title: "Albums")
-            }
-        }
-        .padding(.horizontal, 20)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Record type")
-    }
-
-    private func recordKindButton(_ value: Radio.SeedKind, title: String) -> some View {
-        let selected = kind == value
-        return Button { kind = value } label: {
-            Text(title)
-                .font(.body.weight(selected ? .semibold : .regular))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity)
-                .background(selected ? theme.accentSoft.color : theme.well.color, in: Capsule())
-                .overlay(Capsule().strokeBorder(selected ? theme.accent.color : theme.line, lineWidth: selected ? 1.5 : 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("newStation.kind.\(value.rawValue)")
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func resultRow(_ item: Radio.CrateItem) -> some View {
