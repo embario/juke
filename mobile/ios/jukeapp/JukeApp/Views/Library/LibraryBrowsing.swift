@@ -130,40 +130,22 @@ struct ArtistBrowser: View {
     @Environment(VibeAppModel.self) private var model
     let title: String
     let spotifyID: String
-    @State private var state: CatalogLoad<CatalogArtistDetail> = .loading
+    @State private var resolution: CatalogLoad<ArtistCatalogModel> = .loading
     @State private var message: String?
 
     var body: some View {
         List {
-            switch state {
+            switch resolution {
             case .loading: ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear)
             case .failed(let text): Text(text).foregroundStyle(.secondary)
-            case .loaded(let artist):
-                if artist.albums.isEmpty { Text("No albums found.").foregroundStyle(.secondary) }
-                ForEach(artist.albums) { album in
-                    HStack(spacing: 12) {
-                        AsyncImage(url: album.artworkURL) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.15) }
-                            .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(album.name).lineLimit(1)
-                            if let year = album.releaseDate?.prefix(4) { Text(year).font(.caption).foregroundStyle(.secondary) }
-                        }
-                        Spacer()
-                        Menu {
-                            if let id = album.spotifyID { Button("Play from the beginning", systemImage: "play.fill") { play(id) } }
-                            NavigationLink("View album", value: album.pk)
-                            if let seed = LibraryBrowsing.albumSeed(album, artist: artist.name) {
-                                Button("Start a station from this album", systemImage: "dot.radiowaves.left.and.right") { LibraryActions(model: model).station(from: seed) }
-                            }
-                        } label: { Image(systemName: "ellipsis.circle").imageScale(.large) }
-                            .accessibilityLabel("Actions for \(album.name)")
-                    }
-                    .background(NavigationLink("", value: album.pk).opacity(0))
-                }
+            case .loaded(let catalog): ArtistCatalogList(catalog: catalog, artist: title, message: $message)
             }
             if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
         }
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if case .loaded(let catalog) = resolution { ArtistKindFilter(catalog: catalog) }
+        }
         .navigationDestination(for: Int.self) { pk in
             AlbumBrowser(title: albumName(pk), spotifyID: "", artist: title, catalogID: pk)
         }
@@ -171,20 +153,97 @@ struct ArtistBrowser: View {
     }
 
     private func albumName(_ pk: Int) -> String {
-        if case .loaded(let artist) = state { return artist.albums.first { $0.pk == pk }?.name ?? "Album" }
+        if case .loaded(let catalog) = resolution { return catalog.release(pk: pk)?.name ?? "Album" }
         return "Album"
     }
 
-    private func play(_ albumID: String) { Task { message = await LibraryActions(model: model).play(spotifyID: albumID, kind: "albums") } }
-
     private func load() async {
-        guard let token = model.session?.accessToken else { state = .failed("Sign in to browse."); return }
+        guard case .loading = resolution else { return }
+        guard let token = model.session?.accessToken else { resolution = .failed("Sign in to browse."); return }
         let client = CatalogClient()
         do {
             guard let found = LibraryBrowsing.match(try await client.search(title, kind: "artists", token: token), spotifyID: spotifyID) else {
-                state = .failed("This artist isn’t in the catalog yet."); return
+                resolution = .failed("This artist isn’t in the catalog yet."); return
             }
-            state = .loaded(try await client.artist(id: found.pk, token: token))
-        } catch { state = .failed((error as? LocalizedError)?.errorDescription ?? "The artist couldn’t be loaded.") }
+            let catalog = ArtistCatalogModel { kind, offset in
+                try await client.releases(artistID: found.pk, kind: kind, offset: offset, token: token)
+            }
+            resolution = .loaded(catalog)
+            await catalog.start()
+        } catch { resolution = .failed((error as? LocalizedError)?.errorDescription ?? "The artist couldn’t be loaded.") }
     }
+}
+
+/// Release-type filters, pinned above the list so they stay reachable while scrolling a long catalog.
+private struct ArtistKindFilter: View {
+    let catalog: ArtistCatalogModel
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(catalog.visibleKinds) { kind in
+                    Button { Task { await catalog.select(kind) } } label: {
+                        Text(catalog.title(for: kind)).font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(kind == catalog.kind ? Color.accentColor : Color.secondary.opacity(0.15), in: Capsule())
+                            .foregroundStyle(kind == catalog.kind ? Color.white : Color.primary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("artist.filter.\(kind.rawValue)")
+                    .accessibilityAddTraits(kind == catalog.kind ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+        }
+        .background(.bar)
+    }
+}
+
+/// The paginated release rows for one artist.
+private struct ArtistCatalogList: View {
+    @Environment(VibeAppModel.self) private var model
+    let catalog: ArtistCatalogModel
+    let artist: String
+    @Binding var message: String?
+
+    var body: some View {
+        let section = catalog.current
+        if section.items.isEmpty, section.hasLoaded, section.error == nil {
+            Text("No \(catalog.kind.title.lowercased()) found.").foregroundStyle(.secondary)
+        }
+        ForEach(section.items) { album in
+            row(album)
+                .onAppear { Task { await catalog.loadMore(after: album) } }
+        }
+        if section.isLoading { ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear).accessibilityIdentifier("artist.loading") }
+        if let error = section.error {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(error).foregroundStyle(.secondary)
+                Button("Try again") { Task { await catalog.retry() } }
+            }
+        }
+    }
+
+    private func row(_ album: CatalogAlbumSummary) -> some View {
+        HStack(spacing: 12) {
+            AsyncImage(url: album.artworkURL) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.15) }
+                .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(album.name).lineLimit(1)
+                if let year = album.releaseDate?.prefix(4) { Text(year).font(.caption).foregroundStyle(.secondary) }
+            }
+            Spacer()
+            Menu {
+                if let id = album.spotifyID { Button("Play from the beginning", systemImage: "play.fill") { play(id) } }
+                NavigationLink("View album", value: album.pk)
+                if let seed = LibraryBrowsing.albumSeed(album, artist: artist) {
+                    Button("Start a station from this album", systemImage: "dot.radiowaves.left.and.right") { LibraryActions(model: model).station(from: seed) }
+                }
+            } label: { Image(systemName: "ellipsis.circle").imageScale(.large) }
+                .accessibilityLabel("Actions for \(album.name)")
+        }
+        .background(NavigationLink("", value: album.pk).opacity(0))
+    }
+
+    private func play(_ albumID: String) { Task { message = await LibraryActions(model: model).play(spotifyID: albumID, kind: "albums") } }
 }

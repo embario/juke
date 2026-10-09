@@ -207,6 +207,54 @@ struct CatalogArtistDetail: Decodable, Identifiable, Sendable {
     }
 }
 
+/// Release categories of an artist's catalog, in display order (albums and EPs first).
+enum ReleaseKind: String, CaseIterable, Identifiable, Sendable {
+    case albums, eps, singles, compilations, live, appearances
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .albums: "Albums"
+        case .eps: "EPs"
+        case .singles: "Singles"
+        case .compilations: "Compilations"
+        case .live: "Live"
+        case .appearances: "Appears on"
+        }
+    }
+}
+
+/// One page of `GET artists/{id}/releases/`.
+struct CatalogReleasePage: Decodable, Sendable {
+    let count: Int
+    let nextOffset: Int?
+    let counts: [String: Int]
+    let synced: Bool
+    let results: [CatalogAlbumSummary]
+
+    enum CodingKeys: String, CodingKey {
+        case count, counts, synced, results
+        case nextOffset = "next_offset"
+    }
+
+    init(count: Int, nextOffset: Int?, counts: [String: Int], synced: Bool = true, results: [CatalogAlbumSummary]) {
+        self.count = count
+        self.nextOffset = nextOffset
+        self.counts = counts
+        self.synced = synced
+        self.results = results
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        count = try values.decode(Int.self, forKey: .count)
+        nextOffset = try values.decodeIfPresent(Int.self, forKey: .nextOffset)
+        counts = try values.decodeIfPresent([String: Int].self, forKey: .counts) ?? [:]
+        synced = try values.decodeIfPresent(Bool.self, forKey: .synced) ?? true
+        results = try values.decode([CatalogAlbumSummary].self, forKey: .results)
+    }
+}
+
 actor CatalogClient {
     private struct Page: Decodable { let results: [CatalogSearchResult] }
     private struct SpotifyOEmbed: Decodable {
@@ -295,6 +343,27 @@ actor CatalogClient {
         return try await detail(url: baseURL.appending(path: "artists/\(id)/"), token: token)
     }
 
+    func releases(artistID: Int, kind: ReleaseKind, offset: Int = 0, limit: Int = 30, token: String) async throws -> CatalogReleasePage {
+        if usesFixtures {
+            try await Task.sleep(for: .milliseconds(200))
+            return try Self.fixtureReleases(kind: kind, offset: offset, limit: limit)
+        }
+        var components = URLComponents(url: baseURL.appending(path: "artists/\(artistID)/releases/"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "kind", value: kind.rawValue),
+            URLQueryItem(name: "offset", value: String(offset)),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        var request = Self.authorizedRequest(url: components.url!, token: token)
+        request.timeoutInterval = 60  // the first request pulls every provider page
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard data.count <= 3_000_000, let http = response as? HTTPURLResponse else { throw CatalogSearchError.invalidResponse }
+        if http.statusCode == 401 { throw CatalogSearchError.authenticationExpired }
+        guard http.statusCode == 200 else { throw CatalogSearchError.serviceUnavailable(http.statusCode) }
+        do { return try JSONDecoder().decode(CatalogReleasePage.self, from: data) }
+        catch { throw CatalogSearchError.invalidResponse }
+    }
+
     private func detail<T: Decodable>(url: URL, token: String) async throws -> T {
         var request = Self.authorizedRequest(url: url, token: token)
         request.timeoutInterval = 20
@@ -373,6 +442,25 @@ actor CatalogClient {
               "related_albums":[{"pk":1960,"name":"Sketches of Spain","spotify_id":"related-album","spotify_data":{"images":[]},"total_tracks":5,"release_date":"1960-07-18"}]
             }
             """.utf8
+        ))
+    }
+
+    /// A deterministic catalog: 45 albums (several pages), 3 EPs, 4 singles, 2 compilations, 3 live, 2 appearances.
+    private nonisolated static let fixtureCounts: [ReleaseKind: Int] = [.albums: 45, .eps: 3, .singles: 4, .compilations: 2, .live: 3, .appearances: 2]
+
+    private nonisolated static func fixtureReleases(kind: ReleaseKind, offset: Int, limit: Int) throws -> CatalogReleasePage {
+        let total = fixtureCounts[kind] ?? 0
+        let base = ReleaseKind.allCases.firstIndex(of: kind)! * 100
+        let upper = min(total, offset + limit)
+        let rows: [String] = (offset..<max(offset, upper)).map { index in
+            let name = kind == .albums && index == 0 ? "Kind of Blue" : "\(kind.title) \(total - index)"
+            let year = 2020 - index
+            return "{\"pk\":\(base + index + 1),\"name\":\"\(name)\",\"spotify_id\":\"fx-\(kind.rawValue)-\(index)\",\"spotify_data\":{\"images\":[]},\"total_tracks\":\(kind == .singles ? 1 : 9),\"release_date\":\"\(year)-06-01\"}"
+        }
+        let counts = fixtureCounts.map { "\"\($0.key.rawValue)\":\($0.value)" }.joined(separator: ",")
+        let next = upper < total ? String(upper) : "null"
+        return try JSONDecoder().decode(CatalogReleasePage.self, from: Data(
+            "{\"count\":\(total),\"next_offset\":\(next),\"counts\":{\(counts)},\"synced\":true,\"results\":[\(rows.joined(separator: ","))]}".utf8
         ))
     }
 
