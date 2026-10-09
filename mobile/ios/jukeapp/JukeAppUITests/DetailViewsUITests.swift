@@ -100,7 +100,7 @@ final class DetailViewsUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
         XCTAssertTrue(app.buttons["album.reveal"].waitForExistence(timeout: 10), "tapping a release opens its album screen")
-        XCTAssertTrue(labelled(app, "Miles Davis").exists, "named for the artist it came from")
+        XCTAssertTrue(labelled(app, "Kind of Blue, Miles Davis").exists, "named for the artist it came from")
     }
 
     @MainActor
@@ -119,8 +119,8 @@ final class DetailViewsUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
         XCTAssertTrue(app.buttons["album.reveal"].waitForExistence(timeout: 10))
-        XCTAssertTrue(labelled(app, "John Coltrane").exists, "the album is shown under the artist whose catalog it came from")
-        XCTAssertFalse(labelled(app, "Miles Davis").exists, "not under the first artist in the stack")
+        // The album header reads "<album>, <artist>, ..."; Radio's own "Miles Davis" is still behind the sheet.
+        XCTAssertTrue(labelled(app, "Kind of Blue, John Coltrane").exists, "shown under the artist whose catalog it came from, not the first artist in the stack")
         add(shot("Related-artist-album"))
     }
 
