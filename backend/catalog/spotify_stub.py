@@ -162,6 +162,21 @@ def artist_albums(artist_id: str, album_types: str = 'album') -> Dict[str, Any]:
     wired into the ``artists`` list so that the serializer can link them.
     """
     artist_stub = {'id': artist_id, 'name': f"Stub Artist {artist_id[-4:]}"}
+    if album_types == 'appears_on':
+        items = [
+            _build_album(
+                0,
+                spotify_id=f"{artist_id}-appears-0",
+                name=f"Stub Collab {artist_id[-4:]}",
+                release_date="2010-01-01",
+                total_tracks=10,
+                artists=[{'id': f"{artist_id}-other", 'name': 'Stub Other Artist'}],
+            )
+        ]
+        return {
+            'href': f"https://stub.local/artists/{artist_id}/albums",
+            'items': items, 'limit': 1, 'offset': 0, 'total': 1, 'next': None, 'previous': None,
+        }
     items = [
         _build_album(
             i,
