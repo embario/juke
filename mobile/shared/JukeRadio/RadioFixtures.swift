@@ -117,8 +117,14 @@ actor RadioFixturePlayback: RadioPlaybackControlling {
         }
     }
 
-    func start(_ track: Radio.Track) { episodePlaying = false; current = track; progress = 0; playing = true; updatedAt = Date() }
-    func enqueue(_ track: Radio.Track) { queue.append(track) }
+    private var known: [String: Radio.Track] = [:]
+
+    func start(_ track: Radio.Track) { known[track.spotifyId] = track; episodePlaying = false; current = track; progress = 0; playing = true; updatedAt = Date() }
+    func enqueue(_ track: Radio.Track) { known[track.spotifyId] = track; queue.append(track) }
+    func play(trackID: String, deviceID: String?) async throws {
+        guard let track = known[trackID] else { throw JukeAPIError.notFound(code: nil, detail: nil) }
+        start(track)
+    }
 
     func state() async throws -> RadioPlaybackSnapshot? {
         settle()
