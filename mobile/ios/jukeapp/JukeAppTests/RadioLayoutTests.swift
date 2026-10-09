@@ -73,12 +73,17 @@ import Testing
         #expect(recency.values == ["🌙", "☀️", "🔥"])
     }
 
-    @Test func scrubbingMapsTouchPositionToAClampedEmojiSlot() {
-        #expect(ReactionEmojiSliderLogic.slot(at: 0, width: 300, count: 3) == 0)
-        #expect(ReactionEmojiSliderLogic.slot(at: 150, width: 300, count: 3) == 1)
-        #expect(ReactionEmojiSliderLogic.slot(at: 300, width: 300, count: 3) == 2)
-        #expect(ReactionEmojiSliderLogic.slot(at: -20, width: 300, count: 3) == 0)
-        #expect(ReactionEmojiSliderLogic.slot(at: 20, width: 0, count: 3) == 0)
+    @Test func scrubbingMapsTouchesToClampedSlotsIncludingANeighbor() {
+        #expect(ReactionEmojiSliderLogic.slot(at: 0, width: 300, count: 3, spacing: 2) == 0)
+        #expect(ReactionEmojiSliderLogic.slot(at: 150, width: 300, count: 3, spacing: 2) == 1)
+        #expect(ReactionEmojiSliderLogic.slot(at: 300, width: 300, count: 3, spacing: 2) == 2)
+        #expect(ReactionEmojiSliderLogic.slot(at: -20, width: 300, count: 3, spacing: 2) == 0)
+        #expect(ReactionEmojiSliderLogic.slot(at: 20, width: 0, count: 3, spacing: 2) == 0)
+        let choices = ["🔥", "🌙", "☀️"]
+        let start = choices[ReactionEmojiSliderLogic.slot(at: 50, width: 300, count: choices.count, spacing: 2)]
+        let release = choices[ReactionEmojiSliderLogic.slot(at: 150, width: 300, count: choices.count, spacing: 2)]
+        #expect(start == "🔥")
+        #expect(release == "🌙")
     }
 
     @Test func voiceOverAdjustableActionsChooseTheNextEmojiWithoutWrapping() {

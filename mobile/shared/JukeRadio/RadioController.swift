@@ -21,9 +21,11 @@ struct ReactionEmojiRecency: Equatable {
 }
 
 enum ReactionEmojiSliderLogic {
-    static func slot(at x: CGFloat, width: CGFloat, count: Int) -> Int {
+    static func slot(at x: CGFloat, width: CGFloat, count: Int, spacing: CGFloat = 0) -> Int {
         guard count > 1, width > 0 else { return 0 }
-        return min(count - 1, max(0, Int(x / (width / CGFloat(count)))))
+        let gap = max(0, spacing)
+        let itemWidth = max(0, width - gap * CGFloat(count - 1)) / CGFloat(count)
+        return min(count - 1, max(0, Int(x / max(itemWidth + gap, 1))))
     }
 
     /// VoiceOver's adjustable action chooses the adjacent emoji without
@@ -232,9 +234,17 @@ final class RadioController {
         return reactions[id] ?? []
     }
 
-    /// Emoji choices for the Radio slider, ordered by most recent selection
-    /// before station feelings, defaults, and other current reactions.
+    /// The original reaction strip contents, including word reactions. The Mac
+    /// app and iOS word chips use this list to preserve removability.
     var stripReactions: [String] {
+        let feelings = (currentStation?.feelings ?? []).filter(Self.isEmoji)
+        let base = Self.unique(feelings + Self.defaultStripEmoji).prefix(5)
+        let custom = customReactions.filter(Self.isEmoji).suffix(2)
+        return Array(Self.unique(Array(base) + Array(custom) + currentReactions).prefix(9))
+    }
+
+    /// Emoji choices for iOS's hold and scrub slider, with the last choice first.
+    var sliderEmojiReactions: [String] {
         let feelings = (currentStation?.feelings ?? []).filter(Self.isEmoji)
         let base = Self.unique(feelings + Self.defaultStripEmoji).prefix(5)
         let custom = customReactions.filter(Self.isEmoji).suffix(2)
