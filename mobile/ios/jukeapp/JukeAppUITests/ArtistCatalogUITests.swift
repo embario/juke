@@ -23,9 +23,12 @@ final class ArtistCatalogUITests: XCTestCase {
         add(shot("Artist-catalog-albums"))
 
         // 45 albums come 30 at a time: scrolling to the end loads the second page.
-        let list = app.collectionViews.firstMatch
         XCTAssertFalse(app.staticTexts["Albums 1"].exists)
-        for _ in 0..<12 where !app.staticTexts["Albums 1"].exists { list.swipeUp() }
+        // The artist header takes room and the mini player floats over the lower part of the list, so
+        // drag within the list above the player instead of swiping from its centre.
+        let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+        let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48))
+        for _ in 0..<40 where !app.staticTexts["Albums 1"].exists { from.press(forDuration: 0.05, thenDragTo: to) }
         XCTAssertTrue(app.staticTexts["Albums 1"].waitForExistence(timeout: 5), "the last of 45 albums loaded")
         add(shot("Artist-catalog-end-of-albums"))
 
