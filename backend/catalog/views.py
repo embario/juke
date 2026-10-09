@@ -7,6 +7,7 @@ from catalog import serializers, controller
 from catalog.services.playback import PlaybackService
 from catalog.services.featured_genres import get_featured_genres
 from catalog.services.detail_enrichment import ResourceDetailService
+from catalog.services import artist_releases
 from catalog.models import Genre, Artist, Album, Track, SearchHistory
 from catalog.tasks import sync_spotify_genres_task
 
@@ -77,6 +78,27 @@ class ArtistViewSet(MusicResourceViewSet):
         artist._enriched_related_artists = enriched['related_artists']
         serializer = serializers.ArtistDetailSerializer(artist, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def releases(self, request, pk=None):
+        """The artist's full catalog, one category and page at a time.
+
+        ?kind=albums|eps|singles|compilations|live|appearances (omit for every owned release)
+        &limit=50&offset=0   &refresh=1 to bypass the provider cache
+        """
+        artist = self.get_object()
+        try:
+            page = artist_releases.releases(
+                artist,
+                kind=request.GET.get('kind') or None,
+                limit=request.GET.get('limit'),
+                offset=request.GET.get('offset'),
+                force=str(request.GET.get('refresh', '')).lower() in ('1', 'true', 'yes'),
+            )
+        except ValueError:
+            return Response({'detail': 'Unknown kind.', 'kinds': list(artist_releases.KINDS)}, status=status.HTTP_400_BAD_REQUEST)
+        page['results'] = serializers.AlbumSerializer(page.pop('albums'), many=True, context={'request': request}).data
+        return Response(page)
 
 
 class AlbumViewSet(MusicResourceViewSet):
