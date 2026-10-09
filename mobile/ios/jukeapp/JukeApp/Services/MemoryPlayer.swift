@@ -48,7 +48,11 @@ struct AppleSegmentGuard: Sendable {
 @MainActor
 @Observable
 final class MemoryPlayer {
+    /// The memory song the listener last started, for stepping to the next memory.
+    struct Context: Equatable { let memoryID: UUID; let songID: UUID; let startedAt: Date }
+
     private(set) var isBusy = false
+    private(set) var current: Context?
     var message: String?
 
     @ObservationIgnored private let spotify: any MemorySpotifyPlaying
@@ -77,11 +81,12 @@ final class MemoryPlayer {
         self.playApple = playApple; self.appleSnapshot = appleSnapshot; self.pauseApple = pauseApple; self.sleep = sleep
     }
 
-    func play(_ song: MemorySong) async {
+    func play(_ song: MemorySong, in memoryID: UUID? = nil) async {
         // A call while another is still starting must not tear down the first one's timing.
         guard !isBusy else { return }
         cancel()
         message = nil
+        current = memoryID.map { Context(memoryID: $0, songID: song.id, startedAt: .now) }
         marked(MemoryPlaybackMark(providerID: song.providerID, title: song.title, artist: song.artist, startedAt: .now))
         let id = UUID()
         operation = id
@@ -98,6 +103,9 @@ final class MemoryPlayer {
             }
         } catch { message = error.localizedDescription }
     }
+
+    /// Forget which memory was playing (sign-out).
+    func reset() { cancel(); current = nil }
 
     func cancel() {
         operation = nil
