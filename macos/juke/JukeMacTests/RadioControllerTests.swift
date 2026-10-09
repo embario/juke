@@ -875,8 +875,11 @@ final class RadioControllerTests: XCTestCase {
         let radio = await onAir()
         await radio.addWords("  first   cold morning of fall  ")
         XCTAssertEqual(radio.currentReactions, ["first cold morning of fall"])
+        XCTAssertTrue(radio.stripReactions.contains("first cold morning of fall"))
         XCTAssertEqual(RadioPreferences(defaults: defaults).customReactions, ["first cold morning of fall"])
         XCTAssertEqual(RadioController.normalizedWords(String(repeating: "a", count: 60)).count, 40)
+        await radio.toggleReaction("first cold morning of fall")
+        XCTAssertFalse(radio.stripReactions.contains("first cold morning of fall"))
     }
 
     func testMoveStationUsesTheServerFrequency() async {
