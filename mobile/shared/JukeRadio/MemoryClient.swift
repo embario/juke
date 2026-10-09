@@ -117,6 +117,22 @@ actor MemoryClient {
         return try await send("memories/\(memory.id.uuidString.lowercased())/", method: "PATCH", data: Self.encoder().encode(Body(tags: tags, excludedTags: excluded)), token: token, as: MusicMemory.self)
     }
 
+    /// Changes a memory's description and/or its attachments (the full list of attachment IDs, in order).
+    func update(memory: MusicMemory, text: String? = nil, mediaIDs: [UUID]? = nil, token: String) async throws -> MusicMemory {
+        if fixtures {
+            var updated = memory
+            if let text { updated.text = text }
+            if let mediaIDs {
+                updated.media = mediaIDs.compactMap { id in fixtureMedia[id]?.0 ?? memory.media.first { $0.id == id } }
+            }
+            fixtureMemories = fixtureMemories.map { $0.id == memory.id ? updated : $0 }
+            return updated
+        }
+        struct Body: Encodable { let body: String?; let mediaIDs: [String]? }
+        let body = Body(body: text, mediaIDs: mediaIDs?.map { $0.uuidString.lowercased() })
+        return try await send("memories/\(memory.id.uuidString.lowercased())/", method: "PATCH", data: Self.encoder().encode(body), token: token, as: MusicMemory.self)
+    }
+
     func delete(_ memory: MusicMemory, token: String) async throws {
         if fixtures {
             fixtureMemories.removeAll { $0.id == memory.id }

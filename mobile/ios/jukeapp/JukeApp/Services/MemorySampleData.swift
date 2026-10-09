@@ -17,12 +17,16 @@ nonisolated enum MemorySampleData {
             song.artworkURL = art
             return song
         }
-        func memory(_ title: String, daysAgo: Int, songs: [MemorySong], media: [MemoryMedia]) -> MusicMemory {
+        func memory(_ title: String, daysAgo: Int, songs: [MemorySong], media: [MemoryMedia], text: String = "", place: String = "", people: [String] = [], tags: [String] = [], suggested: [String] = []) -> MusicMemory {
             let date = Date().addingTimeInterval(TimeInterval(-86_400 * daysAgo))
-            return MusicMemory(id: UUID(), title: title, text: "", occurredAt: date, createdAt: date, place: "", people: [], songs: songs, media: media, tags: [], classification: .unavailable)
+            var memory = MusicMemory(id: UUID(), title: title, text: text, occurredAt: date, createdAt: date, place: place, people: people, songs: songs, media: media, tags: tags, classification: .unavailable)
+            memory.generatedTags = suggested
+            return memory
         }
         return ([
-            memory("Beach with the family", daysAgo: 1, songs: [song("Blue in Green", art: artwork)], media: [photo]),
+            memory("Beach with the family", daysAgo: 1, songs: [song("Blue in Green", art: artwork)], media: [photo],
+                   text: "Windows down on the drive out, the whole car quiet for the bridge. Sand in everything by noon.", place: "Rockaway", people: ["Sam", "Priya"],
+                   tags: ["summer", "family"], suggested: ["beach", "road trip", "family"]),
             memory("Sunday drive", daysAgo: 2, songs: [song("So What", art: artwork)], media: media.count > 1 ? [video] : []),
             memory("Late night listening", daysAgo: 3, songs: [song("Freddie Freeloader", art: artwork)], media: []),
             memory("A quiet note", daysAgo: 4, songs: [], media: []),
