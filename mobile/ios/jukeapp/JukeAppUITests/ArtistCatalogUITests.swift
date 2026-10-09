@@ -25,7 +25,7 @@ final class ArtistCatalogUITests: XCTestCase {
         // 45 albums come 30 at a time: scrolling to the end loads the second page.
         let list = app.collectionViews.firstMatch
         XCTAssertFalse(app.staticTexts["Albums 1"].exists)
-        for _ in 0..<12 where !app.staticTexts["Albums 1"].exists { list.swipeUp() }
+        for _ in 0..<30 where !app.staticTexts["Albums 1"].exists { list.swipeUp() }  // the artist header takes room, so the list is shorter
         XCTAssertTrue(app.staticTexts["Albums 1"].waitForExistence(timeout: 5), "the last of 45 albums loaded")
         add(shot("Artist-catalog-end-of-albums"))
 

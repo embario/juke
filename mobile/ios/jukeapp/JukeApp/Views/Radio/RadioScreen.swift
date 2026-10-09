@@ -55,6 +55,7 @@ private struct FirstRunCard: View {
 private struct NowPlayingCard: View {
     @Environment(VibeAppModel.self) private var model
     @State private var visibleHeight: CGFloat = 900
+    @State private var detail: DetailRoute?
 
     var body: some View {
         let radio = model.radio
@@ -65,8 +66,15 @@ private struct NowPlayingCard: View {
                 SleeveAndRecord(track: radio.track, side: RadioLayout.sleeveSide(visibleHeight: visibleHeight))
                 VStack(spacing: 4) {
                     Text(radio.track?.title ?? "Nothing playing").font(.title2.bold()).multilineTextAlignment(.center).lineLimit(2)
-                    Text(radio.track?.artist ?? "Press play to start your station").foregroundStyle(.secondary).lineLimit(1)
-                    if let album = radio.track?.album { Text(album).font(.caption).foregroundStyle(.tertiary).lineLimit(1) }
+                    // The artist and album open their screens (catalog, bio, tracklist) in a sheet.
+                    detailLink(radio.track.flatMap(DetailRoute.artist(of:)), id: "radio.artistDetails") {
+                        Text(radio.track?.artist ?? "Press play to start your station").foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    if let album = radio.track?.album {
+                        detailLink(radio.track.flatMap(DetailRoute.album(of:)), id: "radio.albumDetails") {
+                            Text(album).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                        }
+                    }
                     // "Paused" or "Waiting for Spotify…"; a missing device is explained by `IssueView` below.
                     if radio.status == .paused || radio.status == .resuming, let caption = radio.status.caption {
                         Text(caption).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -87,6 +95,17 @@ private struct NowPlayingCard: View {
         }
         .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height - $0.contentInsets.top - $0.contentInsets.bottom } action: { _, height in visibleHeight = height }
         .refreshable { await radio.refresh() }
+        .detailSheet($detail)
+    }
+
+    /// A line of the song's text that opens `route`; plain text when the song has no id to open.
+    @ViewBuilder private func detailLink<Label: View>(_ route: DetailRoute?, id: String, @ViewBuilder label: () -> Label) -> some View {
+        if let route {
+            Button { detail = route } label: { label() }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens the details")
+                .accessibilityIdentifier(id)
+        } else { label() }
     }
 }
 

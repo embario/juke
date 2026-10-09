@@ -100,8 +100,8 @@ actor RadioFixtureBackend: RadioBackend {
 actor RadioFixturePlayback: RadioPlaybackControlling {
     static let initialTrackID = "0aWMVrwxPNYkKmFthzmpRi"
     private var current: Radio.Track? = Radio.Track(spotifyId: "0aWMVrwxPNYkKmFthzmpRi", uri: "spotify:track:0aWMVrwxPNYkKmFthzmpRi",
-                                                    title: "Blue in Green", artist: "Miles Davis", artistId: "fixture-miles",
-                                                    album: "Kind of Blue", albumId: "fixture-kob", artworkUrl: nil, durationMs: 327_000)
+                                                    title: "Blue in Green", artist: "Miles Davis", artistId: "0kbYTNQb4Pb1rPbbaF0pT4",
+                                                    album: "Kind of Blue", albumId: "1weenld61qoidwYuZ1GESA", artworkUrl: nil, durationMs: 327_000)
     private var queue: [Radio.Track] = []
     private var progress: TimeInterval = 96
     private var playing = true

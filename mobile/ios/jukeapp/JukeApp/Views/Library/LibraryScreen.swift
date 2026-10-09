@@ -66,8 +66,8 @@ struct LibraryScreen: View {
             reload(resetFocus: true)
         }
         .navigationDestination(item: $browsing) { item in
-            if item.kind == .artist { ArtistBrowser(title: item.title, spotifyID: item.spotifyId) }
-            else { AlbumBrowser(title: item.title, spotifyID: item.spotifyId, artist: item.subtitle) }
+            if item.kind == .artist { ArtistDetailView(title: item.title, spotifyID: item.spotifyId) }
+            else { AlbumDetailView(title: item.title, spotifyID: item.spotifyId, artist: item.subtitle) }
         }
         .sheet(item: $selected) { item in
             VStack(spacing: 14) {
