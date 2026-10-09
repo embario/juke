@@ -31,6 +31,25 @@ final class ReactionEmojiSliderUITests: XCTestCase {
     }
 
     @MainActor
+    func testPlainTapTogglesEmojiAfterScrub() {
+        let app = launchRadio()
+        let startingEmoji = app.buttons["React with 😌"]
+        let releasedEmoji = app.buttons["React with ☀️"]
+        let tappedEmoji = app.buttons["React with 🥹"]
+        XCTAssertTrue(startingEmoji.waitForExistence(timeout: 10))
+        XCTAssertTrue(releasedEmoji.exists)
+        XCTAssertTrue(tappedEmoji.exists)
+
+        startingEmoji.press(forDuration: 0.8, thenDragTo: releasedEmoji)
+        XCTAssertEqual(app.buttons["React with ☀️"].value as? String, "Selected")
+
+        tappedEmoji.tap()
+        XCTAssertEqual(app.buttons["React with 🥹"].value as? String, "Selected")
+        tappedEmoji.tap()
+        XCTAssertEqual(app.buttons["React with 🥹"].value as? String, "Not selected")
+    }
+
+    @MainActor
     func testWordReactionRemainsVisibleAndCanBeRemoved() {
         let app = launchRadio()
         app.buttons["radio.addReaction"].tap()

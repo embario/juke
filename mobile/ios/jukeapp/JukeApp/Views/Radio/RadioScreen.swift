@@ -261,7 +261,10 @@ private struct ReactionEmojiSlider: View {
     @State private var addingWords = false
     @State private var previewEmoji: String?
     @State private var isScrubbing = false
-    @State private var suppressButtonTapAfterScrub = false
+    @State private var isTouchActive = false
+    @State private var didScrub = false
+    @State private var lastDragLocation: CGPoint?
+    @State private var holdTask: Task<Void, Never>?
 
     var body: some View {
         let radio = model.radio
@@ -279,7 +282,6 @@ private struct ReactionEmojiSlider: View {
                         ForEach(reactions, id: \.self) { reaction in
                             let selected = radio.currentReactions.contains(reaction)
                             Button {
-                                guard !suppressButtonTapAfterScrub else { return }
                                 Task { await radio.toggleReaction(reaction) }
                             } label: {
                                 Text(reaction)
@@ -296,7 +298,7 @@ private struct ReactionEmojiSlider: View {
                         }
                     }
                     .contentShape(Rectangle())
-                    .highPriorityGesture(scrubGesture(reactions: reactions, width: geometry.size.width, radio: radio))
+                    .highPriorityGesture(touchGesture(reactions: reactions, width: geometry.size.width, radio: radio))
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("radio.emojiSlider")
                     .accessibilityLabel("Reaction slider")
@@ -356,29 +358,54 @@ private struct ReactionEmojiSlider: View {
         }
     }
 
-    private func scrubGesture(reactions: [String], width: CGFloat, radio: RadioController) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.28)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
-            .onChanged { value in
-                if case .first = value {
-                    suppressButtonTapAfterScrub = false
-                } else if case .second(true, let drag?) = value, !reactions.isEmpty {
-                    suppressButtonTapAfterScrub = true
-                    let index = ReactionEmojiSliderLogic.slot(at: drag.location.x, width: width, count: reactions.count, spacing: 2)
-                    isScrubbing = true
-                    previewEmoji = reactions[index]
+    private func touchGesture(reactions: [String], width: CGFloat, radio: RadioController) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { drag in
+                lastDragLocation = drag.location
+                if !isTouchActive {
+                    isTouchActive = true
+                    didScrub = false
+                    holdTask = Task { @MainActor in
+                        do {
+                            try await Task.sleep(nanoseconds: 280_000_000)
+                        } catch {
+                            return
+                        }
+                        guard isTouchActive, !reactions.isEmpty else { return }
+                        didScrub = true
+                        isScrubbing = true
+                        updatePreview(at: lastDragLocation, reactions: reactions, width: width)
+                    }
+                } else if didScrub {
+                    updatePreview(at: drag.location, reactions: reactions, width: width)
                 }
             }
-            .onEnded { value in
+            .onEnded { drag in
+                holdTask?.cancel()
+                holdTask = nil
+                isTouchActive = false
                 defer {
+                    didScrub = false
                     isScrubbing = false
                     previewEmoji = nil
+                    lastDragLocation = nil
                 }
-                guard case .second(true, let drag?) = value, !reactions.isEmpty else { return }
-                let index = ReactionEmojiSliderLogic.slot(at: drag.location.x, width: width, count: reactions.count, spacing: 2)
+                guard !reactions.isEmpty else { return }
+                let location = drag.location
+                let index = ReactionEmojiSliderLogic.slot(at: location.x, width: width, count: reactions.count, spacing: 2)
                 let reaction = reactions[index]
-                Task { await radio.chooseReaction(reaction) }
+                if didScrub {
+                    Task { await radio.chooseReaction(reaction) }
+                } else {
+                    Task { await radio.toggleReaction(reaction) }
+                }
             }
+    }
+
+    private func updatePreview(at location: CGPoint?, reactions: [String], width: CGFloat) {
+        guard let location, !reactions.isEmpty else { return }
+        let index = ReactionEmojiSliderLogic.slot(at: location.x, width: width, count: reactions.count, spacing: 2)
+        previewEmoji = reactions[index]
     }
 }
 
