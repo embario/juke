@@ -34,6 +34,11 @@ struct MemoriesScreen: View {
                             Text(memory.occurredAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
                             if let song = memory.songs.first { Label("\(song.title) — \(song.artist)", systemImage: "music.note").font(.subheadline).lineLimit(1) }
                         }
+                        Spacer(minLength: 0)
+                        if model.memoryPlayer.current?.memoryID == memory.id {
+                            Image(systemName: "waveform").foregroundStyle(model.atmosphere.primary)
+                                .accessibilityLabel("Playing").accessibilityIdentifier("memory.playing")
+                        }
                     }
                 }
                 .swipeActions(edge: .trailing) {
@@ -112,9 +117,9 @@ private struct MemoryDetail: View {
                     AsyncImage(url: song.artworkURL) { $0.resizable().scaledToFill() } placeholder: { Image(systemName: "music.note") }
                         .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 6))
                 }
-                .swipeActions { Button("Play") { Task { await model.memoryPlayer.play(song) } }.tint(.accentColor) }
+                .swipeActions { Button("Play") { Task { await model.memoryPlayer.play(song, in: current.id) } }.tint(.accentColor) }
                 .overlay(alignment: .trailing) {
-                    Button { Task { await model.memoryPlayer.play(song) } } label: {
+                    Button { Task { await model.memoryPlayer.play(song, in: current.id) } } label: {
                         Label(song.segmentDescription == nil ? "Play" : "Play the moment", systemImage: "play.fill").labelStyle(.iconOnly)
                     }
                     .buttonStyle(.borderless)

@@ -102,7 +102,9 @@ final class VibeAppModel {
         }
         memoryPlayer = MemoryPlayer(token: { accessToken.get() })
         let nowPlaying = nowPlaying
-        transport = PlayerTransport(radio: radio, token: { accessToken.get() }, externalIsPlaying: { nowPlaying.isPlaying },
+        let memoryStore = memories
+        let stepper = MemoryStepper(player: memoryPlayer, memories: { memoryStore.memories }, track: { nowPlaying.track })
+        transport = PlayerTransport(radio: radio, memory: stepper, token: { accessToken.get() }, externalIsPlaying: { nowPlaying.isPlaying },
                                     externalSource: { TransportSource(trackSource: nowPlaying.track?.source) })
         memoryPlayer.marked = { [weak self] in self?.memoryPlayback = $0 }
         radio.onTrackChange = { [weak self] track in
@@ -183,7 +185,7 @@ final class VibeAppModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func logout() { memoryPlayer.cancel(); nowPlaying.stopPolling(); recognition.reset(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; messages = [] }
+    func logout() { memoryPlayer.reset(); nowPlaying.stopPolling(); recognition.reset(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; messages = [] }
 
     func send() async {
         guard let session, let token = session.accessToken else { return }

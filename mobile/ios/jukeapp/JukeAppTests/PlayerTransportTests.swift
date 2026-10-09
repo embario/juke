@@ -34,6 +34,14 @@ import Testing
         func next() { calls.append("next") }
     }
 
+    @MainActor private final class FakeMemory: TransportMemory {
+        var isActive: Bool
+        var hasNeighbour = true
+        var steps: [Int] = []
+        init(active: Bool) { isActive = active }
+        func step(_ direction: Int) async -> Bool { steps.append(direction); return hasNeighbour }
+    }
+
     @MainActor private final class Clock { var now = Date(timeIntervalSince1970: 1_800_000_000) }
 
     private func make(onAir: Bool, token: String? = "t", playing: Bool = true, source: TransportSource = .spotify,
@@ -114,5 +122,59 @@ import Testing
         #expect(MiniPlayerStyle.borderOpacity >= 0.2)
         #expect(MiniPlayerStyle.borderWidth >= 1)
         #expect(MiniPlayerStyle.shadowOpacity > 0 && MiniPlayerStyle.shadowRadius > 0)
+    }
+
+    @Test func inMemoryPlaybackNextAndPreviousStepThroughMemoriesNotSpotify() async {
+        let memory = FakeMemory(active: true)
+        let spotify = FakeSpotify()
+        let transport = PlayerTransport(radio: FakeRadio(onAir: false), memory: memory, spotify: spotify, apple: FakeApple(),
+                                        token: { "t" }, externalIsPlaying: { true })
+        await transport.press(.next); await transport.press(.previous)
+        #expect(memory.steps == [1, -1])
+        #expect(spotify.calls.isEmpty, "Spotify's queue must not advance during memory playback")
+        await transport.press(.playPause)
+        #expect(spotify.calls == ["pause"], "play/pause still reaches the player that is sounding")
+        #expect(memory.steps == [1, -1])
+    }
+
+    @Test func atTheEndOfTheTimelineNextSaysSoInsteadOfStartingSomethingElse() async {
+        let memory = FakeMemory(active: true)
+        memory.hasNeighbour = false
+        let spotify = FakeSpotify()
+        let transport = PlayerTransport(radio: FakeRadio(onAir: false), memory: memory, spotify: spotify, apple: FakeApple(),
+                                        token: { "t" }, externalIsPlaying: { true })
+        await transport.press(.next)
+        #expect(transport.message == "That's the latest memory.")
+        await transport.press(.previous)
+        #expect(transport.message == "That's the earliest memory.")
+        #expect(spotify.calls.isEmpty)
+    }
+
+    @Test func withoutAMemoryPlayingNextStillGoesToSpotifyOrTheStation() async {
+        let memory = FakeMemory(active: false)
+        let spotify = FakeSpotify()
+        let off = PlayerTransport(radio: FakeRadio(onAir: false), memory: memory, spotify: spotify, apple: FakeApple(),
+                                  token: { "t" }, externalIsPlaying: { true })
+        await off.press(.next)
+        #expect(spotify.calls == ["next"] && memory.steps.isEmpty)
+
+        let idle = FakeMemory(active: false)
+        let radio = FakeRadio(onAir: true)
+        let onAir = PlayerTransport(radio: radio, memory: idle, spotify: FakeSpotify(), apple: FakeApple(),
+                                    token: { "t" }, externalIsPlaying: { true })
+        await onAir.press(.next)
+        #expect(radio.calls == ["skip"] && idle.steps.isEmpty, "a station on air owns Next when no memory is playing")
+    }
+
+    @Test func aMemoryStartedWhileTheStationIsOnAirOwnsNextAndPrevious() async {
+        let memory = FakeMemory(active: true)
+        let radio = FakeRadio(onAir: true)
+        let transport = PlayerTransport(radio: radio, memory: memory, spotify: FakeSpotify(), apple: FakeApple(),
+                                        token: { "t" }, externalIsPlaying: { true })
+        await transport.press(.next); await transport.press(.previous)
+        #expect(memory.steps == [1, -1])
+        #expect(radio.calls.isEmpty, "the station must not skip while a memory's song is what is playing")
+        await transport.press(.playPause)
+        #expect(radio.calls == ["toggle"])
     }
 }
