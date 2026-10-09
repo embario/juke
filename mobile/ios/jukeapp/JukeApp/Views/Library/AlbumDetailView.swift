@@ -56,6 +56,10 @@ struct AlbumDetailView: View {
     }
 
     private var pane: some View {
+        ScrollView { paneContent }
+    }
+
+    private var paneContent: some View {
         VStack(spacing: 12) {
             switch state {
             case .loading: ProgressView().padding(.top, 12)
@@ -72,9 +76,8 @@ struct AlbumDetailView: View {
                 }
             }
             if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20).padding(.top, 4)
+        .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 16)
     }
 
     @ViewBuilder private var tracklist: some View {

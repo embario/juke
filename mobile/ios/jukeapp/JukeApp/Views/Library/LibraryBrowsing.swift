@@ -97,12 +97,6 @@ enum DetailRoute: Identifiable, Hashable {
     }
 }
 
-/// A route inside an artist screen: another artist from "Related artists".
-struct RelatedArtistRoute: Hashable {
-    let pk: Int
-    let name: String
-}
-
 private struct DetailSheetCloseKey: EnvironmentKey { static let defaultValue: (@MainActor () -> Void)? = nil }
 
 extension EnvironmentValues {

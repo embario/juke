@@ -67,11 +67,61 @@ final class DetailViewsUITests: XCTestCase {
         add(shot("Artist-pane"))
         app.buttons["artist.reveal"].tap()
         XCTAssertTrue(app.staticTexts["Top songs"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["John Coltrane"].exists)
+        XCTAssertTrue(app.buttons["artist.related.27"].exists)
         sleep(1)
         add(shot("Artist-details"))
         app.buttons["artist.hide"].tap()
         XCTAssertTrue(app.buttons["artist.filter.albums"].waitForExistence(timeout: 5))
+    }
+
+    /// Anything on screen whose label mentions `text`.
+    private func labelled(_ app: XCUIApplication, _ text: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+
+    @MainActor
+    func testRelatedArtistOpensFromLibrary() {
+        let app = launch(["--uitesting-tab=library", "--uitesting-kind=artist", "--uitesting-browse"])
+        XCTAssertTrue(app.buttons["artist.reveal"].waitForExistence(timeout: 15))
+        app.buttons["artist.reveal"].tap()
+        let related = app.buttons["artist.related.27"]
+        XCTAssertTrue(related.waitForExistence(timeout: 5))
+        related.tap()
+        XCTAssertTrue(app.navigationBars["John Coltrane"].waitForExistence(timeout: 5), "the related artist's screen is pushed")
+        XCTAssertTrue(app.buttons["artist.reveal"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Miles Davis"].exists)
+    }
+
+    @MainActor
+    func testAlbumRowOpensFromLibraryArtist() {
+        let app = launch(["--uitesting-tab=library", "--uitesting-kind=artist", "--uitesting-browse"])
+        XCTAssertTrue(app.buttons["artist.filter.albums"].waitForExistence(timeout: 15))
+        let row = app.staticTexts["Kind of Blue"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        XCTAssertTrue(app.buttons["album.reveal"].waitForExistence(timeout: 10), "tapping a release opens its album screen")
+        XCTAssertTrue(labelled(app, "Miles Davis").exists, "named for the artist it came from")
+    }
+
+    @MainActor
+    func testAlbumOfARelatedArtistNamesThatArtistInTheRadioSheet() {
+        let app = launch([])
+        XCTAssertTrue(app.buttons["radio.artistDetails"].waitForExistence(timeout: 15))
+        app.buttons["radio.artistDetails"].tap()
+        XCTAssertTrue(app.buttons["artist.reveal"].waitForExistence(timeout: 10))
+        app.buttons["artist.reveal"].tap()
+        let related = app.buttons["artist.related.27"]
+        XCTAssertTrue(related.waitForExistence(timeout: 5))
+        related.tap()
+        XCTAssertTrue(app.navigationBars["John Coltrane"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["artist.filter.albums"].waitForExistence(timeout: 10))
+        let row = app.staticTexts["Kind of Blue"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        XCTAssertTrue(app.buttons["album.reveal"].waitForExistence(timeout: 10))
+        XCTAssertTrue(labelled(app, "John Coltrane").exists, "the album is shown under the artist whose catalog it came from")
+        XCTAssertFalse(labelled(app, "Miles Davis").exists, "not under the first artist in the stack")
+        add(shot("Related-artist-album"))
     }
 
     @MainActor

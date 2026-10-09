@@ -23,12 +23,6 @@ struct ArtistDetailView: View {
         }
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .background(VibeBackground(atmosphere: model.atmosphere))
-        .navigationDestination(for: Int.self) { pk in
-            AlbumDetailView(title: albumName(pk), spotifyID: "", artist: title, catalogID: pk)
-        }
-        .navigationDestination(for: RelatedArtistRoute.self) { route in
-            ArtistDetailView(title: route.name, spotifyID: "", catalogID: route.pk)
-        }
         .task { await load() }
         #if DEBUG
         .onChange(of: detailsLoaded) { _, loaded in
@@ -40,11 +34,6 @@ struct ArtistDetailView: View {
 
     private var detailsLoaded: Bool { if case .loaded = details { true } else { false } }
     private var loadedDetails: CatalogArtistDetail? { if case .loaded(let artist) = details { artist } else { nil } }
-
-    private func albumName(_ pk: Int) -> String {
-        if case .loaded(let catalog) = resolution { return catalog.release(pk: pk)?.name ?? "Album" }
-        return "Album"
-    }
 
     // MARK: Panes
 
@@ -99,17 +88,22 @@ struct ArtistDetailView: View {
                     ForEach(artist.topTracks) { track in
                         Button { if let id = track.spotifyID { Task { message = await LibraryActions(model: model).play(spotifyID: id, kind: "tracks") } } } label: {
                             HStack { Text(track.name).lineLimit(1); Spacer(); Image(systemName: "play.fill").font(.caption).foregroundStyle(.secondary) }
-                                .frame(minHeight: 40).contentShape(Rectangle())
+                                .frame(minHeight: 44).contentShape(Rectangle())
                         }.buttonStyle(.plain)
                     }
                 }
                 if !artist.relatedArtists.isEmpty {
                     Text("Related artists").font(.headline)
                     ForEach(artist.relatedArtists) { related in
-                        NavigationLink(value: RelatedArtistRoute(pk: related.pk, name: related.name)) {
+                        // A link that carries its own destination: each screen names its own artist, however deep the stack.
+                        NavigationLink {
+                            ArtistDetailView(title: related.name, spotifyID: "", catalogID: related.pk)
+                        } label: {
                             HStack { Text(related.name); Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary) }
-                                .frame(minHeight: 40).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
+                                .frame(minHeight: 44).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("artist.related.\(related.pk)")
                     }
                 }
                 if artist.bio?.isEmpty != false, artist.topTracks.isEmpty, artist.relatedArtists.isEmpty, artist.genres.isEmpty {
@@ -216,7 +210,7 @@ private struct ArtistCatalogList: View {
             Spacer()
             Menu {
                 if let id = album.spotifyID { Button("Play from the beginning", systemImage: "play.fill") { play(id) } }
-                NavigationLink("View album", value: album.pk)
+                NavigationLink("View album") { albumScreen(album) }
                 if let seed = LibraryBrowsing.albumSeed(album, artist: artist) {
                     Button("Start a station from this album", systemImage: "dot.radiowaves.left.and.right") {
                         LibraryActions(model: model).station(from: seed)
@@ -226,7 +220,12 @@ private struct ArtistCatalogList: View {
             } label: { Image(systemName: "ellipsis.circle").imageScale(.large) }
                 .accessibilityLabel("Actions for \(album.name)")
         }
-        .background(NavigationLink("", value: album.pk).opacity(0))
+        .background(NavigationLink("") { albumScreen(album) }.opacity(0))
+    }
+
+    /// The album screen for a release, naming this artist (not whichever artist screen is at the root of the stack).
+    private func albumScreen(_ album: CatalogAlbumSummary) -> AlbumDetailView {
+        AlbumDetailView(title: album.name, spotifyID: album.spotifyID ?? "", artist: artist, catalogID: album.pk)
     }
 
     private func play(_ albumID: String) { Task { message = await LibraryActions(model: model).play(spotifyID: albumID, kind: "albums") } }
