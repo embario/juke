@@ -55,7 +55,11 @@ struct NewStationScreen: View {
             .clipped()
             footer
         }
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { model.coordinator.closeNewStation() } } }
+        .toolbar {
+            if page == .start {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { model.coordinator.closeNewStation() } }
+            }
+        }
         .onChange(of: model.coordinator.radioRoute) { _, route in
             // A new draft pushed while this screen is showing (for example "Pull more records").
             if case .newStation(let next) = route {
@@ -70,6 +74,20 @@ struct NewStationScreen: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if page != .start {
+                HStack {
+                    Button("Back") { back() }
+                        .font(.body)
+                        .accessibilityIdentifier("newStation.back")
+                    Spacer()
+                    if page != .finish {
+                        Button(NewStationWizard.advanceLabel(from: page, flow: flow)) { advance() }
+                            .font(.body.weight(.semibold))
+                            .disabled(!NewStationWizard.canAdvance(from: page, flow: flow))
+                            .accessibilityIdentifier("newStation.next")
+                    }
+                }
+            }
             HStack(spacing: 6) {
                 ForEach(NewStationPage.allCases, id: \.self) { dot in
                     Capsule().fill(dot <= page ? theme.accent.color : theme.line)
@@ -105,25 +123,16 @@ struct NewStationScreen: View {
         VStack(spacing: 10) {
             if let error { Label(error, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(theme.ink.color) }
             switch page {
-            case .start:
+            case .start, .first, .second:
                 EmptyView()
             case .finish:
                 Button { Task { await create(.afterCurrentSong) } } label: { Text(flow.startLabel).frame(maxWidth: .infinity) }
                     .buttonStyle(.borderedProminent).controlSize(.large).disabled(!flow.canStart || saving || descriptionIssue != nil)
                     .accessibilityIdentifier("newStation.start")
                 Button("Play it now") { Task { await create(.now) } }.disabled(!flow.canStart || saving || descriptionIssue != nil)
-            default:
-                Button { advance() } label: { Text(NewStationWizard.advanceLabel(from: page, flow: flow)).frame(maxWidth: .infinity) }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
-                    .disabled(!NewStationWizard.canAdvance(from: page, flow: flow))
-                    .accessibilityIdentifier("newStation.next")
-            }
-            if page != .start {
-                Button("Back") { back() }.font(.subheadline).accessibilityIdentifier("newStation.back")
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
-        .background(.bar)
     }
 
     // MARK: Pages
