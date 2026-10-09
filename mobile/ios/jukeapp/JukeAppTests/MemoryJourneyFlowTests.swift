@@ -4,7 +4,7 @@ import Testing
 import UniformTypeIdentifiers
 @testable import JukeApp
 
-@Suite struct MemoryJourneyFlowTests {
+@MainActor @Suite struct MemoryJourneyFlowTests {
     @Test func photosComeFirstUnlessMusicIsPlaying() {
         #expect(MemoryJourneyFlow().order == [.photo, .song, .story, .review])
         #expect(MemoryJourneyFlow(startWithSong: true).order == [.song, .photo, .story, .review])
@@ -92,5 +92,28 @@ import UniformTypeIdentifiers
         #expect(gate.shouldKeepLateUpload())
         gate.abandon()
         #expect(!gate.shouldKeepLateUpload())
+    }
+
+    @Test func deletingAMemoryRemovesOnlyThatMemoryFromTheStore() async throws {
+        let store = MemoryStore(client: MemoryClient(fixtures: true))
+        let session = JukeSession(
+            account: JukeAccount(id: "memory-delete-test", displayName: "Listener", email: nil, cloudAIEnabled: false),
+            accessToken: "test-token",
+            authenticatedAt: .now
+        )
+        await store.configure(session: session)
+
+        var firstDraft = MemoryDraft()
+        firstDraft.title = "First memory"
+        firstDraft.text = "A moment to keep"
+        let first = try await store.save(firstDraft)
+        var secondDraft = MemoryDraft()
+        secondDraft.title = "Second memory"
+        secondDraft.text = "Another moment"
+        let second = try await store.save(secondDraft)
+
+        try await store.delete(first)
+
+        #expect(store.memories.map(\.id) == [second.id])
     }
 }

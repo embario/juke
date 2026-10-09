@@ -36,6 +36,7 @@
 		549DBA54BE005F15E2E66A6B /* AppConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE582E003D53E3852308ECD5 /* AppConfigurationTests.swift */; };
 		55BF6C28C2BECC020CFAD031 /* AppLockController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76C23B3E7823A358F8612D54 /* AppLockController.swift */; };
 		5624E669EAC7D1505FC2A8D1 /* MemoryJourneyFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1D281CD5C7E68083E03D47C /* MemoryJourneyFlow.swift */; };
+		56686781876F76D3D38ADC00 /* MemoryDeleteUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2576EC178339ABDDB4BA7787 /* MemoryDeleteUITests.swift */; };
 		5ECC130493F920D5AAAD21A3 /* StationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352AD2D41149E314BCF53B22 /* StationSheet.swift */; };
 		6A1597151175F2E7FF5762AA /* NowPlayingObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3B28E1738FD3C142DE10D3 /* NowPlayingObserver.swift */; };
 		6CC49D535058A46A590CF5EB /* MemoryJourneyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B437354B0BA8E7E0D426CA /* MemoryJourneyView.swift */; };
@@ -119,6 +120,7 @@
 		1E86866E5F50638D1FCDE22A /* RadioScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioScreen.swift; sourceTree = "<group>"; };
 		232321C24A61172302B65A98 /* LibraryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryScreen.swift; sourceTree = "<group>"; };
 		255316E4751492999C5D4885 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		2576EC178339ABDDB4BA7787 /* MemoryDeleteUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryDeleteUITests.swift; sourceTree = "<group>"; };
 		2F3F35E50AA8F393A9F6D374 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2F7BD6ADAE5DF7268A1A1E8F /* RadioMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioMath.swift; sourceTree = "<group>"; };
 		340D8CE112C887D7B4CB781B /* JukeAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeAPI.swift; sourceTree = "<group>"; };
@@ -263,6 +265,7 @@
 			isa = PBXGroup;
 			children = (
 				9972CA449D9402E5CCFFC38F /* ChatViewUITests.swift */,
+				2576EC178339ABDDB4BA7787 /* MemoryDeleteUITests.swift */,
 			);
 			path = JukeAppUITests;
 			sourceTree = "<group>";
@@ -606,6 +609,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8700679E843036BCF1BD376B /* ChatViewUITests.swift in Sources */,
+				56686781876F76D3D38ADC00 /* MemoryDeleteUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
