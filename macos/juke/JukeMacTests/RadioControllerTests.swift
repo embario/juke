@@ -93,6 +93,7 @@ private actor FakePlayback: RadioPlaybackControlling {
     func resume(deviceID: String?) async throws { calls.append("resume") }
     func next(deviceID: String?) async throws { calls.append("next") }
     func seek(to position: TimeInterval, deviceID: String?) async throws { calls.append("seek:\(Int(position))") }
+    func play(trackID: String, deviceID: String?) async throws { calls.append("play:\(trackID)") }
 }
 
 @MainActor
@@ -288,6 +289,23 @@ final class RadioControllerTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(50))
         let events = await backend.events
         XCTAssertEqual(events.map(\.event), [.skip, .play], "a skipped song is not 'complete'")
+    }
+
+    func testPreviousReplaysThePrecedingStationSong() async {
+        let radio = await onAir()
+        await radio.skip()
+        XCTAssertEqual(radio.track, second)
+        await radio.previous()
+        let calls = await playback.calls
+        XCTAssertEqual(calls.last, "play:\(first.spotifyId)")
+        XCTAssertEqual(radio.track, first)
+        XCTAssertTrue(radio.isPlaying)
+        // Going back does not stack the song we left, so a second Previous has nothing earlier.
+        XCTAssertTrue(radio.playedHistory.isEmpty)
+        XCTAssertTrue(radio.isPlaying)
+        await radio.previous()
+        let after = await playback.calls
+        XCTAssertEqual(after.last, "seek:0", "with no earlier song Previous restarts this one")
     }
 
     func testKeepOutNeverPlayArtistSendsTheArtistID() async {

@@ -130,6 +130,8 @@ protocol RadioPlaybackControlling: Sendable {
     func resume(deviceID: String?) async throws
     func next(deviceID: String?) async throws
     func seek(to position: TimeInterval, deviceID: String?) async throws
+    /// Plays one specific song (replaying the preceding station song).
+    func play(trackID: String, deviceID: String?) async throws
 }
 
 /// Production playback: the existing `PlaybackClient` with the session token.
@@ -156,6 +158,9 @@ struct SpotifyRadioPlayback: RadioPlaybackControlling {
     func next(deviceID: String?) async throws { _ = try await client.next(token: authorized(), deviceID: deviceID) }
     func seek(to position: TimeInterval, deviceID: String?) async throws {
         _ = try await client.seek(token: authorized(), deviceID: deviceID, position: position)
+    }
+    func play(trackID: String, deviceID: String?) async throws {
+        _ = try await client.play(token: authorized(), spotifyID: trackID, kind: "tracks", deviceID: deviceID)
     }
 }
 
