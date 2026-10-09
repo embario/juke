@@ -69,7 +69,7 @@ def generate_chat_response(*, message: str, current_track: str | None, listener_
             {'role': 'system', 'content': f'Current track metadata: {track_context}'},
             {'role': 'user', 'content': message},
         ],
-        max_tokens=120,
+        max_tokens=180,
         temperature=0.7,
     )
     content = response.choices[0].message.content

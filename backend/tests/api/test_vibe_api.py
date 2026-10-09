@@ -291,7 +291,9 @@ class VibeAPITests(APITestCase):
 
         self.assertEqual(reply, 'A compact, helpful reply.')
         request = openai_client.return_value.chat.completions.create.call_args.kwargs
-        self.assertEqual(request['max_tokens'], 120)
+        # Keep the fuller-answer headroom when someone explicitly asks for detail;
+        # the system prompt keeps the normal response short.
+        self.assertEqual(request['max_tokens'], 180)
         self.assertIn('one to three short sentences', request['messages'][0]['content'])
         self.assertIn('explicitly asks for detail', request['messages'][0]['content'])
 
