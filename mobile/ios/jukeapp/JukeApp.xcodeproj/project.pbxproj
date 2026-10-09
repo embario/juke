@@ -90,6 +90,7 @@
 		EF044E898C0C4AB9C659D6AD /* VinylDisc.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FEA42EF9468EFBD6362AC5 /* VinylDisc.swift */; };
 		EF1404B00C518A31CC7A4F12 /* ArtistCatalogModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5EC2A0E343FBAB679D96BD3 /* ArtistCatalogModelTests.swift */; };
 		EFCF2EFF2B14C54A186237D3 /* JukeAPI+Radio.swift in Sources */ = {isa = PBXBuildFile; fileRef = D959AF221770C159D84E4250 /* JukeAPI+Radio.swift */; };
+		F11A56720C5F52E9287F21D4 /* ReactionEmojiSliderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3306B4A8F2C9FECF72A57D /* ReactionEmojiSliderUITests.swift */; };
 		F3A9E68588BF62525D322B4F /* JukeAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBFC0E19FFDC9C06F4EBFF62 /* JukeAuthService.swift */; };
 		F7BE5CD3C54CC9152270E5C6 /* JukeAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 340D8CE112C887D7B4CB781B /* JukeAPI.swift */; };
 		F87121C70363776108E3B591 /* JukeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED4A73B45EF608E4D02F429A /* JukeTheme.swift */; };
@@ -144,6 +145,7 @@
 		441A6EF51DC997D3F68BE925 /* VibeAtmosphere.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeAtmosphere.swift; sourceTree = "<group>"; };
 		45A3B1A70127936170F883D8 /* AppearanceChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceChoice.swift; sourceTree = "<group>"; };
 		49F15D334686FB7C6312F27C /* JukeApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = JukeApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4D3306B4A8F2C9FECF72A57D /* ReactionEmojiSliderUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReactionEmojiSliderUITests.swift; sourceTree = "<group>"; };
 		4E2C68B40CE5764B9801DEE5 /* RadioLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioLayoutTests.swift; sourceTree = "<group>"; };
 		4E315CDD9222485F7F50E0FA /* CrateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrateView.swift; sourceTree = "<group>"; };
 		519103EDE64C494F7F99E002 /* MemoryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryClient.swift; sourceTree = "<group>"; };
@@ -290,6 +292,7 @@
 				9972CA449D9402E5CCFFC38F /* ChatViewUITests.swift */,
 				2576EC178339ABDDB4BA7787 /* MemoryDeleteUITests.swift */,
 				9111D71A59A65401665C685B /* MemoryNextUITests.swift */,
+				4D3306B4A8F2C9FECF72A57D /* ReactionEmojiSliderUITests.swift */,
 			);
 			path = JukeAppUITests;
 			sourceTree = "<group>";
@@ -646,6 +649,7 @@
 				8700679E843036BCF1BD376B /* ChatViewUITests.swift in Sources */,
 				56686781876F76D3D38ADC00 /* MemoryDeleteUITests.swift in Sources */,
 				714A95CFE724B8762319F30E /* MemoryNextUITests.swift in Sources */,
+				F11A56720C5F52E9287F21D4 /* ReactionEmojiSliderUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
