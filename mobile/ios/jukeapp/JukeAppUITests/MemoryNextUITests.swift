@@ -7,10 +7,10 @@ final class MemoryNextUITests: XCTestCase {
         app.launchArguments = ["--uitesting", "--uitesting-authenticated", "--uitesting-tab=memories", "--uitesting-memories-sample"]
         app.launch()
 
-        // Newest first in the list; by date the order is Late night (3 days ago) < Sunday drive < Beach.
-        let oldest = app.staticTexts["Late night listening"]
-        XCTAssertTrue(oldest.waitForExistence(timeout: 10))
-        oldest.tap()
+        // Deck order is shuffled; by date the order is Late night (3 days ago) < Sunday drive < Beach.
+        XCTAssertTrue(card(app).waitForExistence(timeout: 10))
+        bringToTop("Late night listening", in: app)
+        card(app).tap()
         let play = app.buttons["memory.playMoment"]
         XCTAssertTrue(play.waitForExistence(timeout: 5))
         play.tap()
@@ -21,13 +21,13 @@ final class MemoryNextUITests: XCTestCase {
 
         next.tap()
         app.navigationBars.buttons.firstMatch.tap()
-        XCTAssertTrue(playingRow("Sunday drive").waitForExistence(timeout: 5), "Next plays the next memory in time")
-        XCTAssertFalse(playingRow("Late night listening").exists)
+        XCTAssertTrue(isPlaying("Sunday drive", in: app), "Next plays the next memory in time")
+        XCTAssertFalse(isPlaying("Late night listening", in: app))
         add(shot("Memories-after-next-1"))
 
         next.tap()
-        XCTAssertTrue(playingRow("Beach with the family").waitForExistence(timeout: 5))
-        XCTAssertFalse(playingRow("Sunday drive").exists)
+        XCTAssertTrue(isPlaying("Beach with the family", in: app))
+        XCTAssertFalse(isPlaying("Sunday drive", in: app))
         add(shot("Memories-after-next-2"))
 
         next.tap()  // Beach is the latest memory with a song: nothing later to play
@@ -35,14 +35,26 @@ final class MemoryNextUITests: XCTestCase {
         XCTAssertTrue(app.alerts["Playback"].staticTexts["That's the latest memory."].exists)
         add(shot("Memories-latest-memory"))
         app.alerts["Playback"].buttons.firstMatch.tap()
-        XCTAssertTrue(playingRow("Beach with the family").exists, "still playing the latest memory")
+        XCTAssertTrue(isPlaying("Beach with the family", in: app), "still playing the latest memory")
 
         app.buttons["player.previous"].tap()
-        XCTAssertTrue(playingRow("Sunday drive").waitForExistence(timeout: 5), "Previous steps back in time")
+        XCTAssertTrue(isPlaying("Sunday drive", in: app), "Previous steps back in time")
     }
 
-    private func playingRow(_ title: String) -> XCUIElement {
-        XCUIApplication().cells.containing(.staticText, identifier: title).descendants(matching: .image).matching(identifier: "memory.playing").firstMatch
+    private func card(_ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "memory.card").firstMatch
+    }
+
+    private func bringToTop(_ title: String, in app: XCUIApplication) {
+        for _ in 0..<5 where !card(app).label.hasPrefix(title) { app.buttons["memory.deck.next"].tap() }
+        XCTAssertTrue(card(app).label.hasPrefix(title))
+    }
+
+    /// Walks the deck to the memory's card and reads its "Playing" value.
+    private func isPlaying(_ title: String, in app: XCUIApplication) -> Bool {
+        Thread.sleep(forTimeInterval: 1)
+        bringToTop(title, in: app)
+        return (card(app).value as? String) == "Playing"
     }
 
     private func shot(_ name: String) -> XCTAttachment {

@@ -42,6 +42,7 @@ struct MemoryThumbnail: View {
     @Environment(VibeAppModel.self) private var model
     let memory: MusicMemory
     var side: CGFloat = 56
+    var cornerRadius: CGFloat = 10
     @State private var image: UIImage?
 
     private var choice: MemoryThumbnailChoice { .choose(for: memory) }
@@ -55,7 +56,7 @@ struct MemoryThumbnail: View {
             } else { Image(systemName: icon).foregroundStyle(.secondary) }
             if case .video = choice, image != nil { Image(systemName: "play.fill").font(.caption).foregroundStyle(.white).shadow(radius: 2) }
         }
-        .frame(width: side, height: side).clipShape(RoundedRectangle(cornerRadius: 10))
+        .frame(width: side, height: side).clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .accessibilityHidden(true)
         .task(id: choice) { await load() }
     }
