@@ -241,6 +241,13 @@ struct RadioPreferences {
         get { defaults.stringArray(forKey: key("customReactions")) ?? [] }
         nonmutating set { defaults.set(Array(newValue.suffix(24)), forKey: key("customReactions")) }
     }
+
+    /// Emoji ordered by most recently chosen, so the last selection stays in
+    /// the leftmost slider slot across songs and launches.
+    var recentEmojiReactions: [String] {
+        get { defaults.stringArray(forKey: key("recentEmojiReactions")) ?? [] }
+        nonmutating set { defaults.set(Array(newValue.prefix(24)), forKey: key("recentEmojiReactions")) }
+    }
 }
 
 /// A paused radio song: enough to show it again and resume it at the same place.

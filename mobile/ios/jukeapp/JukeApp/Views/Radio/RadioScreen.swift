@@ -119,7 +119,7 @@ private struct NowPlayingCard: View {
                 }
                 ProgressScrubber()
                 Transport()
-                ReactionStrip()
+                ReactionEmojiSlider()
                 if let notice = radio.notice { Text(notice).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
                 if radio.isPausedForEpisode {
                     Button("Resume station") { Task { await radio.togglePlayPause() } }.buttonStyle(.borderedProminent).accessibilityIdentifier("radio.resumeStation")
@@ -255,27 +255,70 @@ private struct Transport: View {
     }
 }
 
-private struct ReactionStrip: View {
+private struct ReactionEmojiSlider: View {
     @Environment(VibeAppModel.self) private var model
     @State private var words = ""
     @State private var addingWords = false
+    @State private var previewEmoji: String?
+    @State private var isScrubbing = false
 
     var body: some View {
         let radio = model.radio
         VStack(spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack {
-                    ForEach(radio.stripReactions, id: \.self) { reaction in
-                        let selected = radio.currentReactions.contains(reaction)
-                        Button { Task { await radio.toggleReaction(reaction) } } label: {
-                            Text(reaction).font(.title3).padding(.horizontal, 12).padding(.vertical, 8)
-                                .background(selected ? model.atmosphere.primary.opacity(0.3) : Color.secondary.opacity(0.12), in: Capsule())
-                        }.buttonStyle(.plain)
+            GeometryReader { geometry in
+                let reactions = Array(radio.stripReactions.prefix(7))
+                VStack(spacing: 0) {
+                    if isScrubbing, let previewEmoji {
+                        Text(previewEmoji)
+                            .font(.system(size: 44))
+                            .frame(height: 48)
+                            .transition(.scale.combined(with: .opacity))
                     }
-                    Button { addingWords = true } label: { Image(systemName: "plus").padding(10).background(Color.secondary.opacity(0.12), in: Circle()) }
-                        .buttonStyle(.plain).accessibilityLabel("Add your own reaction")
+                    HStack(spacing: 2) {
+                        ForEach(reactions, id: \.self) { reaction in
+                            let selected = radio.currentReactions.contains(reaction)
+                            Button { Task { await radio.toggleReaction(reaction) } } label: {
+                                Text(reaction)
+                                    .font(.system(size: 28))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 48)
+                                    .background(selected ? model.atmosphere.primary.opacity(0.2) : .clear, in: Capsule())
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("React with \(reaction)")
+                            .accessibilityValue(selected ? "Selected" : "Not selected")
+                            .accessibilityHint("Double-tap to add or remove this feeling. Or touch and hold, then slide to preview.")
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(scrubGesture(reactions: reactions, width: geometry.size.width, radio: radio))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("radio.emojiSlider")
+                    .accessibilityLabel("Reaction slider")
+                    .accessibilityValue(radio.currentReactions.first(where: reactions.contains) ?? "No feeling selected")
+                    .accessibilityHint("Swipe up or down to choose the previous or next feeling. Double-tap an emoji to add or remove it.")
+                    .accessibilityAdjustableAction { direction in
+                        let current = radio.currentReactions.first(where: reactions.contains)
+                        let step = direction == .increment ? 1 : -1
+                        if let adjacent = ReactionEmojiSliderLogic.adjacent(to: current, direction: step, in: reactions) {
+                            Task { await radio.chooseReaction(adjacent) }
+                        }
+                    }
+                    .disabled(radio.track == nil)
                 }
-            }.disabled(radio.track == nil)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(height: isScrubbing ? 96 : 48)
+            .animation(.snappy(duration: 0.18), value: isScrubbing)
+            Button { addingWords = true } label: {
+                Label("Add your own reaction", systemImage: "plus")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("radio.addReaction")
+            .disabled(radio.track == nil)
             if let suggestion = radio.suggestion {
                 HStack {
                     Text("Sounds like \(suggestion.name)").font(.footnote)
@@ -289,6 +332,27 @@ private struct ReactionStrip: View {
             Button("Add") { let text = words; words = ""; Task { await radio.addWords(text) } }
             Button("Cancel", role: .cancel) { words = "" }
         }
+    }
+
+    private func scrubGesture(reactions: [String], width: CGFloat, radio: RadioController) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.28)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+            .onChanged { value in
+                guard case .second(true, let drag?) = value, !reactions.isEmpty else { return }
+                let index = ReactionEmojiSliderLogic.slot(at: drag.location.x, width: width, count: reactions.count)
+                isScrubbing = true
+                previewEmoji = reactions[index]
+            }
+            .onEnded { value in
+                defer {
+                    isScrubbing = false
+                    previewEmoji = nil
+                }
+                guard case .second(true, let drag?) = value, !reactions.isEmpty else { return }
+                let index = ReactionEmojiSliderLogic.slot(at: drag.location.x, width: width, count: reactions.count)
+                let reaction = reactions[index]
+                Task { await radio.chooseReaction(reaction) }
+            }
     }
 }
 

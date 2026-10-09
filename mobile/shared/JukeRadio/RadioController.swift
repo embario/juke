@@ -1,6 +1,40 @@
 import Foundation
 import Observation
 
+/// Keeps the last selected emoji first while preserving the other choices in
+/// their previous order.
+struct ReactionEmojiRecency: Equatable {
+    private(set) var values: [String]
+
+    init(_ values: [String] = []) {
+        self.values = Array(Self.unique(values).prefix(24))
+    }
+
+    mutating func select(_ emoji: String) {
+        values = [emoji] + values.filter { $0 != emoji }
+    }
+
+    private static func unique(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
+    }
+}
+
+enum ReactionEmojiSliderLogic {
+    static func slot(at x: CGFloat, width: CGFloat, count: Int) -> Int {
+        guard count > 1, width > 0 else { return 0 }
+        return min(count - 1, max(0, Int(x / (width / CGFloat(count)))))
+    }
+
+    /// VoiceOver's adjustable action chooses the adjacent emoji without
+    /// toggling off the current feeling.
+    static func adjacent(to current: String?, direction: Int, in choices: [String]) -> String? {
+        guard !choices.isEmpty, direction != 0 else { return nil }
+        let currentIndex = current.flatMap(choices.firstIndex(of:)) ?? (direction > 0 ? -1 : choices.count)
+        return choices.indices.contains(currentIndex + direction) ? choices[currentIndex + direction] : nil
+    }
+}
+
 /// Drives Juke radio: stations, the tuned (pending) station, what Spotify is
 /// playing, and the continuous-play loop.
 ///
@@ -70,6 +104,8 @@ final class RadioController {
     /// Reactions per Spotify track id.
     private(set) var reactions: [String: [String]] = [:]
     private(set) var customReactions: [String]
+    private var emojiRecency: ReactionEmojiRecency
+    var recentEmojiReactions: [String] { emojiRecency.values }
 
     /// Called whenever the playing song changes (artwork colour follows it).
     @ObservationIgnored var onTrackChange: (@MainActor (Radio.Track?) -> Void)?
@@ -159,6 +195,7 @@ final class RadioController {
         anchorDate = now()
         hasTunedIn = preferences.hasTunedIn
         customReactions = preferences.customReactions
+        emojiRecency = ReactionEmojiRecency(preferences.recentEmojiReactions)
         observeStationRequests()
     }
 
@@ -195,13 +232,13 @@ final class RadioController {
         return reactions[id] ?? []
     }
 
-    /// Chips for the reaction strip: the station's emoji feelings and a few
-    /// defaults, the listener's own recent emoji, then whatever is selected.
+    /// Emoji choices for the Radio slider, ordered by most recent selection
+    /// before station feelings, defaults, and other current reactions.
     var stripReactions: [String] {
         let feelings = (currentStation?.feelings ?? []).filter(Self.isEmoji)
         let base = Self.unique(feelings + Self.defaultStripEmoji).prefix(5)
         let custom = customReactions.filter(Self.isEmoji).suffix(2)
-        return Array(Self.unique(Array(base) + Array(custom) + currentReactions).prefix(9))
+        return Array(Self.unique(recentEmojiReactions + currentReactions.filter(Self.isEmoji) + Array(base) + Array(custom)).prefix(9))
     }
 
     var pickerReactions: [String] {
@@ -219,6 +256,7 @@ final class RadioController {
             preferences = preferences.scoped(to: accountID)
             hasTunedIn = preferences.hasTunedIn
             customReactions = preferences.customReactions
+            emojiRecency = ReactionEmojiRecency(preferences.recentEmojiReactions)
         }
         let session = generation
         await loadStations()
@@ -802,8 +840,19 @@ final class RadioController {
 
     func toggleReaction(_ reaction: String) async {
         var next = currentReactions
-        if let index = next.firstIndex(of: reaction) { next.remove(at: index) } else { next.append(reaction) }
+        if let index = next.firstIndex(of: reaction) {
+            next.remove(at: index)
+        } else {
+            next.append(reaction)
+            if Self.isEmoji(reaction) { rememberEmojiSelection(reaction) }
+        }
         await setReactions(next)
+    }
+
+    func chooseReaction(_ reaction: String) async {
+        guard !currentReactions.contains(reaction) else { return }
+        if Self.isEmoji(reaction) { rememberEmojiSelection(reaction) }
+        await setReactions(currentReactions + [reaction])
     }
 
     /// "In your words": saved exactly like an emoji.
@@ -1248,6 +1297,11 @@ final class RadioController {
     private func rememberCustom(_ reaction: String) {
         customReactions = Array(Self.unique(customReactions + [reaction]).suffix(24))
         preferences.customReactions = customReactions
+    }
+
+    private func rememberEmojiSelection(_ reaction: String) {
+        emojiRecency.select(reaction)
+        preferences.recentEmojiReactions = emojiRecency.values
     }
 
     // MARK: Helpers

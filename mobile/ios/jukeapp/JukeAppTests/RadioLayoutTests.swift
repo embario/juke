@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 @testable import JukeApp
 
@@ -59,5 +60,44 @@ import Testing
 
         #expect(presentation.dismissedIssue == nil)
         #expect(presentation.visibleIssue(for: issue) == issue)
+    }
+}
+
+@Suite struct ReactionEmojiSliderTests {
+    @Test func selectingMovesEmojiToTheLeftmostSlotAndPreservesTheRest() {
+        var recency = ReactionEmojiRecency(["🔥", "🌙", "☀️"])
+
+        recency.select("☀️")
+        #expect(recency.values == ["☀️", "🔥", "🌙"])
+        recency.select("🌙")
+        #expect(recency.values == ["🌙", "☀️", "🔥"])
+    }
+
+    @Test func scrubbingMapsTouchPositionToAClampedEmojiSlot() {
+        #expect(ReactionEmojiSliderLogic.slot(at: 0, width: 300, count: 3) == 0)
+        #expect(ReactionEmojiSliderLogic.slot(at: 150, width: 300, count: 3) == 1)
+        #expect(ReactionEmojiSliderLogic.slot(at: 300, width: 300, count: 3) == 2)
+        #expect(ReactionEmojiSliderLogic.slot(at: -20, width: 300, count: 3) == 0)
+        #expect(ReactionEmojiSliderLogic.slot(at: 20, width: 0, count: 3) == 0)
+    }
+
+    @Test func voiceOverAdjustableActionsChooseTheNextEmojiWithoutWrapping() {
+        let choices = ["🔥", "🌙", "☀️"]
+        #expect(ReactionEmojiSliderLogic.adjacent(to: "🌙", direction: 1, in: choices) == "☀️")
+        #expect(ReactionEmojiSliderLogic.adjacent(to: "🌙", direction: -1, in: choices) == "🔥")
+        #expect(ReactionEmojiSliderLogic.adjacent(to: nil, direction: 1, in: choices) == "🔥")
+        #expect(ReactionEmojiSliderLogic.adjacent(to: "☀️", direction: 1, in: choices) == nil)
+    }
+
+    @Test func recentEmojiOrderPersistsSeparatelyForEachAccount() {
+        let suite = "ReactionEmojiSliderTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let one = RadioPreferences(defaults: defaults, accountID: "one")
+        let two = RadioPreferences(defaults: defaults, accountID: "two")
+
+        one.recentEmojiReactions = ["🌙", "🔥"]
+        #expect(RadioPreferences(defaults: defaults, accountID: "one").recentEmojiReactions == ["🌙", "🔥"])
+        #expect(two.recentEmojiReactions.isEmpty)
     }
 }
