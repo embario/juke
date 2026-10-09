@@ -267,14 +267,44 @@ struct IssueView: View {
     }
 }
 
-/// Persistent player shown above the tab bar on every tab except Radio and Chat.
-/// Always offers previous, play/pause and next, whatever is playing.
-struct MiniPlayerPill: View {
+/// Previous, play/pause and next for whatever is playing. Disabled (but visible)
+/// when the sound comes from a source Juke cannot control.
+struct PlayerControlButtons: View {
     @Environment(VibeAppModel.self) private var model
 
     var body: some View {
-        let radio = model.radio
         let transport = model.transport
+        HStack(spacing: 0) {
+            control("backward.fill", "Previous song", id: "player.previous") { await transport.press(.previous) }
+            control(transport.isPlaying ? "pause.fill" : "play.fill", transport.isPlaying ? "Pause" : "Play", id: "player.playPause") { await transport.press(.playPause) }
+            control("forward.fill", "Next song", id: "player.next") { await transport.press(.next) }
+        }
+        .disabled(!transport.isControllable)
+        .onChange(of: model.nowPlaying.isPlaying) { _, _ in transport.observed() }
+        .alert("Playback", isPresented: Binding(get: { transport.message != nil }, set: { if !$0 { transport.message = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(transport.message ?? "") }
+    }
+
+    private func control(_ symbol: String, _ label: String, id: String, action: @escaping () async -> Void) -> some View {
+        Button { Task { await action() } } label: { Image(systemName: symbol).font(.title3) }
+            .buttonStyle(.plain)
+            .frame(width: 36, height: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel(label)
+            .accessibilityIdentifier(id)
+    }
+}
+
+/// Persistent player shown above the tab bar on every tab except Radio (which has
+/// its own) and inside Chat's composer (`embedded`).
+/// Always offers previous, play/pause and next, whatever is playing.
+struct MiniPlayerPill: View {
+    @Environment(VibeAppModel.self) private var model
+    var embedded = false
+
+    var body: some View {
+        let radio = model.radio
         HStack(spacing: 8) {
             if radio.isOnAir, let track = radio.track {
                 MiniPlayerArtwork(url: track.artworkURL, local: nil, tint: model.atmosphere.primary)
@@ -285,9 +315,7 @@ struct MiniPlayerPill: View {
                        model.nowPlaying.track.map { "\($0.artist) · \($0.source)" } ?? model.nowPlaying.status)
             }
             Spacer(minLength: 0)
-            control("backward.fill", "Previous song", id: "player.previous") { await transport.press(.previous) }
-            control(transport.isPlaying ? "pause.fill" : "play.fill", transport.isPlaying ? "Pause" : "Play", id: "player.playPause") { await transport.press(.playPause) }
-            control("forward.fill", "Next song", id: "player.next") { await transport.press(.next) }
+            PlayerControlButtons()
             if !radio.isOnAir {
                 Menu {
                     Button(model.nowPlaying.isListeningAroundMe ? "Stop Around Me" : "Identify Around Me") { Task { await model.nowPlaying.setAroundMe(!model.nowPlaying.isListeningAroundMe) } }
@@ -299,14 +327,10 @@ struct MiniPlayerPill: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: MiniPlayerStyle.cornerRadius))
         .overlay(RoundedRectangle(cornerRadius: MiniPlayerStyle.cornerRadius).strokeBorder(.primary.opacity(MiniPlayerStyle.borderOpacity), lineWidth: MiniPlayerStyle.borderWidth))
         .shadow(color: .black.opacity(MiniPlayerStyle.shadowOpacity), radius: MiniPlayerStyle.shadowRadius, y: 4)
-        .padding(.horizontal).padding(.top, 6).padding(.bottom, 8)
+        .padding(.horizontal, embedded ? 0 : 16).padding(.top, embedded ? 2 : 6).padding(.bottom, embedded ? 6 : 8)
         .contentShape(Rectangle())
         .onTapGesture { if radio.isOnAir { model.tab = .radio } }
-        .onChange(of: model.nowPlaying.isPlaying) { _, _ in transport.observed() }
-        .accessibilityIdentifier("player.island")
-        .alert("Playback", isPresented: Binding(get: { transport.message != nil }, set: { if !$0 { transport.message = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: { Text(transport.message ?? "") }
+        .background { Color.clear.accessibilityIdentifier("player.island") }
     }
 
     private func titles(_ title: String, _ subtitle: String) -> some View {
@@ -314,13 +338,6 @@ struct MiniPlayerPill: View {
             Text(title).font(.subheadline.bold()).lineLimit(1)
             Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
-    }
-
-    private func control(_ symbol: String, _ label: String, id: String, action: @escaping () async -> Void) -> some View {
-        Button { Task { await action() } } label: { Image(systemName: symbol).font(.title3).frame(width: 36, height: 44) }
-            .buttonStyle(.plain)
-            .accessibilityLabel(label)
-            .accessibilityIdentifier(id)
     }
 }
 

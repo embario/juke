@@ -54,4 +54,39 @@ final class ChatViewUITests: XCTestCase {
         XCTAssertTrue(done.isHittable)
         XCTAssertTrue(send.isHittable)
     }
+
+    @MainActor
+    func testPlayerControlsStayAvailableWithAndWithoutKeyboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitesting", "--uitesting-authenticated", "--uitesting-tab=chat"]
+        app.launch()
+
+        let draft = app.descendants(matching: .any).matching(identifier: "chat.draft").firstMatch
+        XCTAssertTrue(draft.waitForExistence(timeout: 10))
+        for id in ["player.previous", "player.playPause", "player.next"] {
+            XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), "\(id) above the composer")
+            XCTAssertTrue(app.buttons[id].isHittable)
+        }
+        let island = XCTAttachment(screenshot: app.screenshot())
+        island.name = "Chat-player-island"
+        island.lifetime = .keepAlways
+        add(island)
+
+        draft.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let done = app.buttons["chat.dismissKeyboard"]
+        let send = app.buttons["chat.send"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        for id in ["player.previous", "player.playPause", "player.next"] {
+            let button = app.buttons[id]
+            XCTAssertTrue(button.exists && button.isHittable, "\(id) beside Done while typing")
+            XCTAssertFalse(button.frame.intersects(done.frame))
+            XCTAssertFalse(button.frame.intersects(send.frame))
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+        }
+        let typing = XCTAttachment(screenshot: app.screenshot())
+        typing.name = "Chat-player-controls-keyboard"
+        typing.lifetime = .keepAlways
+        add(typing)
+    }
 }

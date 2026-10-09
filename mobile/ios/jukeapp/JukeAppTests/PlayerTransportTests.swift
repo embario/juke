@@ -26,9 +26,59 @@ import Testing
         func next(token: String, deviceID: String?) async throws -> JukePlaybackState? { try record("next") }
     }
 
-    private func make(onAir: Bool, token: String? = "t", playing: Bool = true) -> (PlayerTransport, FakeRadio, FakeSpotify) {
+    @MainActor private final class FakeApple: TransportApple {
+        var calls: [String] = []
+        func previous() { calls.append("previous") }
+        func pause() { calls.append("pause") }
+        func play() { calls.append("play") }
+        func next() { calls.append("next") }
+    }
+
+    @MainActor private final class Clock { var now = Date(timeIntervalSince1970: 1_800_000_000) }
+
+    private func make(onAir: Bool, token: String? = "t", playing: Bool = true, source: TransportSource = .spotify,
+                      apple: FakeApple = FakeApple(), clock: Clock = Clock()) -> (PlayerTransport, FakeRadio, FakeSpotify) {
         let radio = FakeRadio(onAir: onAir), spotify = FakeSpotify()
-        return (PlayerTransport(radio: radio, spotify: spotify, token: { token }, externalIsPlaying: { playing }), radio, spotify)
+        return (PlayerTransport(radio: radio, spotify: spotify, apple: apple, token: { token }, externalIsPlaying: { playing },
+                                externalSource: { source }, now: { clock.now }), radio, spotify)
+    }
+
+    @Test func mapsTrackSourcesToTheRightPlayer() {
+        #expect(TransportSource(trackSource: "Apple Music") == .appleMusic)
+        #expect(TransportSource(trackSource: "Spotify") == .spotify)
+        #expect(TransportSource(trackSource: "Shazam · Around Me") == .uncontrollable)
+        #expect(TransportSource(trackSource: nil) == .spotify)
+    }
+
+    @Test func appleMusicIsControlledThroughTheSystemPlayerNotSpotify() async {
+        let apple = FakeApple()
+        let (transport, _, spotify) = make(onAir: false, playing: true, source: .appleMusic, apple: apple)
+        await transport.press(.previous); await transport.press(.next); await transport.press(.playPause)
+        #expect(apple.calls == ["previous", "next", "pause"])
+        #expect(spotify.calls.isEmpty, "Spotify must not be started on top of Apple Music")
+        await transport.press(.playPause)
+        #expect(apple.calls.last == "play")
+        #expect(spotify.calls.isEmpty)
+    }
+
+    @Test func aroundMeMatchesHaveNothingToControl() async {
+        let apple = FakeApple()
+        let (transport, radio, spotify) = make(onAir: false, source: .uncontrollable, apple: apple)
+        #expect(!transport.isControllable)
+        await transport.press(.playPause); await transport.press(.next)
+        #expect(apple.calls.isEmpty && spotify.calls.isEmpty && radio.calls.isEmpty)
+        #expect(transport.message == nil)
+        let (onAir, _, _) = make(onAir: true, source: .uncontrollable)
+        #expect(onAir.isControllable, "radio on air is always controllable")
+    }
+
+    @Test func aPressedStateExpiresSoALostCommandCannotLeaveTheWrongIcon() async {
+        let clock = Clock()
+        let (transport, _, _) = make(onAir: false, playing: true, clock: clock)
+        await transport.press(.playPause)
+        #expect(!transport.isPlaying)
+        clock.now = clock.now.addingTimeInterval(PlayerTransport.pressLifetime + 1)
+        #expect(transport.isPlaying, "the observed state wins again")
     }
 
     @Test func radioOnAirDrivesTheStation() async {

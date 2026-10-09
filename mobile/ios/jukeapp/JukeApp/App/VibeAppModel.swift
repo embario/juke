@@ -102,7 +102,8 @@ final class VibeAppModel {
         }
         memoryPlayer = MemoryPlayer(token: { accessToken.get() })
         let nowPlaying = nowPlaying
-        transport = PlayerTransport(radio: radio, token: { accessToken.get() }, externalIsPlaying: { nowPlaying.isPlaying })
+        transport = PlayerTransport(radio: radio, token: { accessToken.get() }, externalIsPlaying: { nowPlaying.isPlaying },
+                                    externalSource: { TransportSource(trackSource: nowPlaying.track?.source) })
         memoryPlayer.marked = { [weak self] in self?.memoryPlayback = $0 }
         radio.onTrackChange = { [weak self] track in
             self?.radioTrackChanged(track)
@@ -127,6 +128,12 @@ final class VibeAppModel {
             }
             if ProcessInfo.processInfo.arguments.contains("--uitesting-radio-putaway") {
                 Task { try? await Task.sleep(for: .seconds(2)); await radio.putAway() }
+            }
+            // Screenshots of the player with radio off air: `--uitesting-now-playing=spotify|apple|aroundme`.
+            if let value = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-now-playing=") })?.dropFirst(24) {
+                let source = ["apple": "Apple Music", "aroundme": "Shazam · Around Me"][String(value)] ?? "Spotify"
+                nowPlaying.track = NowPlayingTrack(id: "ui-\(value)", title: "Blue in Green", artist: "Miles Davis", album: "Kind of Blue",
+                                                   artworkURL: nil, localArtwork: nil, source: source)
             }
             if let hex = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-artwork-hex=") })?.dropFirst(24) {
                 artworkOverride = RGB(hex: "#" + hex)

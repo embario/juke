@@ -444,7 +444,7 @@ final class RadioController {
     /// Replays the song that played before this one on the station. With no
     /// earlier song it restarts the current one.
     func previous() async {
-        guard isOnAir, track != nil else { return }
+        guard isOnAir, track != nil, !isBusy else { return }
         guard let prior = playedHistory.last else { await seek(to: 0); return }
         do {
             try await playback.play(trackID: prior.spotifyId, deviceID: deviceID)
@@ -462,6 +462,8 @@ final class RadioController {
         setTrack(prior)
         replayingPrevious = false
         setPosition(0, playing: true)
+        preferences.wasPlaying = true
+        ensurePolling()
     }
 
     /// Moves on to the next song without logging a skip (the keep-out menu

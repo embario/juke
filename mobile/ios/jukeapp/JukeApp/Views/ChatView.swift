@@ -32,8 +32,9 @@ struct ChatView: View {
             .onChange(of: model.messages.count) { _, _ in withAnimation { proxy.scrollTo("bottom") } }
             .onChange(of: focused) { _, isFocused in if isFocused { withAnimation { proxy.scrollTo("bottom") } } }
         }
-        // The composer is the only bottom inset on this screen (the now-playing pill is
-        // hidden here), so the message list ends exactly above it and above the keyboard.
+        // The composer (with the player above it, or its controls beside Done while the
+        // keyboard is up) is the only bottom inset on this screen, so the message list
+        // ends exactly above it and above the keyboard.
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         .navigationTitle("Chat")
         #if DEBUG
@@ -46,14 +47,21 @@ struct ChatView: View {
             // Own both controls in this inset: the system keyboard toolbar can
             // occupy the same trailing space as Send on compact phones.
             if focused {
-                Button { focused = false } label: {
-                    Text("Done")
-                        .font(.body.weight(.semibold))
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
+                HStack {
+                    Button { focused = false } label: {
+                        Text("Done")
+                            .font(.body.weight(.semibold))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                        .accessibilityLabel("Dismiss keyboard")
+                        .accessibilityIdentifier("chat.dismissKeyboard")
+                    Spacer()
+                    // Keep the player reachable while typing, without the full island.
+                    PlayerControlButtons()
                 }
-                    .accessibilityLabel("Dismiss keyboard")
-                    .accessibilityIdentifier("chat.dismissKeyboard")
+            } else {
+                MiniPlayerPill(embedded: true)
             }
             HStack(alignment: .bottom, spacing: 12) {
                 TextField("Ask about what you're hearing…", text: Bindable(model).draft, axis: .vertical)

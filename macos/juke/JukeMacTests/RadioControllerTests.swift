@@ -302,6 +302,7 @@ final class RadioControllerTests: XCTestCase {
         XCTAssertTrue(radio.isPlaying)
         // Going back does not stack the song we left, so a second Previous has nothing earlier.
         XCTAssertTrue(radio.playedHistory.isEmpty)
+        XCTAssertTrue(radio.isPlaying)
         await radio.previous()
         let after = await playback.calls
         XCTAssertEqual(after.last, "seek:0", "with no earlier song Previous restarts this one")

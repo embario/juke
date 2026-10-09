@@ -134,11 +134,6 @@ protocol RadioPlaybackControlling: Sendable {
     func play(trackID: String, deviceID: String?) async throws
 }
 
-extension RadioPlaybackControlling {
-    /// Conformers that cannot start a specific song report it instead of guessing.
-    func play(trackID: String, deviceID: String?) async throws { throw JukeAPIError.notSignedIn }
-}
-
 /// Production playback: the existing `PlaybackClient` with the session token.
 struct SpotifyRadioPlayback: RadioPlaybackControlling {
     let client: PlaybackClient
