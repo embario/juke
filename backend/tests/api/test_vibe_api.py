@@ -274,6 +274,27 @@ class VibeAPITests(APITestCase):
         )
         self.assertEqual(rejected.status_code, status.HTTP_400_BAD_REQUEST)
 
+    @patch('openai.OpenAI')
+    @patch('django.conf.settings.OPENAI_API_KEY', 'test-openai-key')
+    @patch('django.conf.settings.VIBE_CHAT_MODEL', 'test-model')
+    def test_chat_service_defaults_to_short_replies(self, openai_client):
+        from vibe.services import generate_chat_response
+
+        response = openai_client.return_value.chat.completions.create.return_value
+        response.choices[0].message.content = '  A compact, helpful reply.  '
+
+        reply = generate_chat_response(
+            message='Why does this song feel nostalgic?',
+            current_track='Blue in Green',
+            listener_name='Listener',
+        )
+
+        self.assertEqual(reply, 'A compact, helpful reply.')
+        request = openai_client.return_value.chat.completions.create.call_args.kwargs
+        self.assertEqual(request['max_tokens'], 120)
+        self.assertIn('one to three short sentences', request['messages'][0]['content'])
+        self.assertIn('explicitly asks for detail', request['messages'][0]['content'])
+
     def test_vibe_routes_accept_mac_bearer_token(self):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.token.key}')
         response = self.client.post(

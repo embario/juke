@@ -55,8 +55,8 @@ def generate_chat_response(*, message: str, current_track: str | None, listener_
                     'Respond to the listener without claiming facts you cannot verify. '
                     'Do not ask for sensitive personal information. The supplied message '
                     'was explicitly submitted for this reply and must not be retained. '
-                    'Prefer two to four short sentences and stay under 120 words unless the '
-                    'listener explicitly asks for a deeper explanation.'
+                    'Default to one to three short sentences, with each sentence kept compact. '
+                    'Give a fuller answer only when the listener explicitly asks for detail.'
                 ),
             },
             {
@@ -69,7 +69,7 @@ def generate_chat_response(*, message: str, current_track: str | None, listener_
             {'role': 'system', 'content': f'Current track metadata: {track_context}'},
             {'role': 'user', 'content': message},
         ],
-        max_tokens=180,
+        max_tokens=120,
         temperature=0.7,
     )
     content = response.choices[0].message.content
