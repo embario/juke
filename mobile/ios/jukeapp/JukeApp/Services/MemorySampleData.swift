@@ -11,7 +11,9 @@ nonisolated enum MemorySampleData {
         if let clip = await clip(color: .systemIndigo) { media.append((video, clip)) }
         let artwork = artworkFile()
         func song(_ title: String, art: URL?) -> MemorySong {
-            var song = MemorySong(title: title, artist: "Miles Davis", provider: "spotify", providerID: "t")
+            // Valid Spotify ids, so playing a sample memory works against the playback fixtures.
+            let id = "0aWMVrwxPNYkKmFthzm" + String(format: "%03d", title.unicodeScalars.reduce(0) { ($0 * 31 + Int($1.value)) % 1000 })
+            var song = MemorySong(title: title, artist: "Miles Davis", provider: "spotify", providerID: id)
             song.artworkURL = art
             return song
         }

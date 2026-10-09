@@ -1,10 +1,31 @@
 import SwiftUI
 
+/// Tracks the last issue dismissed by the listener. An identical issue stays
+/// suppressed across repeated refreshes; a changed or cleared issue resets it.
+struct RadioIssuePresentation: Equatable {
+    private(set) var dismissedIssue: RadioIssue?
+
+    func visibleIssue(for currentIssue: RadioIssue?) -> RadioIssue? {
+        currentIssue == dismissedIssue ? nil : currentIssue
+    }
+
+    mutating func dismiss(_ issue: RadioIssue) {
+        dismissedIssue = issue
+    }
+
+    mutating func observe(_ currentIssue: RadioIssue?) {
+        // Repeated observations of the same dismissed issue are normal polls.
+        // A nil or different value means the old issue has cleared or changed.
+        if currentIssue != dismissedIssue { dismissedIssue = nil }
+    }
+}
+
 /// Radio on iPhone: one card with the sleeve, transport, reactions and the
 /// station strip. Touch gestures (vinyl, FM dial) come in later slices.
 struct RadioScreen: View {
     @Environment(VibeAppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var issuePresentation = RadioIssuePresentation()
 
     private var isNewStation: Bool {
         if case .newStation = model.coordinator.radioRoute { true } else { false }
@@ -12,6 +33,7 @@ struct RadioScreen: View {
 
     var body: some View {
         let radio = model.radio
+        let issue = previewIssue ?? radio.issue
         // Flicking the dial to "+ New" eases the card away and the wizard in (and back again).
         ZStack {
             if case .newStation(let draft) = model.coordinator.radioRoute {
@@ -28,6 +50,29 @@ struct RadioScreen: View {
         .navigationTitle(model.coordinator.radioRoute == .nowPlaying ? "Radio" : "New station")
         .navigationBarTitleDisplayMode(.inline)
         .background(VibeBackground(atmosphere: model.atmosphere))
+        .overlay(alignment: .top) {
+            if let issue = issuePresentation.visibleIssue(for: issue) {
+                ConnectionIssueOverlay(issue: issue) {
+                    withAnimation(reduceMotion ? nil : .snappy) { issuePresentation.dismiss(issue) }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .zIndex(1)
+                .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: issuePresentation.visibleIssue(for: issue))
+        .onChange(of: issue) { _, current in issuePresentation.observe(current) }
+    }
+
+    /// A deterministic connection-error state for simulator screenshots.
+    private var previewIssue: RadioIssue? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--uitesting-radio-error") {
+            return .unavailable("Juke could not be reached. Check your connection and try again.")
+        }
+        #endif
+        return nil
     }
 }
 
@@ -41,7 +86,6 @@ private struct FirstRunCard: View {
             Text("Your station is ready").font(.title.bold())
             Text("Juke picks songs from your taste and plays them on Spotify, one after another.")
                 .multilineTextAlignment(.center).foregroundStyle(.secondary)
-            IssueView()
             Button { Task { await model.radio.tuneIn() } } label: {
                 Label("Tune in", systemImage: "play.fill").frame(maxWidth: 260)
             }
@@ -75,7 +119,7 @@ private struct NowPlayingCard: View {
                             Text(album).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
                         }
                     }
-                    // "Paused" or "Waiting for Spotify…"; a missing device is explained by `IssueView` below.
+                    // "Paused" or "Waiting for Spotify…"; a missing device is explained by the floating issue banner.
                     if radio.status == .paused || radio.status == .resuming, let caption = radio.status.caption {
                         Text(caption).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             .accessibilityIdentifier("radio.status")
@@ -84,7 +128,6 @@ private struct NowPlayingCard: View {
                 ProgressScrubber()
                 Transport()
                 ReactionStrip()
-                IssueView()
                 if let notice = radio.notice { Text(notice).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
                 if radio.isPausedForEpisode {
                     Button("Resume station") { Task { await radio.togglePlayPause() } }.buttonStyle(.borderedProminent).accessibilityIdentifier("radio.resumeStation")
@@ -268,18 +311,22 @@ private struct ReactionStrip: View {
     }
 }
 
-/// A calm explanation and next step for whatever stopped the radio.
-struct IssueView: View {
+/// A calm connection or playback error that floats over Radio without shifting
+/// its scroll content. The close button leaves recovery actions available until
+/// the listener dismisses it.
+struct ConnectionIssueOverlay: View {
     @Environment(VibeAppModel.self) private var model
     @Environment(\.openURL) private var openURL
+    let issue: RadioIssue
+    let onDismiss: () -> Void
 
     var body: some View {
-        if let issue = model.radio.issue {
-            VStack(spacing: 8) {
-                Text(issue.message).font(.callout).multilineTextAlignment(.center)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(issue.message).font(.callout).fixedSize(horizontal: false, vertical: true)
                 switch issue {
                 case .noActiveDevice:
-                    // Only the Spotify app itself can wake a player iOS has suspended. Radio resumes when Juke is active again.
+                    // Only Spotify can wake a player iOS has suspended. Radio resumes when Juke is active again.
                     Button("Open Spotify") {
                         model.radio.willOpenSpotify()
                         if let url = URL(string: "spotify://") { openURL(url) }
@@ -288,11 +335,24 @@ struct IssueView: View {
                 case .spotifyNotLinked:
                     Button("Connect Spotify") { openURL(AppConfiguration.currentFrontendURL) }.buttonStyle(.bordered)
                 default: EmptyView()
-                }
             }
-            .padding(14).frame(maxWidth: .infinity)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            }
+            Spacer(minLength: 0)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+            .accessibilityIdentifier("radio.dismissIssue")
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.primary.opacity(0.1), lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
     }
 }
 

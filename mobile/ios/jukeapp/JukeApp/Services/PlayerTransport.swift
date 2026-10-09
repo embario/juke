@@ -82,11 +82,12 @@ final class PlayerTransport {
     @ObservationIgnored private let externalIsPlaying: @MainActor () -> Bool
     @ObservationIgnored private let externalSource: @MainActor () -> TransportSource
     @ObservationIgnored private let now: @MainActor () -> Date
+    @ObservationIgnored private let memory: (any TransportMemory)?
 
-    init(radio: any TransportRadio, spotify: any TransportSpotify = PlaybackClient(), apple: any TransportApple = SystemAppleTransport(),
+    init(radio: any TransportRadio, memory: (any TransportMemory)? = nil, spotify: any TransportSpotify = PlaybackClient(), apple: any TransportApple = SystemAppleTransport(),
          token: @escaping @MainActor () -> String?, externalIsPlaying: @escaping @MainActor () -> Bool,
          externalSource: @escaping @MainActor () -> TransportSource = { .spotify }, now: @escaping @MainActor () -> Date = { .now }) {
-        self.radio = radio; self.spotify = spotify; self.apple = apple; self.token = token
+        self.radio = radio; self.memory = memory; self.spotify = spotify; self.apple = apple; self.token = token
         self.externalIsPlaying = externalIsPlaying; self.externalSource = externalSource; self.now = now
     }
 
@@ -108,6 +109,14 @@ final class PlayerTransport {
 
     func press(_ action: Action) async {
         message = nil
+        // A memory's song steps through memories in time, not through Spotify's queue or the station
+        // (starting a memory replaces whatever the station was playing).
+        if let memory, memory.isActive, action != .playPause {
+            if !(await memory.step(action == .next ? 1 : -1)) {
+                message = action == .next ? "That's the latest memory." : "That's the earliest memory."
+            }
+            return
+        }
         if radio.isOnAir {
             switch action {
             case .previous: await radio.previous()
