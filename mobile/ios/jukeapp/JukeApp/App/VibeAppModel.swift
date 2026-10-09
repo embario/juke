@@ -25,6 +25,8 @@ final class VibeAppModel {
     /// Radio stations, the tuned station and the continuous-play loop.
     let radio: RadioController
     let memories: MemoryStore
+    /// Recently searched, opened or played resources, shown first in the Library.
+    let recents: RecentResources
     /// Face ID / passcode lock over the whole app; shared with macOS.
     let lock = AppLockController()
     /// Quietly turns songs played elsewhere into `recognized` taste events.
@@ -58,6 +60,14 @@ final class VibeAppModel {
         let fixtures = false
         #endif
         let store: MemoryStore
+        if fixtures {
+            // Fixture runs start with no history, and leave nothing behind.
+            let suite = "juke.uitests.recents"
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+            recents = RecentResources(defaults: UserDefaults(suiteName: suite) ?? .standard)
+        } else {
+            recents = RecentResources()
+        }
         if fixtures {
             #if DEBUG
             var samples: (@Sendable () async -> (memories: [MusicMemory], media: [(MemoryMedia, Data)]))?
@@ -123,6 +133,12 @@ final class VibeAppModel {
             if let name = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-tab=") })?.dropFirst(16), let value = JukeTab(rawValue: String(name)) { tab = value }
             if ProcessInfo.processInfo.arguments.contains("--uitesting-locked") { lock.lockNow() }
             beginSession(preview, polling: false)
+            // `--uitesting-recents` seeds a short history (oldest first) for the Library's recent-resource view.
+            if ProcessInfo.processInfo.arguments.contains("--uitesting-recents") {
+                recents.record(kind: .artist, spotifyID: "fixtureMingus", title: "Charles Mingus")
+                recents.record(kind: .artist, spotifyID: "0kbYTNQb4Pb1rPbbaF0pT4", title: "Miles Davis")
+                recents.record(kind: .artist, spotifyID: "fixtureColtrane", title: "John Coltrane")
+            }
             if let value = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-new-station=") })?.dropFirst(24) {
                 var draft = JukeCoordinator.NewStationDraft()
                 draft.start = value == "feelings" ? .feelings : .records
@@ -165,6 +181,7 @@ final class VibeAppModel {
 
     private func beginSession(_ value: JukeSession, polling: Bool = true) {
         accessToken.set(value.accessToken)
+        recents.use(accountID: value.account.id)
         if polling, let token = value.accessToken { nowPlaying.start(token: token) }
         recognition.reevaluate()
         Task {
@@ -176,6 +193,7 @@ final class VibeAppModel {
     private func radioTrackChanged(_ track: Radio.Track?) {
         if artworkOverride == nil { artwork.update(artworkURL: track?.artworkURL, enabled: atmosphere.enabled) }
         guard let track else { return }
+        recents.record(track: track)
         atmosphere.update(for: NowPlayingTrack(id: track.spotifyId, title: track.title, artist: track.artist, album: track.album, artworkURL: track.artworkURL, localArtwork: nil, source: "Juke Radio"))
     }
 
@@ -195,7 +213,7 @@ final class VibeAppModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func logout() { memoryPlayer.reset(); nowPlaying.stopPolling(); recognition.reset(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; messages = [] }
+    func logout() { memoryPlayer.reset(); nowPlaying.stopPolling(); recognition.reset(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; recents.use(accountID: nil); messages = [] }
 
     func send() async {
         guard let session, let token = session.accessToken else { return }

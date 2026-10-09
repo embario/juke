@@ -23,7 +23,7 @@ struct ArtistDetailView: View {
         }
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .background(VibeBackground(atmosphere: model.atmosphere))
-        .task { await load() }
+        .task { model.recents.record(kind: .artist, spotifyID: spotifyID, title: title); await load() }
         #if DEBUG
         .onChange(of: detailsLoaded) { _, loaded in
             // `--uitesting-artist-details` opens with the details down (for screenshots).
