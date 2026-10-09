@@ -176,6 +176,11 @@ small script does the polling and a session only runs when there is work for it.
   send-status` reports `typed` and the input box still shows the script's own message.
   A send that agent-deck reports as failed, or that Enter could not submit, does not count as
   delivered: its PRs become due again at once.
+- **Claude sessions.** A Claude session's input box can also keep a wake without submitting it
+  (agent-deck keeps reporting the send as queued). The script remembers these sends too and, on a
+  later run, presses Enter in the tmux pane (same limit of three) whenever the input box still
+  shows the script's own message, whatever state agent-deck reports. An empty box, or a box
+  showing something else such as a dialog, is never answered.
 - **Restarts.** If the profile was stored but the restart failed, the script remembers the owed
   restart (a `.restarts` file next to its state file, shared with `assign_task.py`) and retries it
   before that session gets any work.
