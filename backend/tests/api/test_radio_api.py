@@ -298,7 +298,56 @@ class PlayTests(RadioAPITestCase):
         ListeningEvent.objects.create(user=self.user, spotify_track_id='next-1', event='complete')
         self.fake.db.clear()
         response = self.client.post(f'{BASE}play', {'stationId': self.station['id'], 'mode': 'now'}, format='json')
-        self.assertEqual(response.status_code, 409)
+        # Every source answered and nothing new is left: a real "exhausted" station.
+        self.assertEqual((response.status_code, response.data['code']), (409, 'radio_no_tracks'))
+
+    def exhaust(self):
+        """The station's only candidate has been played and Spotify knows no other track."""
+        self.engine.return_value = {'items': []}
+        ListeningEvent.objects.create(user=self.user, spotify_track_id='next-1', event='complete')
+        self.fake.db.clear()
+
+    def play(self):
+        return self.client.post(f'{BASE}play', {'stationId': self.station['id'], 'mode': 'now'}, format='json')
+
+    def test_engine_outage_with_no_pick_is_temporary_not_exhausted(self):
+        self.exhaust()
+        self.engine.side_effect = ConnectionError('engine down')
+        response = self.play()
+        self.assertEqual((response.status_code, response.data['code']), (503, 'radio_picks_unavailable'))
+        self.spotipy.start_playback.assert_not_called()
+        self.assertFalse(ListeningEvent.objects.filter(event='play').exists())
+
+    def test_spotify_outage_with_no_pick_is_temporary(self):
+        self.exhaust()
+        self.fake.fail_batch = SpotifyException(500, -1, 'server error')
+        response = self.play()
+        self.assertEqual((response.status_code, response.data['code']), (503, 'radio_picks_unavailable'))
+        # The breaker is now open: the next request is still "try again", not "nothing left".
+        self.fake.fail_batch = False
+        response = self.play()
+        self.assertEqual((response.status_code, response.data['code']), (503, 'radio_picks_unavailable'))
+
+    def test_spent_time_budget_with_no_pick_is_temporary(self):
+        self.exhaust()
+        with mock.patch('radio.services.recommend.NEXT_BUDGET_SECONDS', 0):
+            response = self.play()
+        self.assertEqual((response.status_code, response.data['code']), (503, 'radio_picks_unavailable'))
+
+    def test_a_refused_lookup_is_not_trouble(self):
+        # 403/404 mean "this request is wrong", not "try again": the station is still exhausted.
+        self.exhaust()
+        self.fake.fail_batch = True
+        response = self.play()
+        self.assertEqual((response.status_code, response.data['code']), (409, 'radio_no_tracks'))
+
+    def test_trouble_does_not_matter_when_a_song_was_found(self):
+        self.engine.side_effect = ConnectionError('engine down')
+        self.fake.top['artist-a'] = [sp_track('top-1', artist_id='artist-a')]
+        self.fake.add(sp_track('seed-1', artist_id='artist-a'))
+        response = self.play()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['track']['spotifyId'], 'top-1')
 
     def test_validation(self):
         self.assertEqual(self.client.post(f'{BASE}play', {'stationId': self.station['id'], 'mode': 'later'},

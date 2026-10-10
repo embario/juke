@@ -9,9 +9,12 @@ actor RadioFixtureBackend: RadioBackend {
     private var exclusions: [Radio.Exclusion] = []
     private var playedTracks: [Radio.Track] = []
     private let playback: RadioFixturePlayback
+    /// Every pick fails with this (UI checks of a failed Next).
+    private let pickError: JukeAPIError?
 
-    init(playback: RadioFixturePlayback) {
+    init(playback: RadioFixturePlayback, pickError: JukeAPIError? = nil) {
         self.playback = playback
+        self.pickError = pickError
         let created = Date(timeIntervalSince1970: 1_790_000_000)
         func seed(_ id: String, _ title: String, _ artist: String) -> Radio.Seed {
             Radio.Seed(kind: .track, spotifyId: id, title: title, subtitle: artist, artworkUrl: nil)
@@ -33,6 +36,16 @@ actor RadioFixtureBackend: RadioBackend {
             Radio.Track(spotifyId: "fixture-show", uri: "spotify:track:fixture-show", title: "Show Me How", artist: "Men I Trust",
                         artistId: "fixture-mit", album: "Oncle Jazz", albumId: "fixture-oj", artworkUrl: nil, durationMs: 215_000),
         ]
+    }
+
+    /// `--uitesting-next-fails=exhausted|temporary|offline`: what each kind of failed pick looks like from the server.
+    static func pickError(named name: String) -> JukeAPIError? {
+        switch name {
+        case "exhausted": .rejected(status: 409, code: "radio_no_tracks", detail: "This station has nothing new to play right now.")
+        case "temporary": .server(status: 503, code: "radio_picks_unavailable", detail: "The next song could not be found right now.")
+        case "offline": .offline
+        default: nil
+        }
     }
 
     func stations() async throws -> [Radio.Station] { stationList }
@@ -82,6 +95,7 @@ actor RadioFixtureBackend: RadioBackend {
     }
 
     func playRadio(stationID: Radio.ID, mode: Radio.PlayMode, deviceID: String?, recentTrackIDs: [String]) async throws -> Radio.PlayResponse {
+        if let pickError { throw pickError }
         let track = picks[pickIndex % picks.count]
         pickIndex += 1
         playedTracks.append(track)

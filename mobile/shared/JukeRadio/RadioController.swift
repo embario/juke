@@ -122,6 +122,9 @@ final class RadioController {
     // MARK: Feedback
 
     private(set) var issue: RadioIssue?
+    /// Counts presses (Next, Previous) that ended in `issue`. A view shows the problem again on every
+    /// change, even the same one it already showed or the listener dismissed. Polls never change it.
+    private(set) var failedPresses = 0
     /// Spotify is playing a podcast episode: radio stepped aside and offers to resume.
     private(set) var isPausedForEpisode = false
     /// The status line's message ("Noted. My Station will lean into 😌.").
@@ -681,12 +684,19 @@ final class RadioController {
     /// Skips the song: plays the queued pick if there is one, otherwise a new
     /// pick from the tuned station.
     func skip() async {
+        // A press while an earlier one is still asking is answered by that one's result.
+        let waiting = isBusy
         guard let playing = track, isOnAir else {
-            if let id = pendingStationID ?? currentStation?.id { await startNow(id) }
+            if let id = pendingStationID ?? currentStation?.id, !(await startNow(id)), !waiting { notePressFailed() }
             return
         }
         await post(.skip, track: playing, positionMs: milliseconds(position(at: now())))
-        await advance()
+        if !(await advance()), !waiting { notePressFailed() }
+    }
+
+    /// The press changed nothing and `issue` says why: tell the views again.
+    private func notePressFailed() {
+        if issue != nil { failedPresses += 1 }
     }
 
     /// Replays the song that played before this one on the station. With no
@@ -698,6 +708,7 @@ final class RadioController {
             _ = try await playback.play(trackID: prior.spotifyId, at: 0, deviceID: deviceID ?? preferences.lastDeviceID)
         } catch {
             issue = RadioIssue.from(error, stationName: currentStation?.name ?? "Radio")
+            notePressFailed()
             return
         }
         playedHistory.removeLast()
@@ -723,7 +734,8 @@ final class RadioController {
 
     /// Moves on to the next song without logging a skip (the keep-out menu
     /// logs its own event).
-    private func advance() async {
+    @discardableResult
+    private func advance() async -> Bool {
         currentTrackSkipped = true
         if let queued = queuedTrack {
             do {
@@ -731,12 +743,13 @@ final class RadioController {
                 startQueued(queued, naturally: false)
                 expectedTrackID = queued.spotifyId
                 expectationDeadline = now().addingTimeInterval(Self.startGracePeriod)
-                return
+                return true
             } catch {
                 // Fall through to a fresh pick.
             }
         }
-        if let id = pendingStationID ?? currentStationID ?? personalStation?.id { await startNow(id) }
+        guard let id = pendingStationID ?? currentStationID ?? personalStation?.id else { return false }
+        return await startNow(id)
     }
 
     func seek(to target: TimeInterval) async {
@@ -951,15 +964,15 @@ final class RadioController {
             return
         case .notOnStation:
             await post(.notOnStation, track: playing)
-            await advance()
+            if !(await advance()) { notePressFailed() }
             notice = "\(playing.title) is out of \(stationName)."
         case .lessArtist:
             await post(.less, track: playing)
-            await advance()
+            if !(await advance()) { notePressFailed() }
             notice = "Less \(artist) on \(stationName)."
         case .neverArtist:
             await post(.neverArtist, track: playing, artistID: playing.artistId)
-            await advance()
+            if !(await advance()) { notePressFailed() }
             notice = "\(artist) is kept out of all your stations."
         }
         await loadStations()

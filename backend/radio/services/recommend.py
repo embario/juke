@@ -63,6 +63,9 @@ SOURCES = ('mlcore', 'metadata', 'artist', 'search', 'seed')
 class Recommendation:
     tracks: List[Dict] = field(default_factory=list)
     source: str = 'search'
+    # Why the search could not look everywhere (time budget, Spotify or MLCore trouble). Empty with no
+    # tracks means the station really has nothing new; non-empty means asking again can work.
+    troubles: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -190,6 +193,7 @@ def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence
     if left is not None:
         left -= reserve
         if left < MIN_ENGINE_SECONDS:
+            spotify.note_trouble('budget')
             return []
         timeout = min(timeout, left)
     payload = {
@@ -201,6 +205,7 @@ def mlcore_track_ids(ranker: str, seed_ids: Sequence[str], exclude_ids: Sequence
         response = client.fetch_identity_recommendations(ranker, payload, timeout=timeout)
     except Exception as exc:  # engine outages fall through to the next source
         logger.warning('MLCore %s ranker unavailable for radio: %s', ranker, exc)
+        spotify.note_trouble('mlcore')
         return []
     canonical_ids = [str(item.get('canonical_item_id')) for item in (response or {}).get('items') or []
                      if item.get('canonical_item_id')]
@@ -405,7 +410,11 @@ def _seed_artist_names(ctx: _Context, seed_artists: Sequence[str]) -> List[str]:
 
 def next_tracks(user, station: Station, count: int = 3, recent_ids: Iterable[str] = ()) -> Recommendation:
     with spotify.budget(NEXT_BUDGET_SECONDS):
-        return _next_tracks(user, station, count, recent_ids)
+        result = _next_tracks(user, station, count, recent_ids)
+        result.troubles = spotify.troubles()
+        if not result.tracks:
+            logger.info('Radio station %s has no pick (%s)', station.pk, ', '.join(result.troubles) or 'nothing left')
+        return result
 
 
 def _next_tracks(user, station: Station, count: int, recent_ids: Iterable[str]) -> Recommendation:

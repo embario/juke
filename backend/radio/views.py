@@ -225,6 +225,11 @@ class PlayView(RadioAPIView):
             return _playback_error(exc)
         result = next_tracks(request.user, station, count=1, recent_ids=data['recentTrackIds'])
         if not result.tracks:
+            if result.troubles:
+                # The search was cut short (time budget, Spotify or MLCore trouble): the station is not
+                # known to be empty, so the client offers "try again" instead of "nothing left".
+                return Response({'detail': 'The next song could not be found right now. Try again in a moment.',
+                                 'code': 'radio_picks_unavailable'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             return Response({'detail': 'This station has nothing new to play right now.', 'code': 'radio_no_tracks'},
                             status=status.HTTP_409_CONFLICT)
         track = result.tracks[0]

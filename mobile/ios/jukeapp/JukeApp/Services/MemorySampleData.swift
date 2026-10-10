@@ -5,7 +5,7 @@ import UIKit
 /// Sample memories for UI checks (`--uitesting --uitesting-memories-sample`): a photo, a video, song artwork only, and nothing.
 nonisolated enum MemorySampleData {
     static func make() async -> (memories: [MusicMemory], media: [(MemoryMedia, Data)]) {
-        let photo = MemoryMedia(id: UUID(), kind: "image", filename: "IMG_0412.jpg", contentType: "image/jpeg", url: "")
+        let photo = MemoryMedia(id: UUID(), kind: "photo", filename: "IMG_0412.jpg", contentType: "image/jpeg", url: "")
         let video = MemoryMedia(id: UUID(), kind: "video", filename: "IMG_0413.mov", contentType: "video/quicktime", url: "")
         var media: [(MemoryMedia, Data)] = [(photo, image(.systemTeal, symbol: "sun.max.fill").jpegData(compressionQuality: 0.8) ?? Data())]
         if let clip = await clip(color: .systemIndigo) { media.append((video, clip)) }

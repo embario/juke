@@ -15,6 +15,7 @@ struct MemoryDeckView: View {
     @State private var drag: CGSize = .zero
     @State private var seed: UInt64 = MemoryDeckView.initialSeed()
     @State private var pageWidth: CGFloat = 390
+    @State private var imageViewerItem: MemoryImageViewerItem?
     @Environment(\.dynamicTypeSize) private var typeSize
     /// The island and tab bar grow with text size, so the room kept for them does too.
     @ScaledMetric(relativeTo: .body) private var islandInset = MemoryDeckStyle.islandInset
@@ -56,6 +57,7 @@ struct MemoryDeckView: View {
         .onPreferenceChange(DeckWidthKey.self) { if $0 > 0 { pageWidth = $0 } }
         .onAppear { deck.sync(with: memories, seed: seed) }
         .onChange(of: memories) { _, value in deck.sync(with: value, seed: seed &+ UInt64(value.count)) }
+        .fullScreenCover(item: $imageViewerItem) { MemoryFullscreenViewer(item: $0) }
     }
 
     private func rotation(isTop: Bool, index: Int, tilt: Double) -> Double {
@@ -67,7 +69,7 @@ struct MemoryDeckView: View {
     private func card(_ memory: MusicMemory, index: Int, width: CGFloat) -> some View {
         let isTop = index == 0
         let tilt = MemoryDeckStyle.tilt(for: memory.id)
-        MemoryCard(memory: memory, width: width, playing: model.memoryPlayer.current?.memoryID == memory.id)
+        MemoryCard(memory: memory, width: width, playing: model.memoryPlayer.current?.memoryID == memory.id) { imageViewerItem = $0 }
             .rotationEffect(.degrees(rotation(isTop: isTop, index: index, tilt: tilt)))
             .offset(x: isTop ? drag.width : 0, y: isTop ? drag.height / 3 : CGFloat(index) * 12)
             .scaleEffect(1 - CGFloat(index) * 0.05)
@@ -84,6 +86,9 @@ struct MemoryDeckView: View {
             .accessibilityLabel(MemoryDeckStyle.accessibilityLabel(memory))
             .accessibilityValue(model.memoryPlayer.current?.memoryID == memory.id ? "Playing" : "")
             .accessibilityHint("Opens the memory")
+            .accessibilityAction(named: Text("View memory image")) {
+                if let item = MemoryThumbnailChoice.choose(for: memory).viewerItem { imageViewerItem = item }
+            }
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier(isTop ? "memory.card" : "memory.card.behind")
             .accessibilityHidden(!isTop)
@@ -164,6 +169,7 @@ private struct MemoryCard: View {
     let memory: MusicMemory
     let width: CGFloat
     let playing: Bool
+    let openImage: (MemoryImageViewerItem) -> Void
     @Environment(\.dynamicTypeSize) private var typeSize
 
     /// Normal sizes keep the print tidy; larger text may wrap instead of being cut off.
@@ -174,12 +180,18 @@ private struct MemoryCard: View {
         let inner = width - 24
         VStack(alignment: .leading, spacing: 10) {
             ZStack(alignment: .topTrailing) {
-                if case .placeholder = MemoryThumbnailChoice.choose(for: memory) {
+                let choice = MemoryThumbnailChoice.choose(for: memory)
+                if let item = choice.viewerItem {
+                    Button { openImage(item) } label: {
+                        MemoryThumbnail(memory: memory, side: inner, cornerRadius: 3)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(imageLabel(choice))
+                    .accessibilityIdentifier("memory.card.image")
+                } else {
                     MemoryDeckStyle.gradient(for: memory.id)
                         .overlay { Image(systemName: "music.note").font(.system(size: inner * 0.28)).foregroundStyle(.white.opacity(0.85)) }
                         .frame(width: inner, height: inner)
-                } else {
-                    MemoryThumbnail(memory: memory, side: inner, cornerRadius: 3)
                 }
                 if playing {
                     Image(systemName: "waveform").padding(8).background(.ultraThinMaterial, in: Circle()).padding(8)
@@ -187,11 +199,16 @@ private struct MemoryCard: View {
                         .accessibilityLabel("Playing").accessibilityIdentifier("memory.playing")
                 }
                 if let art = memory.songs.compactMap(\.artworkURL).first, MemoryThumbnailChoice.choose(for: memory) != .artwork(art) {
-                    AsyncImage(url: art) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.2) }
-                        .frame(width: inner * 0.28, height: inner * 0.28).clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white, lineWidth: 2))
-                        .shadow(radius: 4).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading).padding(10)
-                        .allowsHitTesting(false)
+                    Button { openImage(.artwork(art)) } label: {
+                        AsyncImage(url: art) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.2) }
+                            .frame(width: inner * 0.28, height: inner * 0.28).clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white, lineWidth: 2))
+                            .shadow(radius: 4)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading).padding(10)
+                    .accessibilityLabel("View song artwork")
+                    .accessibilityIdentifier("memory.card.artwork")
                 }
             }
             .frame(width: inner, height: inner)
@@ -212,6 +229,14 @@ private struct MemoryCard: View {
         .background(MemoryDeckStyle.paper(scheme), in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(.black.opacity(scheme == .dark ? 0.5 : 0.08), lineWidth: 1))
         .shadow(color: .black.opacity(0.28), radius: 14, y: 8)
+    }
+
+    private func imageLabel(_ choice: MemoryThumbnailChoice) -> String {
+        switch choice {
+        case .video: "View memory video"
+        case .photo, .artwork: "View memory image"
+        case .placeholder: "Memory card"
+        }
     }
 }
 

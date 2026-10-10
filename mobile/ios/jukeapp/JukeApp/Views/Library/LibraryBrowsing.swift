@@ -59,10 +59,59 @@ enum LibraryBrowsing {
         return result
     }
 
+    /// The index of the song to highlight in an album's tracklist: matched on the exact Spotify id only.
+    static func highlightIndex(_ tracks: [CatalogTrackDetail], spotifyID: String?) -> Int? {
+        guard let spotifyID, !spotifyID.isEmpty else { return nil }
+        return tracks.firstIndex { $0.spotifyID == spotifyID }
+    }
+
+    /// The album a Library song opens, when the crate item already names it; nil when it has to be looked up.
+    static func albumTarget(for item: Radio.CrateItem) -> AlbumTarget? {
+        guard item.kind == .track, let track = item.track, let albumID = track.albumId, !albumID.isEmpty,
+              let name = track.album, !name.isEmpty else { return nil }
+        return AlbumTarget(title: name, spotifyID: albumID, artist: track.artist, catalogID: nil, highlight: item.spotifyId)
+    }
+
+    /// The album a catalog song result belongs to (from a search for the song); nil when the catalog does not link one.
+    static func albumTarget(for item: Radio.CrateItem, found result: CatalogSearchResult) -> AlbumTarget? {
+        guard let pk = result.albumPK, let name = result.albumName, !name.isEmpty else { return nil }
+        return AlbumTarget(title: name, spotifyID: "", artist: item.subtitle, catalogID: pk, highlight: item.spotifyId)
+    }
+
     /// "jazz · modal jazz": the artist pane's line under the name.
     static func genreLine(_ artist: CatalogArtistDetail?, limit: Int = 3) -> String? {
         let names = (artist?.genres.map(\.name) ?? []).filter { !$0.isEmpty }.prefix(limit)
         return names.isEmpty ? nil : names.joined(separator: " · ")
+    }
+}
+
+/// An album screen to open, with the song to highlight in its tracklist (a song opened from Library).
+struct AlbumTarget: Identifiable, Hashable {
+    let title: String
+    let spotifyID: String
+    let artist: String?
+    let catalogID: Int?
+    let highlight: String?
+    var id: String { "\(spotifyID)|\(catalogID.map(String.init) ?? "")|\(highlight ?? "")" }
+}
+
+/// The downward swipe that opens a Library record, kept apart from the view so it can be tested.
+enum LibrarySwipe {
+    /// A slow swipe must travel this far down.
+    static let distance: CGFloat = 70
+    /// A flick faster than this (points per second) opens it from a shorter drag.
+    static let flingVelocity: CGFloat = 600
+    static let flingDistance: CGFloat = 24
+
+    /// Whether a drag is mostly vertical: such a drag never moves the records of a side-to-side crate.
+    static func isVertical(_ translation: CGSize) -> Bool {
+        abs(translation.height) > abs(translation.width) * 1.2
+    }
+
+    /// Whether a finished drag is a downward swipe: mostly vertical, downwards, and far or quick enough.
+    static func opensDetails(translation: CGSize, velocity: CGFloat) -> Bool {
+        guard isVertical(translation), translation.height > 0 else { return false }
+        return translation.height >= distance || (translation.height >= flingDistance && velocity >= flingVelocity)
     }
 }
 
