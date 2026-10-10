@@ -243,7 +243,7 @@ private struct MemoryCard: View {
 /// Look-and-feel decisions, kept apart from the view so they can be tested.
 enum MemoryDeckStyle {
     /// Space reserved under the deck for the floating player island and tab bar.
-    static let islandInset: CGFloat = 150
+    static let islandInset: CGFloat = 185
 
     static func tilt(for id: UUID) -> Double {
         let value = id.uuid.0
