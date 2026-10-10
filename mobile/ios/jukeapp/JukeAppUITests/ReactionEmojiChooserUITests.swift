@@ -29,6 +29,30 @@ final class ReactionEmojiChooserUITests: XCTestCase {
     }
 
     @MainActor
+    func testHoldAndSlideCanSelectEmojiFromLastCatalogueGroup() {
+        let app = launchRadio()
+        let chooser = app.buttons["radio.openEmojiChooser"]
+        XCTAssertTrue(chooser.waitForExistence(timeout: 10))
+
+        chooser.press(forDuration: 0.7)
+
+        let lastGroup = app.staticTexts["Nature & Materials"]
+        let target = app.buttons["radio.chooser.emoji.💎"]
+        XCTAssertTrue(lastGroup.waitForExistence(timeout: 5))
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        XCTAssertTrue(target.isHittable, "the last catalogue group must be visible to the hold-slide gesture")
+        attachScreenshot(of: app, named: "Compact-emoji-chooser-last-group-visible")
+
+        chooser.press(forDuration: 0.8, thenDragTo: target)
+
+        let selectedRecent = app.buttons["radio.recentEmoji.💎"]
+        XCTAssertTrue(selectedRecent.waitForExistence(timeout: 5))
+        XCTAssertEqual(selectedRecent.value as? String, "Selected")
+        let recentButtons = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "radio.recentEmoji."))
+        XCTAssertEqual(recentButtons.element(boundBy: 0).identifier, "radio.recentEmoji.💎")
+    }
+
+    @MainActor
     func testHoldingChooserOpensPaletteForTapOrVoiceOverChoice() {
         let app = launchRadio()
         let chooser = app.buttons["radio.openEmojiChooser"]

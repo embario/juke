@@ -293,6 +293,7 @@ private struct CompactReactionEmojiChooser: View {
     @State private var lastTouchLocation: CGPoint?
     @State private var holdTask: Task<Void, Never>?
     @State private var chooserFrames: [String: CGRect] = [:]
+    @State private var chooserCatalogueFrame: CGRect = .zero
 
     var body: some View {
         let radio = model.radio
@@ -341,7 +342,10 @@ private struct CompactReactionEmojiChooser: View {
                 }
             }
             .animation(.snappy(duration: 0.2), value: isChooserOpen)
-            .onPreferenceChange(EmojiChooserFramePreferenceKey.self) { chooserFrames = $0 }
+            .onPreferenceChange(EmojiChooserFramePreferenceKey.self) { frames in
+                chooserFrames = frames
+                chooserCatalogueFrame = frames["catalogue:bounds"] ?? .zero
+            }
 
             let wordReactions = radio.currentReactions.filter { !RadioController.isEmoji($0) }
             if !wordReactions.isEmpty {
@@ -401,47 +405,51 @@ private struct CompactReactionEmojiChooser: View {
                     .accessibilityIdentifier("radio.closeEmojiChooser")
             }
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(radio.chooserEmojiCategories) { category in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(category.title)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
-                                ForEach(category.emojis, id: \.self) { emoji in
-                                    let selected = radio.currentReactions.contains(emoji)
-                                    Button {
-                                        Task { await radio.chooseReaction(emoji) }
-                                        isChooserOpen = false
-                                    } label: {
-                                        Text(emoji)
-                                            .font(.system(size: 25))
-                                            .frame(maxWidth: .infinity)
-                                            .frame(height: 38)
-                                            .background(selected ? model.atmosphere.primary.opacity(0.2) : .clear, in: Capsule())
-                                            .contentShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("React with \(emoji)")
-                                    .accessibilityValue(selected ? "Selected" : "Not selected")
-                                    .accessibilityIdentifier("radio.chooser.emoji.\(emoji)")
-                                    .background {
-                                        GeometryReader { proxy in
-                                            Color.clear.preference(
-                                                key: EmojiChooserFramePreferenceKey.self,
-                                                value: ["palette:\(emoji)": proxy.frame(in: .global)]
-                                            )
-                                        }
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(radio.chooserEmojiCategories) { category in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(category.title)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 7), spacing: 1) {
+                            ForEach(category.emojis, id: \.self) { emoji in
+                                let selected = radio.currentReactions.contains(emoji)
+                                Button {
+                                    Task { await radio.chooseReaction(emoji) }
+                                    isChooserOpen = false
+                                } label: {
+                                    Text(emoji)
+                                        .font(.system(size: 20))
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 27)
+                                        .background(selected ? model.atmosphere.primary.opacity(0.2) : .clear, in: Capsule())
+                                        .contentShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("React with \(emoji)")
+                                .accessibilityValue(selected ? "Selected" : "Not selected")
+                                .accessibilityIdentifier("radio.chooser.emoji.\(emoji)")
+                                .background {
+                                    GeometryReader { proxy in
+                                        Color.clear.preference(
+                                            key: EmojiChooserFramePreferenceKey.self,
+                                            value: ["palette:\(emoji)": proxy.frame(in: .global)]
+                                        )
                                     }
                                 }
                             }
                         }
                     }
                 }
-                .padding(.vertical, 2)
             }
-            .frame(height: 230)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: EmojiChooserFramePreferenceKey.self,
+                        value: ["catalogue:bounds": proxy.frame(in: .global)]
+                    )
+                }
+            }
             .accessibilityIdentifier("radio.emojiCatalogue")
         }
         .padding(12)
@@ -505,7 +513,12 @@ private struct CompactReactionEmojiChooser: View {
     }
 
     private func emoji(at point: CGPoint) -> String? {
-        chooserFrames.first(where: { entry in entry.key.hasPrefix("palette:") && entry.value.contains(point) })
+        guard chooserCatalogueFrame.contains(point) else { return nil }
+        return chooserFrames.first(where: { entry in
+            guard entry.key.hasPrefix("palette:") else { return false }
+            let visibleCell = entry.value.intersection(chooserCatalogueFrame)
+            return !visibleCell.isNull && visibleCell.contains(point)
+        })
             .map { String($0.key.dropFirst("palette:".count)) }
     }
 }
