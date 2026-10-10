@@ -70,10 +70,44 @@ final class MemoryDeckUITests: XCTestCase {
         let app = launch(sample)
         let card = topCard(app)
         XCTAssertTrue(card.waitForExistence(timeout: 10))
-        card.tap()
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
         XCTAssertTrue(app.navigationBars.buttons.firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(topCard(app).isHittable)
         add(shot("Memory-opened-from-card"))
+    }
+
+    @MainActor
+    func testTappingTheCardImageOpensAndDismissesTheFullscreenViewer() {
+        let app = launch(sample)
+        let card = topCard(app)
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        for _ in 0..<5 where !card.label.hasPrefix("Beach with the family") { app.buttons["memory.deck.next"].tap() }
+        XCTAssertTrue(card.label.hasPrefix("Beach with the family"))
+
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.36)).tap()
+        let close = app.buttons["memory.imageViewer.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "memory.imageViewer.image").firstMatch.exists)
+        add(shot("Memory-card-fullscreen-image"))
+        close.tap()
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "closing the viewer returns to the deck")
+    }
+
+    @MainActor
+    func testVideoOnTheCardOpensInTheFullscreenViewer() {
+        let app = launch(sample)
+        let card = topCard(app)
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        for _ in 0..<5 where !card.label.hasPrefix("Sunday drive") { app.buttons["memory.deck.next"].tap() }
+        XCTAssertTrue(card.label.hasPrefix("Sunday drive"))
+        XCTAssertEqual(app.buttons["memory.card.image"].label, "View memory video")
+
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.36)).tap()
+        let close = app.buttons["memory.imageViewer.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "memory.imageViewer.video").firstMatch.exists)
+        add(shot("Memory-card-fullscreen-video"))
+        close.tap()
     }
 
     /// At accessibility text sizes the card grows and the page scrolls: the buttons (the alternative to the
