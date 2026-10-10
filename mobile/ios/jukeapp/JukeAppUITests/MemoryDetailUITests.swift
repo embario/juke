@@ -6,13 +6,19 @@ final class MemoryDetailUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting", "--uitesting-authenticated", "--uitesting-tab=memories", "--uitesting-memories-sample"] + extra
         app.launch()
+        openBeachCard(in: app)
+        return app
+    }
+
+    /// The deck opens on its first card each time it appears, so every visit steps to the Beach memory.
+    @MainActor
+    private func openBeachCard(in app: XCUIApplication) {
         let card = app.descendants(matching: .any).matching(identifier: "memory.card").firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 10))
         for _ in 0..<5 where !card.label.hasPrefix("Beach with the family") { app.buttons["memory.deck.next"].tap() }
         XCTAssertTrue(card.label.hasPrefix("Beach with the family"))
         card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
         XCTAssertTrue(app.buttons["memory.playMoment"].waitForExistence(timeout: 5))
-        return app
     }
 
     @MainActor
@@ -86,7 +92,7 @@ final class MemoryDetailUITests: XCTestCase {
         XCTAssertTrue(text.label.contains("We stayed for sunset."), text.label)
         // Leaving and coming back shows the saved text.
         app.navigationBars.buttons.firstMatch.tap()
-        app.descendants(matching: .any).matching(identifier: "memory.card").firstMatch.tap()
+        openBeachCard(in: app)
         XCTAssertTrue(app.staticTexts["memory.description"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["memory.description"].label.contains("We stayed for sunset."))
     }
