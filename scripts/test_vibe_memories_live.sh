@@ -9,9 +9,10 @@ command -v ffmpeg >/dev/null
 ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=coral:s=320x240:d=1 -frames:v 1 /tmp/vibe-memory-fixture.png -y
 ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=indigo:s=320x240:d=1 -c:v libx264 -pix_fmt yuv420p /tmp/vibe-memory-fixture.mp4 -y
 swiftc -parse-as-library \
-  "$VIBE_ROOT/macos/jukevibe/JukeVibeMac/Models/RecognizedTrack.swift" \
-  "$VIBE_ROOT/macos/jukevibe/JukeVibeMac/Models/MusicMemory.swift" \
-  "$VIBE_ROOT/macos/jukevibe/JukeVibeMac/Services/MemoryClient.swift" \
-  "$VIBE_ROOT/macos/jukevibe/IntegrationTests/MemoryLiveCheck.swift" \
+  "$VIBE_ROOT/mobile/shared/JukeRadio/RecognizedTrack.swift" \
+  "$VIBE_ROOT/mobile/shared/JukeRadio/MusicMemory.swift" \
+  "$VIBE_ROOT/mobile/shared/JukeRadio/JukeServer.swift" \
+  "$VIBE_ROOT/mobile/shared/JukeRadio/MemoryClient.swift" \
+  "$VIBE_ROOT/macos/juke/IntegrationTests/MemoryLiveCheck.swift" \
   -o /tmp/vibe-memory-live-check
 /tmp/vibe-memory-live-check

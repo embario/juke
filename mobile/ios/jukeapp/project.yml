@@ -1,0 +1,67 @@
+name: JukeApp
+options:
+  bundleIdPrefix: com.juke
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 2WMS6785YD
+targets:
+  JukeApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: JukeApp
+      - path: ../../shared/JukeRadio
+        group: Shared
+      - path: PrivacyInfo.xcprivacy
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.juke.app
+        PRODUCT_NAME: JukeApp
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: JukeApp/Info.plist
+        CODE_SIGN_ENTITLEMENTS: JukeApp/JukeApp.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_STRICT_CONCURRENCY: complete
+  JukeAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: JukeAppTests
+    dependencies:
+      - target: JukeApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.juke.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/JukeApp.app/JukeApp"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+  JukeAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: JukeAppUITests
+    dependencies:
+      - target: JukeApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.juke.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  JukeApp:
+    build:
+      targets:
+        JukeApp: all
+        JukeAppTests: [test]
+    test:
+      targets:
+        - JukeAppTests
+        - JukeAppUITests

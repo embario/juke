@@ -46,6 +46,7 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
 - ML service: `recommender_engine/app/main.py` describes FastAPI endpoints backed by Postgres embeddings.
 - Frontend: `web/` (Vite project) with `web/src/features`, `shared`, `uikit`, etc.
 - Mobile: `mobile/android/juke` (Gradle multi-module project) and `mobile/ios/juke` (Xcode workspace).
+- macOS: `macos/juke` (XcodeGen `project.yml`, Juke app formerly Juke Vibe). Run `bash scripts/test_macos.sh` (`--ui` for UI automation); see `macos/juke/README.md` for the code map.
 - Utility scripts: `scripts/` includes build helpers for both mobile platforms and log tailers.
 
 ## Common Workflows
@@ -65,7 +66,7 @@ The default `docker-compose.yml` wires Django (`backend`), Celery workers/beat, 
 3. **Testing**
    - Backend: `docker compose exec backend python manage.py test`
    - Frontend: `cd web && npm test`
-   - Mobile: `scripts/test_mobile.sh -p <project>` (required: `juke`, `shotclock`, or `tunetrivia`; `--ios-only`, `--android-only`, `-s <sim>`, `-o <os>` options; defaults to iPhone 17 Pro / iOS 26.2)
+   - Mobile: `scripts/test_mobile.sh -p <project>` (required: `juke`, `jukeapp` (iOS-only), `shotclock`, or `tunetrivia`; `--ios-only`, `--android-only`, `-s <sim>`, `-o <os>` options; defaults to iPhone 17 Pro / iOS 26.2)
 4. **Mobile config (.env)**
    - Mobile build/test scripts load `.env` via `scripts/load_env.sh`; set `BACKEND_URL` and `DISABLE_REGISTRATION` there to configure iOS + Android builds consistently.
 5. **iOS workflow**
