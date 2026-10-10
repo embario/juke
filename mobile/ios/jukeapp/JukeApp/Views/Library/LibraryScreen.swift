@@ -12,6 +12,8 @@ struct LibraryScreen: View {
     @State private var error: String?
     @State private var selected: Radio.CrateItem?
     @State private var browsing: Radio.CrateItem?
+    /// A song's album, opened with the song highlighted.
+    @State private var songAlbum: AlbumTarget?
     @State private var focus = 0
     @State private var loadTask: Task<Void, Never>?
     @AppStorage("juke.library.crateView") private var showsCrate = true
@@ -35,13 +37,18 @@ struct LibraryScreen: View {
                 if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
                 if loading { ProgressView().frame(maxWidth: .infinity) }
                 if showsCrate, !items.isEmpty {
-                    CrateView(items: items, mode: crateMode, onSelect: { open($0) }, focus: $focus)
+                    CrateView(items: items, mode: crateMode, onSelect: { open($0) }, onSwipeDown: { open($0) }, focus: $focus)
                         .padding(.top, CrateLayout.libraryTopClearance(for: crateMode))
                     if items.indices.contains(focus) {
                         VStack(spacing: 2) {
                             Text(items[focus].title).font(.headline).lineLimit(1)
                             if let subtitle = items[focus].subtitle { Text(subtitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
-                        }.frame(maxWidth: .infinity)
+                        }
+                        .frame(maxWidth: .infinity).contentShape(Rectangle())
+                        // The caption is a swipe target too, so front-to-back crates (which flip on that axis) have one.
+                        .gesture(DragGesture(minimumDistance: 12).onEnded { value in
+                            if LibrarySwipe.opensDetails(translation: value.translation, velocity: value.velocity.height) { open(items[focus]) }
+                        })
                     }
                 } else {
                     LazyVGrid(columns: columns, spacing: 14) {
@@ -75,6 +82,10 @@ struct LibraryScreen: View {
             if item.kind == .artist { ArtistDetailView(title: item.title, spotifyID: item.spotifyId) }
             else { AlbumDetailView(title: item.title, spotifyID: item.spotifyId, artist: item.subtitle) }
         }
+        .navigationDestination(item: $songAlbum) { target in
+            AlbumDetailView(title: target.title, spotifyID: target.spotifyID, artist: target.artist,
+                            catalogID: target.catalogID, highlightTrackID: target.highlight)
+        }
         .sheet(item: $selected) { item in
             VStack(spacing: 14) {
                 VStack(spacing: 2) {
@@ -96,11 +107,26 @@ struct LibraryScreen: View {
         }
     }
 
-    /// Artists and albums open their own screens; songs offer play / start a station.
+    /// Artists and albums open their own screens; a song opens its album with the song highlighted
+    /// (the play / start-a-station sheet is only the fallback when no album can be found).
     private func open(_ item: Radio.CrateItem) {
         model.recents.record(item)
         focus = 0   // what was just opened is first when the Library comes back; Radio's own plays leave the crate alone
-        if item.kind == .track { selected = item } else { browsing = item }
+        guard item.kind == .track else { browsing = item; return }
+        if let target = LibraryBrowsing.albumTarget(for: item) { songAlbum = target; return }
+        Task { await openAlbum(of: item) }
+    }
+
+    /// Looks the song up in the catalog to find its album.
+    private func openAlbum(of item: Radio.CrateItem) async {
+        if let token = model.session?.accessToken,
+           let results = try? await CatalogClient().search(item.title, kind: "tracks", token: token),
+           let found = LibraryBrowsing.match(results, spotifyID: item.spotifyId),
+           let target = LibraryBrowsing.albumTarget(for: item, found: found) {
+            songAlbum = target
+        } else {
+            selected = item
+        }
     }
 
     private func play(_ item: Radio.CrateItem) async {

@@ -6,6 +6,8 @@ struct CrateView: View {
     let items: [Radio.CrateItem]
     let mode: CrateMode
     let onSelect: (Radio.CrateItem) -> Void
+    /// A downward swipe on the crate (side-to-side crates only: front-to-back flips on that axis).
+    var onSwipeDown: ((Radio.CrateItem) -> Void)?
     @Binding var focus: Int
     /// Resets by itself if the system cancels the gesture.
     @GestureState private var dragDelta: CGFloat = 0
@@ -30,8 +32,14 @@ struct CrateView: View {
         .frame(maxWidth: .infinity).frame(height: CrateLayout.wellHeight + 40)
         .contentShape(Rectangle())
         .gesture(DragGesture(minimumDistance: CrateLayout.dragThreshold)
-            .updating($dragDelta) { value, state, _ in state = axis(value.translation) }
+            .updating($dragDelta) { value, state, _ in state = vertical(value.translation) ? 0 : axis(value.translation) }
             .onEnded { value in
+                if vertical(value.translation) {
+                    if LibrarySwipe.opensDetails(translation: value.translation, velocity: value.velocity.height), items.indices.contains(focus) {
+                        onSwipeDown?(items[focus])
+                    }
+                    return
+                }
                 let velocity = axis(CGSize(width: value.velocity.width, height: value.velocity.height)) / 1000
                 let next = CrateLayout.releasedFocus(focus: focus, count: items.count, dragDelta: axis(value.translation), velocity: velocity, mode: mode)
                 withAnimation(.smooth(duration: CrateLayout.settleDuration)) { focus = next }
@@ -40,9 +48,16 @@ struct CrateView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(items.indices.contains(focus) ? "\(items[focus].title), record \(focus + 1) of \(items.count)" : "Empty crate")
         .accessibilityIdentifier("library.crate")
+        .accessibilityHint("Swipe down or use Open details to see this record.")
+        .accessibilityAction(named: "Open details") { if items.indices.contains(focus) { onSelect(items[focus]) } }
         .accessibilityAdjustableAction { direction in
             focus = CrateLayout.clamp(focus + (direction == .increment ? 1 : -1), count: items.count)
         }
+    }
+
+    /// A mostly vertical drag in a side-to-side crate is a swipe, not a flip.
+    private func vertical(_ translation: CGSize) -> Bool {
+        mode != .frontToBack && onSwipeDown != nil && LibrarySwipe.isVertical(translation)
     }
 
     private func axis(_ size: CGSize) -> CGFloat { mode == .frontToBack ? size.height : size.width }
