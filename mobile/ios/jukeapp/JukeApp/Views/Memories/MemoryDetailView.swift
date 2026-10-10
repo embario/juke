@@ -18,7 +18,7 @@ struct MemoryDetail: View {
     @State private var picks: [PhotosPickerItem] = []
     @State private var uploading = false
     @State private var mediaToRemove: MemoryMedia?
-    @State private var playingVideo: MemoryMedia?
+    @State private var imageViewerItem: MemoryImageViewerItem?
 
     private var current: MusicMemory { model.memories.memories.first { $0.id == memory.id } ?? memory }
 
@@ -55,7 +55,7 @@ struct MemoryDetail: View {
             Button("Remove", role: .destructive) { if let media = mediaToRemove { Task { await remove(media) } } }
             Button("Cancel", role: .cancel) { mediaToRemove = nil }
         } message: { Text("It is deleted from this memory.") }
-        .sheet(item: $playingVideo) { VideoSheet(media: $0) }
+        .fullScreenCover(item: $imageViewerItem) { MemoryFullscreenViewer(item: $0) }
     }
 
     // MARK: Sections
@@ -64,11 +64,24 @@ struct MemoryDetail: View {
         VStack(alignment: .leading, spacing: 10) {
             GeometryReader { proxy in
                 // A wide crop of the picture, so the description is in view without scrolling.
-                MemoryThumbnail(memory: current, side: proxy.size.width, cornerRadius: 0)
-                    .frame(width: proxy.size.width, height: proxy.size.width)
-                    .frame(height: proxy.size.width * 0.62)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                if let item = MemoryThumbnailChoice.choose(for: current).viewerItem {
+                    Button { imageViewerItem = item } label: {
+                        MemoryThumbnail(memory: current, side: proxy.size.width, cornerRadius: 0)
+                            .frame(width: proxy.size.width, height: proxy.size.width)
+                            .frame(height: proxy.size.width * 0.62)
+                            .clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(item.isVideo ? "View memory video" : "View memory image")
+                    .accessibilityIdentifier("memory.detail.image")
+                } else {
+                    MemoryThumbnail(memory: current, side: proxy.size.width, cornerRadius: 0)
+                        .frame(width: proxy.size.width, height: proxy.size.width)
+                        .frame(height: proxy.size.width * 0.62)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
             }
             .aspectRatio(1 / 0.62, contentMode: .fit)
             .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
@@ -79,10 +92,20 @@ struct MemoryDetail: View {
 
     private func songCapsule(_ song: MemorySong) -> some View {
         HStack(spacing: 12) {
-            AsyncImage(url: song.artworkURL) { $0.resizable().scaledToFill() } placeholder: {
+            if let artwork = song.artworkURL {
+                Button { imageViewerItem = .artwork(artwork) } label: {
+                    AsyncImage(url: artwork) { $0.resizable().scaledToFill() } placeholder: {
+                        ZStack { Color.secondary.opacity(0.15); Image(systemName: "music.note").foregroundStyle(.secondary) }
+                    }
+                    .frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("View song artwork")
+                .accessibilityIdentifier("memory.song.artwork")
+            } else {
                 ZStack { Color.secondary.opacity(0.15); Image(systemName: "music.note").foregroundStyle(.secondary) }
+                    .frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            .frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title).font(.headline).lineLimit(typeSize.isAccessibilitySize ? nil : 2)
                 Text(song.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(typeSize.isAccessibilitySize ? nil : 1)
@@ -129,8 +152,7 @@ struct MemoryDetail: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(current.media) { media in
-                        MemoryMediaTile(media: media)
-                            .onTapGesture { if media.kind == "video" { playingVideo = media } }
+                        MemoryMediaTile(media: media) { imageViewerItem = .attachment(media) }
                             .contextMenu {
                                 if MemoryDetailLogic.canRemove(media, from: current) {
                                     Button("Remove", systemImage: "trash", role: .destructive) { mediaToRemove = media }
@@ -282,58 +304,34 @@ struct RingedPlayButton: View {
 private struct MemoryMediaTile: View {
     @Environment(VibeAppModel.self) private var model
     let media: MemoryMedia
+    let open: () -> Void
     @State private var image: UIImage?
     @State private var failed = false
 
     var body: some View {
-        ZStack {
-            Color.secondary.opacity(0.15)
-            if let image { Image(uiImage: image).resizable().scaledToFill() }
-            else if failed { Image(systemName: media.kind == "video" ? "play.rectangle" : "photo").foregroundStyle(.secondary) }
-            else { ProgressView() }
-            if media.kind == "video", image != nil {
-                Image(systemName: "play.circle.fill").font(.system(size: 40)).foregroundStyle(.white).shadow(radius: 4)
+        Button(action: open) {
+            ZStack {
+                Color.secondary.opacity(0.15)
+                if let image { Image(uiImage: image).resizable().scaledToFill() }
+                else if failed { Image(systemName: media.kind == "video" ? "play.rectangle" : "photo").foregroundStyle(.secondary) }
+                else { ProgressView() }
+                if media.kind == "video", image != nil {
+                    Image(systemName: "play.circle.fill").font(.system(size: 40)).foregroundStyle(.white).shadow(radius: 4)
+                }
+            }
+            .frame(width: 160, height: 200).clipShape(RoundedRectangle(cornerRadius: 12))
+            .task {
+                do {
+                    let url = try await model.memories.localMediaURL(media)
+                    image = media.kind == "video" ? await MemoryImageDecoder.videoFrame(url, maxPixel: 640) : MemoryImageDecoder.downsampled(url, maxPixel: 960)
+                    if image == nil { failed = true }
+                } catch { failed = true }
             }
         }
-        .frame(width: 160, height: 200).clipShape(RoundedRectangle(cornerRadius: 12))
-        .task {
-            do {
-                let url = try await model.memories.localMediaURL(media)
-                image = media.kind == "video" ? await MemoryImageDecoder.videoFrame(url, maxPixel: 640) : MemoryImageDecoder.downsampled(url, maxPixel: 960)
-                if image == nil { failed = true }
-            } catch { failed = true }
-        }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(media.kind == "video" ? "Video attachment. Double tap to play." : "Photo attachment")
-        .accessibilityAddTraits(media.kind == "video" ? .isButton : .isImage)
+        .accessibilityLabel(media.kind == "video" ? "Video attachment" : "Photo attachment")
         .accessibilityIdentifier(media.kind == "video" ? "memory.video" : "memory.photo")
-    }
-}
-
-private struct VideoSheet: View {
-    @Environment(VibeAppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let media: MemoryMedia
-    @State private var player: AVPlayer?
-    @State private var failed = false
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
-            if let player { VideoPlayer(player: player).ignoresSafeArea() }
-            else if failed { Text("This video couldn’t be played.").foregroundStyle(.white).frame(maxWidth: .infinity, maxHeight: .infinity) }
-            else { ProgressView().tint(.white).frame(maxWidth: .infinity, maxHeight: .infinity) }
-            Button("Done") { dismiss() }.buttonStyle(.borderedProminent).padding().accessibilityIdentifier("memory.video.done")
-        }
-        .task {
-            do {
-                let url = try await model.memories.localMediaURL(media)
-                let item = AVPlayer(url: url)
-                player = item
-                item.play()
-            } catch { failed = true }
-        }
-        .onDisappear { player?.pause() }
     }
 }
 
