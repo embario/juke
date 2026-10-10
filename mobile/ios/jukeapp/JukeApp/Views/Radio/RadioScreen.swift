@@ -691,8 +691,9 @@ struct MiniPlayerPill: View {
 
     var body: some View {
         let radio = model.radio
-        // The controls stay in the middle of the island; what is playing gives way on the left.
-        CenteredControlsRow {
+        // Two rows: what is playing (or why Next failed) has the island's full width, and the controls sit
+        // below it, centred in the island and so in the viewport, whatever the text says.
+        VStack(spacing: 0) {
             HStack(spacing: 8) {
                 if radio.isOnAir, let track = radio.track {
                     MiniPlayerArtwork(url: track.artworkURL, local: nil, tint: model.atmosphere.primary)
@@ -703,18 +704,15 @@ struct MiniPlayerPill: View {
                     titles(model.nowPlaying.track?.title ?? "Listening for music",
                            model.nowPlaying.track.map { "\($0.artist) · \($0.source)" } ?? model.nowPlaying.status)
                 }
+                Spacer(minLength: 0)
+                if !radio.isOnAir {
+                    Menu {
+                        Button(model.nowPlaying.isListeningAroundMe ? "Stop Around Me" : "Identify Around Me") { Task { await model.nowPlaying.setAroundMe(!model.nowPlaying.isListeningAroundMe) } }
+                        Text("Apple Music and connected Spotify playback are checked automatically while Juke is active.")
+                    } label: { Image(systemName: "ellipsis.circle").font(.title3).frame(width: 30, height: 44) }
+                }
             }
-        } center: {
-            PlayerControlButtons()
-        } trailing: {
-            if !radio.isOnAir {
-                Menu {
-                    Button(model.nowPlaying.isListeningAroundMe ? "Stop Around Me" : "Identify Around Me") { Task { await model.nowPlaying.setAroundMe(!model.nowPlaying.isListeningAroundMe) } }
-                    Text("Apple Music and connected Spotify playback are checked automatically while Juke is active.")
-                } label: { Image(systemName: "ellipsis.circle").font(.title3).frame(width: 30, height: 44) }
-            } else {
-                Color.clear.frame(width: 1, height: 1)
-            }
+            PlayerControlButtons().frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: MiniPlayerStyle.cornerRadius))
@@ -741,7 +739,7 @@ struct MiniPlayerPill: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.subheadline.bold()).lineLimit(1)
             Text(subtitle).font(.caption.weight(warning ? .semibold : .regular))
-                .foregroundStyle(warning ? HierarchicalShapeStyle.primary : .secondary).lineLimit(1)
+                .foregroundStyle(warning ? HierarchicalShapeStyle.primary : .secondary).lineLimit(2)
                 .scaleEffect(pulse && !reduceMotion ? 1.06 : 1, anchor: .leading)
                 .opacity(pulse && reduceMotion ? 0.45 : 1)
                 .accessibilityIdentifier("miniPlayer.status")

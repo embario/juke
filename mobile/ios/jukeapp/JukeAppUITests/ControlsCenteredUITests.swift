@@ -65,4 +65,22 @@ final class ControlsCenteredUITests: XCTestCase {
         XCTAssertTrue(app.buttons["player.playPause"].waitForExistence(timeout: 5))
         assertCentered(app, ["player.previous", "player.playPause", "player.next"])
     }
+
+    /// The island keeps the controls in the middle without squeezing what it says: a failed Next's line
+    /// (and the song) read in full, not as "No new…".
+    @MainActor
+    func testIslandTextIsNotTruncatedWhileControlsStayCentred() {
+        let app = launch(["--uitesting-tab=library", "--uitesting-next-fails=exhausted"])
+        let next = app.buttons["player.next"]
+        XCTAssertTrue(next.waitForExistence(timeout: 15))
+        next.tap()
+        let status = app.staticTexts["miniPlayer.status"]
+        let expectedText = "No new songs on this station"
+        expectation(for: NSPredicate(format: "label == %@", expectedText), evaluatedWith: status)
+        waitForExpectations(timeout: 5)
+        let needed = (expectedText as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 12, weight: .semibold)  /* caption at the pinned L size */]).width
+        XCTAssertGreaterThanOrEqual(status.frame.width, needed - 1, "the failure line has the room it needs (\(status.frame.width) < \(needed))")
+        assertCentered(app, ["player.previous", "player.playPause", "player.next"])
+        add(shot("Island-failure-line"))
+    }
 }

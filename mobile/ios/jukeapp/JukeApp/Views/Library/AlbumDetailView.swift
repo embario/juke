@@ -15,7 +15,7 @@ struct AlbumDetailView: View {
     @State private var state: CatalogLoad<CatalogAlbumDetail> = .loading
     @State private var message: String?
     /// Room under the list for the floating player and tab bar, so the last (or highlighted) rows can scroll clear of them.
-    @ScaledMetric private var islandInset: CGFloat = 130
+    @ScaledMetric private var islandInset: CGFloat = 165
 
     var body: some View {
         ScrollViewReader { proxy in
