@@ -291,8 +291,13 @@ enum RadioIssue: Equatable, Sendable {
     case noActiveDevice
     /// 502 `playback_provider_failure`.
     case spotifyFailed
-    /// 409 `radio_no_tracks` for this station.
+    /// 409 `radio_no_tracks`: the station searched everything it has and every song was already played or kept out.
     case noTracks(stationName: String)
+    /// 503 `radio_picks_unavailable`: the search for the next song did not finish (a slow or failing
+    /// recommendation source). The station is not empty; asking again can work.
+    case picksUnavailable(stationName: String)
+    /// The device has no network connection.
+    case offline
     case signedOut
     /// Anything else (network, server); the message is user-facing.
     case unavailable(String)
@@ -302,9 +307,45 @@ enum RadioIssue: Equatable, Sendable {
         case .spotifyNotLinked: "Radio plays through Spotify. Connect your account to tune in."
         case .noActiveDevice: "Juke can’t reach Spotify. Open Spotify, then press play."
         case .spotifyFailed: "Spotify didn’t answer. Give it a moment and try again."
-        case .noTracks(let name): "\(name) has nothing new right now. Tune to another station."
+        case .noTracks(let name): "\(name) has run out of new songs for now. Tune to another station or start a new one."
+        case .picksUnavailable(let name): "Juke couldn’t find the next song for \(name) just now. The station isn’t empty: try again."
+        case .offline: "You’re offline. Reconnect, then try again."
         case .signedOut: "Sign in to Juke to play radio."
         case .unavailable(let message): message
+        }
+    }
+
+    /// What a failed Next means for the listener, when the failure is about getting a song at all.
+    enum NextOutcome: Equatable, Sendable {
+        /// Asking again can work: a slow or failing server, Spotify or recommendation source.
+        case retry
+        /// The station has nothing new; asking again will not help.
+        case exhausted
+        /// No network on this device.
+        case offline
+    }
+
+    /// `nil` for problems with their own remedy (connect Spotify, open Spotify, sign in).
+    var nextOutcome: NextOutcome? {
+        switch self {
+        case .noTracks: .exhausted
+        case .picksUnavailable, .spotifyFailed, .unavailable: .retry
+        case .offline: .offline
+        case .spotifyNotLinked, .noActiveDevice, .signedOut: nil
+        }
+    }
+
+    /// One short line for the compact player after a failed press.
+    var shortLabel: String {
+        switch self {
+        case .spotifyNotLinked: "Connect Spotify to play"
+        case .noActiveDevice: "Open Spotify to keep playing"
+        case .spotifyFailed: "Spotify didn’t answer. Try again"
+        case .noTracks: "No new songs on this station"
+        case .picksUnavailable: "Couldn’t get the next song. Try again"
+        case .offline: "You’re offline"
+        case .signedOut: "Sign in to play radio"
+        case .unavailable: "Juke didn’t answer. Try again"
         }
     }
 
@@ -315,10 +356,12 @@ enum RadioIssue: Equatable, Sendable {
             case "playback_provider_not_linked", "playback_provider_unsupported": return .spotifyNotLinked
             case "playback_provider_failure": return .spotifyFailed
             case "radio_no_tracks": return .noTracks(stationName: stationName)
+            case "radio_picks_unavailable": return .picksUnavailable(stationName: stationName)
             default: break
             }
             switch api {
             case .notSignedIn, .unauthorized: return .signedOut
+            case .offline: return .offline
             default: return .unavailable(api.errorDescription ?? "Juke radio is unavailable right now.")
             }
         }
