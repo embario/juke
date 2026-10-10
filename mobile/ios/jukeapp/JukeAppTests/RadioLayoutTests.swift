@@ -16,14 +16,28 @@ import Testing
         #expect(shorter < fitted)
     }
 
+    @Test func theVinylIsMuchLargerThanBefore() {
+        // iPhone 18 Pro (402 wide) and iPhone 17e (390 wide) with plenty of height: the previous maximum was 196.
+        #expect(RadioLayout.sleeveSide(visibleHeight: 900, containerWidth: 402) >= 250)
+        #expect(RadioLayout.sleeveSide(visibleHeight: 900, containerWidth: 390) >= 240)
+    }
+
+    @Test func sleeveAndRecordAlwaysFitBetweenTheMargins() {
+        for width in [320, 375, 390, 402, 430, 600] as [CGFloat] {
+            let side = RadioLayout.sleeveSide(visibleHeight: 900, containerWidth: width)
+            let row = side + RadioLayout.discOffset(side: side)
+            #expect(row <= width - 2 * RadioLayout.rowMargin + 1 || side == RadioLayout.minSleeve, "width \(width)")
+        }
+    }
+
     @Test func neverShrinksPastTheMinimum() {
         #expect(RadioLayout.sleeveSide(visibleHeight: 300) == RadioLayout.minSleeve)
         #expect(RadioLayout.sleeveSide(visibleHeight: .nan) == RadioLayout.maxSleeve)
     }
 
     @Test func recordOffsetScalesWithTheSleeve() {
-        #expect(RadioLayout.discOffset(side: 196) == 130)
-        #expect(RadioLayout.discOffset(side: 120) < RadioLayout.discOffset(side: 196))
+        #expect(RadioLayout.discOffset(side: 240) == 120)
+        #expect(RadioLayout.discOffset(side: 140) < RadioLayout.discOffset(side: 240))
     }
 }
 
@@ -104,5 +118,39 @@ import Testing
         one.recentEmojiReactions = ["🌙", "🔥"]
         #expect(RadioPreferences(defaults: defaults, accountID: "one").recentEmojiReactions == ["🌙", "🔥"])
         #expect(two.recentEmojiReactions.isEmpty)
+    }
+}
+
+@Suite struct TunerDrawerGestureTests {
+    private typealias Gesture = TunerDrawerGesture
+
+    @Test func draggingUpOpensAsTheFingerMoves() {
+        #expect(Gesture.progress(expanded: false, translation: -50, travel: 100) == 0.5)
+        #expect(Gesture.progress(expanded: false, translation: -500, travel: 100) == 1)
+        #expect(Gesture.progress(expanded: false, translation: 40, travel: 100) == 0, "pulling a closed drawer down does nothing")
+    }
+
+    @Test func draggingDownClosesAsTheFingerMoves() {
+        #expect(Gesture.progress(expanded: true, translation: 25, travel: 100) == 0.75)
+        #expect(Gesture.progress(expanded: true, translation: -80, travel: 100) == 1)
+        #expect(Gesture.progress(expanded: true, translation: 400, travel: 100) == 0)
+    }
+
+    @Test func noTravelDoesNotDivideByZero() {
+        #expect(Gesture.progress(expanded: false, translation: -80, travel: 0) == 0)
+        #expect(Gesture.progress(expanded: true, translation: 80, travel: 0) == 1)
+    }
+
+    @Test func aDragLetGoEarlyGoesBack() {
+        #expect(!Gesture.settles(expanded: false, translation: -30, velocity: 0, travel: 100), "cancelled before the commit point")
+        #expect(Gesture.settles(expanded: false, translation: -50, velocity: 0, travel: 100))
+        #expect(Gesture.settles(expanded: true, translation: 30, velocity: 0, travel: 100), "cancelled: still open")
+        #expect(!Gesture.settles(expanded: true, translation: 70, velocity: 0, travel: 100))
+    }
+
+    @Test func aFlickDecidesByDirection() {
+        #expect(Gesture.settles(expanded: false, translation: -10, velocity: -900, travel: 100))
+        #expect(!Gesture.settles(expanded: true, translation: 10, velocity: 900, travel: 100))
+        #expect(!Gesture.settles(expanded: false, translation: -90, velocity: 900, travel: 100), "a downward flick wins over a long upward drag")
     }
 }
