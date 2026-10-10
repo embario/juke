@@ -63,7 +63,7 @@ import Testing
     }
 }
 
-@Suite struct ReactionEmojiSliderTests {
+@Suite struct ReactionEmojiChooserTests {
     @Test func selectingMovesEmojiToTheLeftmostSlotAndPreservesTheRest() {
         var recency = ReactionEmojiRecency(["🔥", "🌙", "☀️"])
 
@@ -73,29 +73,33 @@ import Testing
         #expect(recency.values == ["🌙", "☀️", "🔥"])
     }
 
-    @Test func scrubbingMapsTouchesToClampedSlotsIncludingANeighbor() {
-        #expect(ReactionEmojiSliderLogic.slot(at: 0, width: 300, count: 3, spacing: 2) == 0)
-        #expect(ReactionEmojiSliderLogic.slot(at: 150, width: 300, count: 3, spacing: 2) == 1)
-        #expect(ReactionEmojiSliderLogic.slot(at: 300, width: 300, count: 3, spacing: 2) == 2)
-        #expect(ReactionEmojiSliderLogic.slot(at: -20, width: 300, count: 3, spacing: 2) == 0)
-        #expect(ReactionEmojiSliderLogic.slot(at: 20, width: 0, count: 3, spacing: 2) == 0)
-        let choices = ["🔥", "🌙", "☀️"]
-        let start = choices[ReactionEmojiSliderLogic.slot(at: 50, width: 300, count: choices.count, spacing: 2)]
-        let release = choices[ReactionEmojiSliderLogic.slot(at: 150, width: 300, count: choices.count, spacing: 2)]
-        #expect(start == "🔥")
-        #expect(release == "🌙")
+    @Test func chooserCatalogueKeepsItsProductGroupOrder() {
+        #expect(ReactionEmojiChooserCatalog.categories.map(\.title) == [
+            "Emotions", "Objects", "Activities", "Places", "Nature & Materials",
+        ])
+        #expect(ReactionEmojiChooserCatalog.orderedEmojis.first == "😌")
+        #expect(ReactionEmojiChooserCatalog.orderedEmojis.firstIndex(of: "🚗")! < ReactionEmojiChooserCatalog.orderedEmojis.firstIndex(of: "🏡")!)
+        #expect(ReactionEmojiChooserCatalog.orderedEmojis.firstIndex(of: "🏡")! < ReactionEmojiChooserCatalog.orderedEmojis.firstIndex(of: "🪨")!)
+        #expect(Set(ReactionEmojiChooserCatalog.orderedEmojis).count == ReactionEmojiChooserCatalog.orderedEmojis.count)
     }
 
-    @Test func voiceOverAdjustableActionsChooseTheNextEmojiWithoutWrapping() {
-        let choices = ["🔥", "🌙", "☀️"]
-        #expect(ReactionEmojiSliderLogic.adjacent(to: "🌙", direction: 1, in: choices) == "☀️")
-        #expect(ReactionEmojiSliderLogic.adjacent(to: "🌙", direction: -1, in: choices) == "🔥")
-        #expect(ReactionEmojiSliderLogic.adjacent(to: nil, direction: 1, in: choices) == "🔥")
-        #expect(ReactionEmojiSliderLogic.adjacent(to: "☀️", direction: 1, in: choices) == nil)
+    @Test func compactRowShowsRecentEmojisFirstAndAddsCurrentSelections() {
+        #expect(ReactionEmojiChooserCatalog.recentChoices(
+            recent: ["☕", "😌", "☕"],
+            selected: ["🥹", "mellow", "😌"],
+            limit: 4
+        ) == ["☕", "😌", "🥹"])
+        #expect(ReactionEmojiChooserCatalog.recentChoices(recent: ["☕", "😌"], selected: [], limit: 1) == ["☕"])
+    }
+
+    @Test func customEmojiAppearAfterTheOrderedCatalogueButWordsDoNot() {
+        let groups = ReactionEmojiChooserCatalog.categories(includingCustom: ["💚", "mellow", "🌸"])
+        #expect(groups.map(\.title).last == "Your emojis")
+        #expect(groups.last?.emojis == ["💚"])
     }
 
     @Test func recentEmojiOrderPersistsSeparatelyForEachAccount() {
-        let suite = "ReactionEmojiSliderTests.\(UUID().uuidString)"
+        let suite = "ReactionEmojiChooserTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let one = RadioPreferences(defaults: defaults, accountID: "one")

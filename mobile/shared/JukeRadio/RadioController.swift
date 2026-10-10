@@ -1,6 +1,49 @@
 import Foundation
 import Observation
 
+struct ReactionEmojiCategory: Equatable, Identifiable {
+    let title: String
+    let emojis: [String]
+
+    var id: String { title }
+}
+
+enum ReactionEmojiChooserCatalog {
+    /// The iOS catalogue is intentionally grouped from emotional cues into
+    /// objects, activities, places, then natural and material cues.
+    static let categories = [
+        ReactionEmojiCategory(title: "Emotions", emojis: ["😌", "🔥", "🥹", "🧘", "😭", "🥰", "😎", "🤯", "🫶", "😊"]),
+        ReactionEmojiCategory(title: "Objects", emojis: ["🚗", "☕", "🛋️", "🎉", "🎧", "📚"]),
+        ReactionEmojiCategory(title: "Activities", emojis: ["💃", "🏃", "🤘"]),
+        ReactionEmojiCategory(title: "Places", emojis: ["🏡", "🏖️", "🏙️", "🏔️", "🌲"]),
+        ReactionEmojiCategory(title: "Nature & Materials", emojis: ["🌙", "☀️", "🌧️", "🌊", "🍂", "❄️", "🌸", "✨", "🪨", "🪵", "🧊", "💎"]),
+    ]
+
+    static var orderedEmojis: [String] { categories.flatMap(\.emojis) }
+
+    static func recentChoices(recent: [String], selected: [String], limit: Int = 4) -> [String] {
+        var seen = Set<String>()
+        return (recent + selected).filter { emoji in
+            isEmoji(emoji) && seen.insert(emoji).inserted
+        }.prefix(max(0, limit)).map { $0 }
+    }
+
+    static func categories(includingCustom customEmojis: [String]) -> [ReactionEmojiCategory] {
+        let known = Set(orderedEmojis)
+        var seen = known
+        let extras = customEmojis.filter { emoji in
+            isEmoji(emoji) && seen.insert(emoji).inserted
+        }
+        guard !extras.isEmpty else { return categories }
+        return categories + [ReactionEmojiCategory(title: "Your emojis", emojis: extras)]
+    }
+
+    private static func isEmoji(_ text: String) -> Bool {
+        guard let first = text.unicodeScalars.first else { return false }
+        return first.properties.isEmojiPresentation || (first.properties.isEmoji && text.unicodeScalars.count > 1)
+    }
+}
+
 /// Keeps the last selected emoji first while preserving the other choices in
 /// their previous order.
 struct ReactionEmojiRecency: Equatable {
@@ -17,23 +60,6 @@ struct ReactionEmojiRecency: Equatable {
     private static func unique(_ values: [String]) -> [String] {
         var seen = Set<String>()
         return values.filter { seen.insert($0).inserted }
-    }
-}
-
-enum ReactionEmojiSliderLogic {
-    static func slot(at x: CGFloat, width: CGFloat, count: Int, spacing: CGFloat = 0) -> Int {
-        guard count > 1, width > 0 else { return 0 }
-        let gap = max(0, spacing)
-        let itemWidth = max(0, width - gap * CGFloat(count - 1)) / CGFloat(count)
-        return min(count - 1, max(0, Int(x / max(itemWidth + gap, 1))))
-    }
-
-    /// VoiceOver's adjustable action chooses the adjacent emoji without
-    /// toggling off the current feeling.
-    static func adjacent(to current: String?, direction: Int, in choices: [String]) -> String? {
-        guard !choices.isEmpty, direction != 0 else { return nil }
-        let currentIndex = current.flatMap(choices.firstIndex(of:)) ?? (direction > 0 ? -1 : choices.count)
-        return choices.indices.contains(currentIndex + direction) ? choices[currentIndex + direction] : nil
     }
 }
 
@@ -243,12 +269,14 @@ final class RadioController {
         return Array(Self.unique(Array(base) + Array(custom) + currentReactions).prefix(9))
     }
 
-    /// Emoji choices for iOS's hold and scrub slider, with the last choice first.
-    var sliderEmojiReactions: [String] {
-        let feelings = (currentStation?.feelings ?? []).filter(Self.isEmoji)
-        let base = Self.unique(feelings + Self.defaultStripEmoji).prefix(5)
-        let custom = customReactions.filter(Self.isEmoji).suffix(2)
-        return Array(Self.unique(recentEmojiReactions + currentReactions.filter(Self.isEmoji) + Array(base) + Array(custom)).prefix(9))
+    /// Compact iOS row: only recently selected or currently active emojis.
+    var compactEmojiReactions: [String] {
+        ReactionEmojiChooserCatalog.recentChoices(recent: recentEmojiReactions, selected: currentReactions)
+    }
+
+    /// Grouped iOS catalogue; Mac keeps its existing flat picker order below.
+    var chooserEmojiCategories: [ReactionEmojiCategory] {
+        ReactionEmojiChooserCatalog.categories(includingCustom: customReactions)
     }
 
     var pickerReactions: [String] {
@@ -860,8 +888,8 @@ final class RadioController {
     }
 
     func chooseReaction(_ reaction: String) async {
-        guard !currentReactions.contains(reaction) else { return }
         if Self.isEmoji(reaction) { rememberEmojiSelection(reaction) }
+        guard !currentReactions.contains(reaction) else { return }
         await setReactions(currentReactions + [reaction])
     }
 
