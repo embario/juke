@@ -17,6 +17,7 @@
 		0F9317CD3A139552C012DE8E /* RadioTunerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20C051178D87738E391E5D9D /* RadioTunerUITests.swift */; };
 		11F967B98A0B336643B71556 /* MemoryThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03F1CCCA7A4D4A7FC2BE4CB1 /* MemoryThumbnail.swift */; };
 		154696631ECAA3BCC8750019 /* LocalVibeIntelligence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C46B8ED4337270D4245BB5C /* LocalVibeIntelligence.swift */; };
+		16FF2894382DE886B4872C7E /* ControlsCenteringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BCE3639BCD6A252F2D7F0D0 /* ControlsCenteringTests.swift */; };
 		19FF0E52C7D2BA7AC86A8E26 /* PlayerTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9E856A64A35C68E329B15E /* PlayerTransportTests.swift */; };
 		1B1D65CAF628ECD7BAF765A9 /* VibeAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6A8BDAFD0900B4B4266600 /* VibeAPI.swift */; };
 		1BD8769844187145B8815322 /* VibeBackgroundGlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8239F90A43E27AF281B3A1E7 /* VibeBackgroundGlowTests.swift */; };
@@ -44,6 +45,7 @@
 		56686781876F76D3D38ADC00 /* MemoryDeleteUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2576EC178339ABDDB4BA7787 /* MemoryDeleteUITests.swift */; };
 		5ECC130493F920D5AAAD21A3 /* StationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352AD2D41149E314BCF53B22 /* StationSheet.swift */; };
 		5FD393298D1CDDB5D566F312 /* PlayerTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE8CA0BE72A512BDC29D8FE4 /* PlayerTransport.swift */; };
+		64B35AD5C40F5771B95D2262 /* CenteredControlsRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508929366AFC187416FE06EE /* CenteredControlsRow.swift */; };
 		668F0DD42F2002C572A6DBEC /* RecentResourcesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2618B225F5325972435EB667 /* RecentResourcesTests.swift */; };
 		681338CCC3C1F23F209B4F2B /* MemoryDeckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3BE8AF36561434806D8427 /* MemoryDeckView.swift */; };
 		6A0BFCCEA0861C90AF932817 /* ArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F28EAC9A19F28DA75A4D4B /* ArtistDetailView.swift */; };
@@ -71,6 +73,7 @@
 		943157280DEB54FF0A8BEDBC /* AppearanceChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A3B1A70127936170F883D8 /* AppearanceChoice.swift */; };
 		9813BD832C9711007D1CB39B /* CatalogClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A6371277CE5CE45F267F7D1 /* CatalogClient.swift */; };
 		982857EF4442D5E9E920F5E5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A104F6B3904202C531DF05B1 /* Assets.xcassets */; };
+		9CFCCEE085F5944194ECA9A2 /* ControlsCenteredUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27F7D2CBC33F6BB187E50791 /* ControlsCenteredUITests.swift */; };
 		9EC2C1A1C735CD295536997E /* MemoryDetailLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF3987174E7F3B6DE8401A7 /* MemoryDetailLogicTests.swift */; };
 		A03FCD3F72AE2036C6DAA380 /* NextFeedbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF5AE387C3EB736D9C7A833 /* NextFeedbackTests.swift */; };
 		A04F86678543DEAADABD9823 /* MemoryStepperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6D89D3CF229EED9661EBF34 /* MemoryStepperTests.swift */; };
@@ -158,6 +161,7 @@
 		2576EC178339ABDDB4BA7787 /* MemoryDeleteUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryDeleteUITests.swift; sourceTree = "<group>"; };
 		257E9C53316074FCA6FB3A67 /* MemoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryDetailView.swift; sourceTree = "<group>"; };
 		2618B225F5325972435EB667 /* RecentResourcesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentResourcesTests.swift; sourceTree = "<group>"; };
+		27F7D2CBC33F6BB187E50791 /* ControlsCenteredUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlsCenteredUITests.swift; sourceTree = "<group>"; };
 		2C1C2EAFF0C245BAF1397DAA /* MemoryStepper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryStepper.swift; sourceTree = "<group>"; };
 		2F3F35E50AA8F393A9F6D374 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2F7BD6ADAE5DF7268A1A1E8F /* RadioMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioMath.swift; sourceTree = "<group>"; };
@@ -176,10 +180,12 @@
 		4E2C68B40CE5764B9801DEE5 /* RadioLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioLayoutTests.swift; sourceTree = "<group>"; };
 		4E315CDD9222485F7F50E0FA /* CrateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrateView.swift; sourceTree = "<group>"; };
 		50811758373795EE34C63875 /* RecentLibraryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentLibraryUITests.swift; sourceTree = "<group>"; };
+		508929366AFC187416FE06EE /* CenteredControlsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CenteredControlsRow.swift; sourceTree = "<group>"; };
 		519103EDE64C494F7F99E002 /* MemoryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryClient.swift; sourceTree = "<group>"; };
 		57FE559BAC09BB81E1E8FE02 /* PlaybackClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackClient.swift; sourceTree = "<group>"; };
 		59ED2F926D09F8FD2B2F2C41 /* JukeMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeMotion.swift; sourceTree = "<group>"; };
 		5AF36F6FBDFC81079CD29354 /* ArtworkPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkPalette.swift; sourceTree = "<group>"; };
+		5BCE3639BCD6A252F2D7F0D0 /* ControlsCenteringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlsCenteringTests.swift; sourceTree = "<group>"; };
 		5E6A8BDAFD0900B4B4266600 /* VibeAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeAPI.swift; sourceTree = "<group>"; };
 		60266979CF11E51BEEF9A668 /* JukeIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JukeIOSApp.swift; sourceTree = "<group>"; };
 		628CA194523D30AE524DD80A /* VibeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeModels.swift; sourceTree = "<group>"; };
@@ -262,6 +268,7 @@
 				958D80D34F1CAA46CF6F2A18 /* AppLockControllerTests.swift */,
 				D5EC2A0E343FBAB679D96BD3 /* ArtistCatalogModelTests.swift */,
 				D8135B2569D3E58A5F5AC4B0 /* ChatComposerTests.swift */,
+				5BCE3639BCD6A252F2D7F0D0 /* ControlsCenteringTests.swift */,
 				CCF0BD44FF38A093F48CF629 /* DetailRevealTests.swift */,
 				38EE2CF7AB19F90E21A2AE8E /* JukeAppTests.swift */,
 				6D392B09370219D7584F3E95 /* LibraryBrowsingTests.swift */,
@@ -339,6 +346,7 @@
 			children = (
 				A1AEF4E531920B995811E6DD /* ArtistCatalogUITests.swift */,
 				9972CA449D9402E5CCFFC38F /* ChatViewUITests.swift */,
+				27F7D2CBC33F6BB187E50791 /* ControlsCenteredUITests.swift */,
 				97E6ACACF993D84F976A6324 /* DetailViewsUITests.swift */,
 				10A644A2F5FBB65FA9051CD7 /* MemoryDeckUITests.swift */,
 				2576EC178339ABDDB4BA7787 /* MemoryDeleteUITests.swift */,
@@ -375,6 +383,7 @@
 		845244C50D7B52BC43B851A9 /* Radio */ = {
 			isa = PBXGroup;
 			children = (
+				508929366AFC187416FE06EE /* CenteredControlsRow.swift */,
 				BF764F2CA5B5785D08B7D0D7 /* FMDialView.swift */,
 				D39DFB353209C74CCA48C029 /* RadioLayout.swift */,
 				1E86866E5F50638D1FCDE22A /* RadioScreen.swift */,
@@ -612,6 +621,7 @@
 				BEA0C01C70CB7FAA98275FA4 /* AppLockControllerTests.swift in Sources */,
 				EF1404B00C518A31CC7A4F12 /* ArtistCatalogModelTests.swift in Sources */,
 				932462127DCCB76F74AE9A14 /* ChatComposerTests.swift in Sources */,
+				16FF2894382DE886B4872C7E /* ControlsCenteringTests.swift in Sources */,
 				BF248891A9DF5CAFD4664593 /* DetailRevealTests.swift in Sources */,
 				6E54B4EC1CF2AFEC65C90E4A /* JukeAppTests.swift in Sources */,
 				7C931625891092023F2D4A39 /* LibraryBrowsingTests.swift in Sources */,
@@ -648,6 +658,7 @@
 				3F25DD23765E9AD578032E19 /* ArtworkPalette.swift in Sources */,
 				A3F5A0EE22EC14166515F58F /* BackgroundRecognition.swift in Sources */,
 				9813BD832C9711007D1CB39B /* CatalogClient.swift in Sources */,
+				64B35AD5C40F5771B95D2262 /* CenteredControlsRow.swift in Sources */,
 				D6D4A5362DC7F0760253B842 /* ChatComposer.swift in Sources */,
 				FC0137850B1F26D7A5940D15 /* ChatVault.swift in Sources */,
 				2FCA463DA58FA4D7BB4301AA /* ChatView.swift in Sources */,
@@ -721,6 +732,7 @@
 			files = (
 				CD35213EDD9EB635926CB0DA /* ArtistCatalogUITests.swift in Sources */,
 				8700679E843036BCF1BD376B /* ChatViewUITests.swift in Sources */,
+				9CFCCEE085F5944194ECA9A2 /* ControlsCenteredUITests.swift in Sources */,
 				21DADBF58AF3CBBE7EE901AC /* DetailViewsUITests.swift in Sources */,
 				C99C5957C462BBDF76D3F381 /* MemoryDeckUITests.swift in Sources */,
 				56686781876F76D3D38ADC00 /* MemoryDeleteUITests.swift in Sources */,

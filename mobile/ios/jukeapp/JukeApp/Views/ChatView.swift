@@ -47,7 +47,7 @@ struct ChatView: View {
             // Own both controls in this inset: the system keyboard toolbar can
             // occupy the same trailing space as Send on compact phones.
             if focused {
-                HStack {
+                CenteredControlsRow {
                     Button { focused = false } label: {
                         Text("Done")
                             .font(.body.weight(.semibold))
@@ -56,7 +56,7 @@ struct ChatView: View {
                     }
                         .accessibilityLabel("Dismiss keyboard")
                         .accessibilityIdentifier("chat.dismissKeyboard")
-                    Spacer()
+                } center: {
                     // Keep the player reachable while typing, without the full island.
                     PlayerControlButtons()
                 }

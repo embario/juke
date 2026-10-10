@@ -277,33 +277,54 @@ private struct ProgressScrubber: View {
 
 private struct Transport: View {
     @Environment(VibeAppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var lyricsSoon = false
 
     var body: some View {
         let radio = model.radio
+        // The three transport buttons are centred in the card; the "more" menu sits at the leading edge
+        // and cannot pull them off-centre. At accessibility sizes there is no room beside the buttons,
+        // so the menu goes on a row of its own below them.
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 8) { controls(radio); moreMenu(radio) }.frame(maxWidth: .infinity)
+            } else {
+                CenteredControlsRow { moreMenu(radio) } center: { controls(radio) }
+            }
+        }
+        .foregroundStyle(model.atmosphere.primary)
+        .disabled(radio.isBusy)
+        .alert("Lyrics are coming soon", isPresented: $lyricsSoon) { Button("OK", role: .cancel) {} } message: { Text("Juke will show lyrics once a licensed provider is chosen.") }
+    }
+
+    private func moreMenu(_ radio: RadioController) -> some View {
+        Menu {
+            Button("Save this moment", systemImage: "bookmark") { Task { await radio.saveMoment() } }
+            Button("Put the record away", systemImage: "tray.and.arrow.down") { Task { await radio.putAway() } }
+            Button("Lyrics", systemImage: "text.quote") { lyricsSoon = true }
+        } label: { Image(systemName: "ellipsis.circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
+            .accessibilityIdentifier("radio.more")
+    }
+
+    private func controls(_ radio: RadioController) -> some View {
         HStack(spacing: 26) {
-            Menu {
-                Button("Save this moment", systemImage: "bookmark") { Task { await radio.saveMoment() } }
-                Button("Put the record away", systemImage: "tray.and.arrow.down") { Task { await radio.putAway() } }
-                Button("Lyrics", systemImage: "text.quote") { lyricsSoon = true }
-            } label: { Image(systemName: "ellipsis.circle").font(.title2) }
-            Button { Task { await radio.previous() } } label: { Image(systemName: "backward.fill").font(.title2) }
+            Button { Task { await radio.previous() } } label: { Image(systemName: "backward.fill").font(.title2).frame(minWidth: 44, minHeight: 44) }
                 .accessibilityLabel("Previous song")
+                .accessibilityIdentifier("radio.previous")
             Button { Task { await radio.togglePlayPause() } } label: {
                 Image(systemName: radio.isPlaying ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 64))
             }
             .accessibilityLabel(radio.isPlaying ? "Pause" : "Play")
-            Button { Task { await radio.skip() } } label: { Image(systemName: "forward.fill").font(.title2) }
+            .accessibilityIdentifier("radio.playPause")
+            Button { Task { await radio.skip() } } label: { Image(systemName: "forward.fill").font(.title2).frame(minWidth: 44, minHeight: 44) }
                 .accessibilityLabel("Next song")
+                .accessibilityIdentifier("radio.next")
                 .contextMenu {
                     Button("Not on this station", systemImage: "minus.circle") { Task { await radio.keepOut(.notOnStation) } }
                     Button("Less of this artist", systemImage: "person.crop.circle.badge.minus") { Task { await radio.keepOut(.lessArtist) } }
                     Button("Never this artist", systemImage: "nosign") { Task { await radio.keepOut(.neverArtist) } }
                 }
         }
-        .foregroundStyle(model.atmosphere.primary)
-        .disabled(radio.isBusy)
-        .alert("Lyrics are coming soon", isPresented: $lyricsSoon) { Button("OK", role: .cancel) {} } message: { Text("Juke will show lyrics once a licensed provider is chosen.") }
     }
 }
 
@@ -575,23 +596,29 @@ struct MiniPlayerPill: View {
 
     var body: some View {
         let radio = model.radio
-        HStack(spacing: 8) {
-            if radio.isOnAir, let track = radio.track {
-                MiniPlayerArtwork(url: track.artworkURL, local: nil, tint: model.atmosphere.primary)
-                // A paused song stays here with its controls; the line says why nothing is playing.
-                titles(track.title, failure ?? radio.status.caption ?? track.artist, warning: failure != nil)
-            } else {
-                MiniPlayerArtwork(url: model.nowPlaying.track?.artworkURL, local: model.nowPlaying.track?.localArtwork, tint: model.atmosphere.primary)
-                titles(model.nowPlaying.track?.title ?? "Listening for music",
-                       model.nowPlaying.track.map { "\($0.artist) · \($0.source)" } ?? model.nowPlaying.status)
+        // The controls stay in the middle of the island; what is playing gives way on the left.
+        CenteredControlsRow {
+            HStack(spacing: 8) {
+                if radio.isOnAir, let track = radio.track {
+                    MiniPlayerArtwork(url: track.artworkURL, local: nil, tint: model.atmosphere.primary)
+                    // A paused song stays here with its controls; the line says why nothing is playing.
+                    titles(track.title, failure ?? radio.status.caption ?? track.artist, warning: failure != nil)
+                } else {
+                    MiniPlayerArtwork(url: model.nowPlaying.track?.artworkURL, local: model.nowPlaying.track?.localArtwork, tint: model.atmosphere.primary)
+                    titles(model.nowPlaying.track?.title ?? "Listening for music",
+                           model.nowPlaying.track.map { "\($0.artist) · \($0.source)" } ?? model.nowPlaying.status)
+                }
             }
-            Spacer(minLength: 0)
+        } center: {
             PlayerControlButtons()
+        } trailing: {
             if !radio.isOnAir {
                 Menu {
                     Button(model.nowPlaying.isListeningAroundMe ? "Stop Around Me" : "Identify Around Me") { Task { await model.nowPlaying.setAroundMe(!model.nowPlaying.isListeningAroundMe) } }
                     Text("Apple Music and connected Spotify playback are checked automatically while Juke is active.")
                 } label: { Image(systemName: "ellipsis.circle").font(.title3).frame(width: 30, height: 44) }
+            } else {
+                Color.clear.frame(width: 1, height: 1)
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
