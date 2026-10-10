@@ -1,9 +1,15 @@
 import SwiftUI
 
 /// Tracks the last issue dismissed by the listener. An identical issue stays
-/// suppressed across repeated refreshes; a changed or cleared issue resets it.
+/// suppressed across repeated refreshes; a changed or cleared issue resets it,
+/// and so does every press that fails again (the listener asked, so they are told).
 struct RadioIssuePresentation: Equatable {
     private(set) var dismissedIssue: RadioIssue?
+    /// `RadioController.failedPresses` as last seen.
+    private(set) var seenPresses = 0
+    /// Failed presses in a row that ended in the issue now showing.
+    private(set) var tries = 0
+    private var triedIssue: RadioIssue?
 
     func visibleIssue(for currentIssue: RadioIssue?) -> RadioIssue? {
         currentIssue == dismissedIssue ? nil : currentIssue
@@ -17,7 +23,23 @@ struct RadioIssuePresentation: Equatable {
         // Repeated observations of the same dismissed issue are normal polls.
         // A nil or different value means the old issue has cleared or changed.
         if currentIssue != dismissedIssue { dismissedIssue = nil }
+        if currentIssue != triedIssue { tries = 0; triedIssue = currentIssue }
     }
+
+    /// A press just failed with `currentIssue`. Returns true when the banner must (re)appear or nudge.
+    @discardableResult
+    mutating func observePress(_ presses: Int, issue currentIssue: RadioIssue?) -> Bool {
+        guard presses != seenPresses else { return false }
+        seenPresses = presses
+        guard let currentIssue else { return false }
+        if currentIssue != triedIssue { tries = 0; triedIssue = currentIssue }
+        tries += 1
+        dismissedIssue = nil
+        return true
+    }
+
+    /// "Tried 3 times": only from the second failed press on, so one failure reads as before.
+    var triesCaption: String? { tries >= 2 ? "Tried \(tries) times" : nil }
 }
 
 /// Radio on iPhone: one card with the sleeve, transport, reactions and the
@@ -52,7 +74,7 @@ struct RadioScreen: View {
         .background(VibeBackground(atmosphere: model.atmosphere))
         .overlay(alignment: .top) {
             if let issue = issuePresentation.visibleIssue(for: issue) {
-                ConnectionIssueOverlay(issue: issue) {
+                ConnectionIssueOverlay(issue: issue, triesCaption: issuePresentation.triesCaption, nudge: issuePresentation.seenPresses) {
                     withAnimation(reduceMotion ? nil : .snappy) { issuePresentation.dismiss(issue) }
                 }
                 .padding(.horizontal, 16)
@@ -63,6 +85,8 @@ struct RadioScreen: View {
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: issuePresentation.visibleIssue(for: issue))
         .onChange(of: issue) { _, current in issuePresentation.observe(current) }
+        // Every failed Next is answered, including the same answer as last time and one already dismissed.
+        .onChange(of: radio.failedPresses, initial: true) { _, presses in issuePresentation.observePress(presses, issue: issue) }
     }
 
     /// A deterministic connection-error state for simulator screenshots.
@@ -434,13 +458,32 @@ private struct ReactionEmojiSlider: View {
 struct ConnectionIssueOverlay: View {
     @Environment(VibeAppModel.self) private var model
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let issue: RadioIssue
+    /// "Tried 3 times" after repeated failed presses.
+    var triesCaption: String?
+    /// Changes on every failed press; the banner answers each one.
+    var nudge = 0
     let onDismiss: () -> Void
+    @State private var nudged = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(issue.message).font(.callout).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("radio.issueMessage")
+                if let triesCaption {
+                    Text(triesCaption).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("radio.issueTries")
+                }
+                switch issue.nextOutcome {
+                case .retry, .offline:
+                    Button("Try again") { Task { await model.radio.skip() } }
+                        .buttonStyle(.bordered).disabled(model.radio.isBusy).accessibilityIdentifier("radio.tryAgain")
+                case .exhausted:
+                    Button("New station") { model.coordinator.openNewStation(JukeCoordinator.NewStationDraft()) }
+                        .buttonStyle(.bordered).accessibilityIdentifier("radio.issueNewStation")
+                case nil: EmptyView()
+                }
                 switch issue {
                 case .noActiveDevice:
                     // Only Spotify can wake a player iOS has suspended. Radio resumes when Juke is active again.
@@ -468,8 +511,16 @@ struct ConnectionIssueOverlay: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.primary.opacity(0.1), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(nudged ? AnyShapeStyle(model.atmosphere.primary) : AnyShapeStyle(.primary.opacity(0.1)), lineWidth: nudged ? 2 : 1))
         .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+        .scaleEffect(nudged && !reduceMotion ? 1.03 : 1)
+        // A banner that is already up answers another failed press with a short pulse (border only with Reduce Motion).
+        .task(id: nudge) {
+            guard nudge > 0 else { return }
+            withAnimation(.easeOut(duration: 0.12)) { nudged = true }
+            try? await Task.sleep(for: .milliseconds(450))
+            withAnimation(.easeOut(duration: 0.3)) { nudged = false }
+        }
     }
 }
 
@@ -508,6 +559,10 @@ struct PlayerControlButtons: View {
 struct MiniPlayerPill: View {
     @Environment(VibeAppModel.self) private var model
     var embedded = false
+    /// Why the last press did nothing; shown for a few seconds in place of the artist.
+    @State private var failure: String?
+    @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let radio = model.radio
@@ -515,7 +570,7 @@ struct MiniPlayerPill: View {
             if radio.isOnAir, let track = radio.track {
                 MiniPlayerArtwork(url: track.artworkURL, local: nil, tint: model.atmosphere.primary)
                 // A paused song stays here with its controls; the line says why nothing is playing.
-                titles(track.title, radio.status.caption ?? track.artist)
+                titles(track.title, failure ?? radio.status.caption ?? track.artist, warning: failure != nil)
             } else {
                 MiniPlayerArtwork(url: model.nowPlaying.track?.artworkURL, local: model.nowPlaying.track?.localArtwork, tint: model.atmosphere.primary)
                 titles(model.nowPlaying.track?.title ?? "Listening for music",
@@ -538,12 +593,26 @@ struct MiniPlayerPill: View {
         .contentShape(Rectangle())
         .onTapGesture { if radio.isOnAir { model.tab = .radio } }
         .background { Color.clear.accessibilityIdentifier("player.island") }
+        // Away from Radio there is no banner: each failed press says why here, then the artist returns.
+        .task(id: radio.failedPresses) {
+            guard radio.failedPresses > 0, let label = radio.issue?.shortLabel else { failure = nil; return }
+            failure = label
+            // The same answer twice still has to look like an answer: the line pulses on every press.
+            withAnimation(.easeOut(duration: 0.12)) { pulse = true }
+            try? await Task.sleep(for: .milliseconds(450))
+            withAnimation(.easeOut(duration: 0.3)) { pulse = false }
+            try? await Task.sleep(for: .seconds(MiniPlayerStyle.failureSeconds))
+            if !Task.isCancelled { failure = nil }
+        }
     }
 
-    private func titles(_ title: String, _ subtitle: String) -> some View {
+    private func titles(_ title: String, _ subtitle: String, warning: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.subheadline.bold()).lineLimit(1)
-            Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(subtitle).font(.caption.weight(warning ? .semibold : .regular))
+                .foregroundStyle(warning ? HierarchicalShapeStyle.primary : .secondary).lineLimit(1)
+                .scaleEffect(pulse && !reduceMotion ? 1.06 : 1, anchor: .leading)
+                .opacity(pulse && reduceMotion ? 0.45 : 1)
                 .accessibilityIdentifier("miniPlayer.status")
         }
     }
@@ -556,6 +625,8 @@ enum MiniPlayerStyle {
     static let borderOpacity: Double = 0.22
     static let shadowOpacity: Double = 0.22
     static let shadowRadius: CGFloat = 12
+    /// How long the compact player says why a press failed.
+    static let failureSeconds: Double = 5
 }
 
 private struct MiniPlayerArtwork: View {
