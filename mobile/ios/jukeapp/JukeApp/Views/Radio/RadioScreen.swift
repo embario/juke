@@ -123,15 +123,18 @@ private struct FirstRunCard: View {
 private struct NowPlayingCard: View {
     @Environment(VibeAppModel.self) private var model
     @State private var visibleHeight: CGFloat = 900
+    @State private var containerWidth: CGFloat = 390
     @State private var detail: DetailRoute?
+    @State private var tunerOpen = false
+    @ScaledMetric(relativeTo: .body) private var tunerReserve = TunerDrawerStyle.reserve
 
     var body: some View {
         let radio = model.radio
         ScrollView {
-            VStack(spacing: 14) {
+            VStack(spacing: 10) {
                 StationHeader()
                 if radio.isPutAway { PutAwayCard() }
-                SleeveAndRecord(track: radio.track, side: RadioLayout.sleeveSide(visibleHeight: visibleHeight))
+                SleeveAndRecord(track: radio.track, side: RadioLayout.sleeveSide(visibleHeight: visibleHeight, containerWidth: containerWidth))
                 VStack(spacing: 4) {
                     Text(radio.track?.title ?? "Nothing playing").font(.title2.bold()).multilineTextAlignment(.center).lineLimit(2)
                     // The artist and album open their screens (catalog, bio, tracklist) in a sheet.
@@ -156,11 +159,15 @@ private struct NowPlayingCard: View {
                 if radio.isPausedForEpisode {
                     Button("Resume station") { Task { await radio.togglePlayPause() } }.buttonStyle(.borderedProminent).accessibilityIdentifier("radio.resumeStation")
                 }
-                FMDialView()
             }
             .padding(.horizontal, 20).padding(.vertical, 12)
         }
-        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height - $0.contentInsets.top - $0.contentInsets.bottom } action: { _, height in visibleHeight = height }
+        // Room under the content for the tuner's closed handle. Opened, the drawer rises over the lower part of the card
+        // (it never resizes the vinyl).
+        .contentMargins(.bottom, tunerReserve, for: .scrollContent)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, height in visibleHeight = height + tunerReserve }  // the card's full height: the container excludes the margin kept for the handle
+        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.width } action: { _, width in containerWidth = width }
+        .overlay(alignment: .bottom) { TunerDrawer(expanded: $tunerOpen).padding(.bottom, 8) }
         .refreshable { await radio.refresh() }
         .detailSheet($detail)
     }
@@ -232,6 +239,8 @@ struct SleeveAndRecord: View {
         }
         .frame(width: side + discOffset, height: side, alignment: .leading)
         .frame(maxWidth: .infinity)
+        // The sleeve row is wider than the card's text column so the record can be large.
+        .padding(.horizontal, -(20 - RadioLayout.rowMargin))
     }
 
     private func open(_ kind: Radio.SeedKind, _ id: String, _ title: String) {
