@@ -39,6 +39,8 @@ _CACHE_PREFIX = 'radio:spotify:v2'
 _BREAKER_KEY = f'{_CACHE_PREFIX}:breaker'
 
 _deadline: contextvars.ContextVar[Optional[float]] = contextvars.ContextVar('radio_deadline', default=None)
+# Why the current budgeted search could not look everywhere (None outside a budget).
+_trouble: contextvars.ContextVar[Optional[List[str]]] = contextvars.ContextVar('radio_trouble', default=None)
 
 
 @contextlib.contextmanager
@@ -51,10 +53,31 @@ def budget(seconds: float):
     outer = _deadline.get()
     deadline = time.monotonic() + seconds
     token = _deadline.set(min(deadline, outer) if outer is not None else deadline)
+    trouble_token = _trouble.set([]) if _trouble.get() is None else None
     try:
         yield
     finally:
         _deadline.reset(token)
+        if trouble_token is not None:
+            _trouble.reset(trouble_token)
+
+
+def note_trouble(reason: str) -> None:
+    """Record that a source was skipped or failed for a reason that may pass (not "no results")."""
+    reasons = _trouble.get()
+    if reasons is not None and reason not in reasons:
+        reasons.append(reason)
+
+
+def troubles() -> List[str]:
+    """Reasons the current budgeted search was cut short: ``budget``, ``spotify``, ``mlcore``.
+
+    Empty means every source was asked and answered, so an empty result is a real "nothing left".
+    """
+    reasons = list(_trouble.get() or [])
+    if out_of_time() and 'budget' not in reasons:
+        reasons.append('budget')
+    return reasons
 
 
 def remaining() -> Optional[float]:
@@ -143,15 +166,21 @@ def _trip_breaker(exc: Exception) -> None:
     # A 4xx other than 429 means "this request is wrong", not "Spotify is unhealthy".
     if status is not None and 400 <= status < 500 and status != 429:
         return
+    note_trouble('spotify')
     cache.set(_BREAKER_KEY, True, BREAKER_SECONDS)
     logger.warning('Spotify unavailable for radio (%s); skipping Spotify for %ss', exc, BREAKER_SECONDS)
 
 
 def _call(description: str, operation, *, failures: Optional[list] = None):
-    if out_of_time() or breaker_open():
+    if out_of_time():
+        note_trouble('budget')
+        return None
+    if breaker_open():
+        note_trouble('spotify')
         return None
     client = get_client()
     if client is None:
+        note_trouble('spotify')
         return None
     try:
         return operation(client)
