@@ -126,6 +126,9 @@ private struct NowPlayingCard: View {
     @State private var containerWidth: CGFloat = 390
     @State private var detail: DetailRoute?
     @State private var tunerOpen = false
+    /// The record went into its sleeve: the actions sheet, and the album to open once it has closed.
+    @State private var sleeveSheet = false
+    @State private var pendingDetail: DetailRoute?
     @ScaledMetric(relativeTo: .body) private var tunerReserve = TunerDrawerStyle.reserve
 
     var body: some View {
@@ -170,6 +173,15 @@ private struct NowPlayingCard: View {
         .overlay(alignment: .bottom) { TunerDrawer(expanded: $tunerOpen).padding(.bottom, 8) }
         .refreshable { await radio.refresh() }
         .detailSheet($detail)
+        .onChange(of: radio.isPutAway) { was, now in
+            if SleeveActions.shouldPresent(wasPutAway: was, isPutAway: now) { sleeveSheet = true }
+        }
+        .sheet(isPresented: $sleeveSheet, onDismiss: {
+            // Two sheets cannot be up at once: the album opens as the actions sheet finishes closing.
+            if let route = pendingDetail { pendingDetail = nil; detail = route }
+        }) {
+            SleeveActionsSheet(track: radio.track) { route in pendingDetail = route; sleeveSheet = false }
+        }
     }
 
     /// A line of the song's text that opens `route`; plain text when the song has no id to open.
