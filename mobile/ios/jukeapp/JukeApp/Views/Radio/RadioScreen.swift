@@ -154,7 +154,7 @@ private struct NowPlayingCard: View {
                 }
                 ProgressScrubber()
                 Transport()
-                ReactionEmojiSlider()
+                CompactReactionEmojiChooser()
                 if let notice = radio.notice { Text(notice).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center) }
                 if radio.isPausedForEpisode {
                     Button("Resume station") { Task { await radio.togglePlayPause() } }.buttonStyle(.borderedProminent).accessibilityIdentifier("radio.resumeStation")
@@ -328,68 +328,79 @@ private struct Transport: View {
     }
 }
 
-private struct ReactionEmojiSlider: View {
+private struct EmojiChooserFramePreferenceKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newest in newest })
+    }
+}
+
+private struct CompactReactionEmojiChooser: View {
     @Environment(VibeAppModel.self) private var model
     @State private var words = ""
     @State private var addingWords = false
     @State private var previewEmoji: String?
-    @State private var isScrubbing = false
+    @State private var isChooserOpen = false
     @State private var isTouchActive = false
-    @State private var didScrub = false
-    @State private var lastDragLocation: CGPoint?
+    @State private var didHoldChooser = false
+    @State private var lastTouchLocation: CGPoint?
     @State private var holdTask: Task<Void, Never>?
+    @State private var chooserFrames: [String: CGRect] = [:]
+    @State private var chooserCatalogueFrame: CGRect = .zero
 
     var body: some View {
         let radio = model.radio
         VStack(spacing: 10) {
-            GeometryReader { geometry in
-                let reactions = Array(radio.sliderEmojiReactions.prefix(7))
-                VStack(spacing: 0) {
-                    if isScrubbing, let previewEmoji {
-                        Text(previewEmoji)
-                            .font(.system(size: 44))
-                            .frame(height: 48)
-                            .transition(.scale.combined(with: .opacity))
+            HStack(spacing: 8) {
+                ForEach(radio.compactEmojiReactions, id: \.self) { emoji in
+                    let selected = radio.currentReactions.contains(emoji)
+                    Button { Task { await radio.toggleReaction(emoji) } } label: {
+                        Text(emoji)
+                            .font(.system(size: 24))
+                            .frame(width: 42, height: 42)
+                            .background(selected ? model.atmosphere.primary.opacity(0.2) : .clear, in: Capsule())
+                            .contentShape(Capsule())
                     }
-                    HStack(spacing: 2) {
-                        ForEach(reactions, id: \.self) { reaction in
-                            let selected = radio.currentReactions.contains(reaction)
-                            Button {
-                                Task { await radio.toggleReaction(reaction) }
-                            } label: {
-                                Text(reaction)
-                                    .font(.system(size: 28))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 48)
-                                    .background(selected ? model.atmosphere.primary.opacity(0.2) : .clear, in: Capsule())
-                                    .contentShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("React with \(reaction)")
-                            .accessibilityValue(selected ? "Selected" : "Not selected")
-                            .accessibilityHint("Double-tap to add or remove this feeling. Or touch and hold, then slide to preview.")
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .highPriorityGesture(touchGesture(reactions: reactions, width: geometry.size.width, radio: radio))
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("radio.emojiSlider")
-                    .accessibilityLabel("Reaction slider")
-                    .accessibilityValue(radio.currentReactions.first(where: reactions.contains) ?? "No feeling selected")
-                    .accessibilityHint("Swipe up or down to choose the previous or next feeling. Double-tap an emoji to add or remove it.")
-                    .accessibilityAdjustableAction { direction in
-                        let current = radio.currentReactions.first(where: reactions.contains)
-                        let step = direction == .increment ? 1 : -1
-                        if let adjacent = ReactionEmojiSliderLogic.adjacent(to: current, direction: step, in: reactions) {
-                            Task { await radio.chooseReaction(adjacent) }
-                        }
-                    }
-                    .disabled(radio.track == nil)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("React with \(emoji)")
+                    .accessibilityValue(selected ? "Selected" : "Not selected")
+                    .accessibilityIdentifier("radio.recentEmoji.\(emoji)")
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Button { isChooserOpen.toggle() } label: {
+                    Image(systemName: isChooserOpen ? "xmark" : "face.smiling")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 42, height: 42)
+                        .background(model.atmosphere.primary.opacity(0.12), in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isChooserOpen ? "Close emoji chooser" : "Choose an emoji")
+                .accessibilityHint("Tap to browse all reactions, or touch and hold then slide to choose one.")
+                .accessibilityIdentifier("radio.openEmojiChooser")
+                .highPriorityGesture(chooserGesture(radio: radio))
+                .disabled(radio.track == nil)
             }
-            .frame(height: isScrubbing ? 96 : 48)
-            .animation(.snappy(duration: 0.18), value: isScrubbing)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("radio.compactEmojiChooser")
+            .overlay(alignment: .bottom) {
+                if isChooserOpen {
+                    chooserPanel(radio: radio)
+                        .frame(maxWidth: 420)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 50)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(1)
+                }
+            }
+            .animation(.snappy(duration: 0.2), value: isChooserOpen)
+            .onPreferenceChange(EmojiChooserFramePreferenceKey.self) { frames in
+                chooserFrames = frames
+                chooserCatalogueFrame = frames["catalogue:bounds"] ?? .zero
+            }
+
             let wordReactions = radio.currentReactions.filter { !RadioController.isEmoji($0) }
             if !wordReactions.isEmpty {
                 HStack(spacing: 8) {
@@ -431,26 +442,100 @@ private struct ReactionEmojiSlider: View {
         }
     }
 
-    private func touchGesture(reactions: [String], width: CGFloat, radio: RadioController) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+    @ViewBuilder
+    private func chooserPanel(radio: RadioController) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Choose a feeling")
+                    .font(.headline)
+                Spacer()
+                if let previewEmoji {
+                    Text(previewEmoji)
+                        .font(.system(size: 32))
+                        .accessibilityHidden(true)
+                }
+                Button("Close") { isChooserOpen = false }
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("radio.closeEmojiChooser")
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(radio.chooserEmojiCategories) { category in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(category.title)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 7), spacing: 1) {
+                            ForEach(category.emojis, id: \.self) { emoji in
+                                let selected = radio.currentReactions.contains(emoji)
+                                Button {
+                                    Task { await radio.chooseReaction(emoji) }
+                                    isChooserOpen = false
+                                } label: {
+                                    Text(emoji)
+                                        .font(.system(size: 20))
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 27)
+                                        .background(selected ? model.atmosphere.primary.opacity(0.2) : .clear, in: Capsule())
+                                        .contentShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("React with \(emoji)")
+                                .accessibilityValue(selected ? "Selected" : "Not selected")
+                                .accessibilityIdentifier("radio.chooser.emoji.\(emoji)")
+                                .background {
+                                    GeometryReader { proxy in
+                                        Color.clear.preference(
+                                            key: EmojiChooserFramePreferenceKey.self,
+                                            value: ["palette:\(emoji)": proxy.frame(in: .global)]
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: EmojiChooserFramePreferenceKey.self,
+                        value: ["catalogue:bounds": proxy.frame(in: .global)]
+                    )
+                }
+            }
+            .accessibilityIdentifier("radio.emojiCatalogue")
+        }
+        .padding(12)
+        .foregroundStyle(model.atmosphere.primary)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(model.atmosphere.primary.opacity(0.18)))
+        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("radio.emojiChooserPanel")
+    }
+
+    private func chooserGesture(radio: RadioController) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { drag in
-                lastDragLocation = drag.location
+                lastTouchLocation = drag.location
                 if !isTouchActive {
                     isTouchActive = true
-                    didScrub = false
+                    didHoldChooser = false
                     holdTask = Task { @MainActor in
                         do {
                             try await Task.sleep(nanoseconds: 280_000_000)
                         } catch {
                             return
                         }
-                        guard isTouchActive, !reactions.isEmpty else { return }
-                        didScrub = true
-                        isScrubbing = true
-                        updatePreview(at: lastDragLocation, reactions: reactions, width: width)
+                        guard isTouchActive else { return }
+                        didHoldChooser = true
+                        isChooserOpen = true
+                        updatePreview(at: lastTouchLocation)
                     }
-                } else if didScrub {
-                    updatePreview(at: drag.location, reactions: reactions, width: width)
+                } else if didHoldChooser {
+                    updatePreview(at: drag.location)
                 }
             }
             .onEnded { drag in
@@ -458,27 +543,37 @@ private struct ReactionEmojiSlider: View {
                 holdTask = nil
                 isTouchActive = false
                 defer {
-                    didScrub = false
-                    isScrubbing = false
+                    didHoldChooser = false
                     previewEmoji = nil
-                    lastDragLocation = nil
+                    lastTouchLocation = nil
                 }
-                guard !reactions.isEmpty else { return }
-                let location = drag.location
-                let index = ReactionEmojiSliderLogic.slot(at: location.x, width: width, count: reactions.count, spacing: 2)
-                let reaction = reactions[index]
-                if didScrub {
-                    Task { await radio.chooseReaction(reaction) }
+                if didHoldChooser {
+                    if let emoji = emoji(at: drag.location) ?? previewEmoji {
+                        Task { await radio.chooseReaction(emoji) }
+                        isChooserOpen = false
+                    } else {
+                        // A hold that opens the palette without releasing over
+                        // an emoji leaves it available for tap/VoiceOver choice.
+                        isChooserOpen = true
+                    }
                 } else {
-                    Task { await radio.toggleReaction(reaction) }
+                    isChooserOpen.toggle()
                 }
             }
     }
 
-    private func updatePreview(at location: CGPoint?, reactions: [String], width: CGFloat) {
-        guard let location, !reactions.isEmpty else { return }
-        let index = ReactionEmojiSliderLogic.slot(at: location.x, width: width, count: reactions.count, spacing: 2)
-        previewEmoji = reactions[index]
+    private func updatePreview(at location: CGPoint?) {
+        previewEmoji = location.flatMap(emoji(at:))
+    }
+
+    private func emoji(at point: CGPoint) -> String? {
+        guard chooserCatalogueFrame.contains(point) else { return nil }
+        return chooserFrames.first(where: { entry in
+            guard entry.key.hasPrefix("palette:") else { return false }
+            let visibleCell = entry.value.intersection(chooserCatalogueFrame)
+            return !visibleCell.isNull && visibleCell.contains(point)
+        })
+            .map { String($0.key.dropFirst("palette:".count)) }
     }
 }
 
