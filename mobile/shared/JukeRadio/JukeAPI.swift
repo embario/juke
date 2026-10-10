@@ -16,8 +16,13 @@ enum JukeAPIError: LocalizedError, Equatable, Sendable {
     /// Any other non-2xx status (5xx, 502 provider failures, ...).
     case server(status: Int, code: String?, detail: String?)
     case transport(String)
+    /// The device has no network connection (as opposed to a server that did not answer).
+    case offline
     case decoding(String)
     case responseTooLarge
+
+    /// `URLError` codes that mean the device itself is not connected.
+    static let offlineCodes: Set<URLError.Code> = [.notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff]
 
     /// The server's error code, when it sent one.
     var code: String? {
@@ -57,6 +62,7 @@ enum JukeAPIError: LocalizedError, Equatable, Sendable {
         case .rejected(_, _, let detail): detail ?? "Juke could not accept that request."
         case .server(_, _, let detail): detail ?? "Juke is temporarily unavailable. Try again in a moment."
         case .transport: "Juke could not be reached. Check your connection or the server in Settings."
+        case .offline: "You’re offline. Reconnect to keep using Juke."
         case .decoding: "Juke sent a response this version of the app does not understand."
         case .responseTooLarge: "Juke sent an unexpectedly large response."
         }
@@ -178,6 +184,8 @@ struct JukeAPI: Sendable {
             throw CancellationError()
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
+        } catch let error as URLError where JukeAPIError.offlineCodes.contains(error.code) {
+            throw JukeAPIError.offline
         } catch {
             throw JukeAPIError.transport(error.localizedDescription)
         }

@@ -16,47 +16,53 @@ final class DetailViewsUITests: XCTestCase {
     }
 
     @MainActor
-    func testAlbumTracklistComesDownWithASwipeAndGoesBackUp() {
-        let app = launch(["--uitesting-tab=library", "--uitesting-kind=album", "--uitesting-browse"])
-        let reveal = app.buttons["album.reveal"]
-        XCTAssertTrue(reveal.waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 10))
-        add(shot("Album-pane"))
-        XCTAssertFalse(row(app, "Freddie Freeloader").exists, "the tracklist is not on screen yet")
-
-        // Swipe down on the cover.
-        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.22))
-        top.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)))
-        XCTAssertTrue(row(app, "Freddie Freeloader").waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["album.hide"].isHittable)
-        sleep(1)
-        add(shot("Album-tracks"))
-
-        // Swipe up on the handle to return.
-        app.buttons["album.hide"].swipeUp()
-        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["album.hide"].isHittable)
-    }
-
-    @MainActor
-    func testAlbumRevealWorksWithoutTheGesture() {
-        let app = launch(["--uitesting-tab=library", "--uitesting-kind=album", "--uitesting-browse"])
-        XCTAssertTrue(app.buttons["album.reveal"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 10))
-        app.buttons["album.reveal"].tap()
-        XCTAssertTrue(row(app, "So What").waitForExistence(timeout: 5))
-        app.buttons["album.hide"].tap()
-        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 5))
-    }
-
-    @MainActor
-    func testShortDragIsCancelled() {
+    func testAlbumTracklistIsAlwaysShownAndNeverCollapsible() {
         let app = launch(["--uitesting-tab=library", "--uitesting-kind=album", "--uitesting-browse"])
         XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 15))
-        let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.22))
-        top.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.28)))
-        XCTAssertFalse(row(app, "Freddie Freeloader").exists, "a short drag does not keep the tracklist")
-        XCTAssertTrue(app.buttons["album.play"].isHittable)
+        XCTAssertTrue(row(app, "Freddie Freeloader").waitForExistence(timeout: 5), "the tracklist is on the album screen from the start")
+        XCTAssertTrue(row(app, "So What").exists)
+        XCTAssertFalse(app.buttons["album.reveal"].exists, "no control to fold the tracks away")
+        XCTAssertFalse(app.buttons["album.hide"].exists)
+        add(shot("Album-tracklist"))
+        // A downward drag scrolls; it never hides the tracks.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
+        XCTAssertTrue(row(app, "Freddie Freeloader").exists)
+    }
+
+    @MainActor
+    func testSongOpensItsAlbumWithTheSongHighlighted() {
+        let app = launch(["--uitesting-tab=library", "--uitesting-kind=track", "--uitesting-browse"])
+        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 15), "a song opens its album, not a sheet")
+        let highlighted = app.buttons["album.track.highlighted"]
+        XCTAssertTrue(highlighted.waitForExistence(timeout: 5))
+        XCTAssertTrue(highlighted.label.contains("Blue in Green"))
+        XCTAssertTrue(highlighted.isHittable, "scrolled into view")
+        let island = app.buttons["player.playPause"]
+        if island.exists { XCTAssertLessThan(highlighted.frame.maxY, island.frame.minY, "clear of the floating player") }
+        XCTAssertEqual(app.buttons.matching(identifier: "album.track.highlighted").count, 1)
+        add(shot("Song-album-highlight"))
+    }
+
+    @MainActor
+    func testSwipeDownOpensARecordFromTheCrate() {
+        let app = launch(["--uitesting-tab=library", "--uitesting-kind=album"])
+        let crate = app.otherElements["library.crate"]
+        XCTAssertTrue(crate.waitForExistence(timeout: 15))
+        add(shot("Library-crate"))
+        crate.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+            .press(forDuration: 0.05, thenDragTo: crate.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 10), "the swipe opened the focused album")
+        XCTAssertTrue(app.navigationBars["Kind of Blue"].exists)
+    }
+
+    @MainActor
+    func testTapAndAccessibilityActionOpenARecordToo() {
+        let app = launch(["--uitesting-tab=library", "--uitesting-kind=artist"])
+        let crate = app.otherElements["library.crate"]
+        XCTAssertTrue(crate.waitForExistence(timeout: 15))
+        crate.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["artist.reveal"].waitForExistence(timeout: 10), "a tap still opens the artist")
     }
 
     @MainActor
@@ -99,7 +105,7 @@ final class DetailViewsUITests: XCTestCase {
         let row = app.staticTexts["Kind of Blue"]
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
-        XCTAssertTrue(app.buttons["album.reveal"].waitForExistence(timeout: 10), "tapping a release opens its album screen")
+        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 10), "tapping a release opens its album screen")
         XCTAssertTrue(labelled(app, "Kind of Blue, Miles Davis").exists, "named for the artist it came from")
     }
 
@@ -118,7 +124,7 @@ final class DetailViewsUITests: XCTestCase {
         let row = app.staticTexts["Kind of Blue"]
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()
-        XCTAssertTrue(app.buttons["album.reveal"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 10))
         // The album header reads "<album>, <artist>, ..."; Radio's own "Miles Davis" is still behind the sheet.
         XCTAssertTrue(labelled(app, "Kind of Blue, John Coltrane").exists, "shown under the artist whose catalog it came from, not the first artist in the stack")
         add(shot("Related-artist-album"))
@@ -135,7 +141,7 @@ final class DetailViewsUITests: XCTestCase {
         app.buttons["detail.done"].tap()
         XCTAssertTrue(app.buttons["radio.albumDetails"].waitForExistence(timeout: 5))
         app.buttons["radio.albumDetails"].tap()
-        XCTAssertTrue(app.buttons["album.reveal"].waitForExistence(timeout: 10), "the album screen opens from Radio")
+        XCTAssertTrue(app.buttons["album.play"].waitForExistence(timeout: 10), "the album screen opens from Radio")
     }
 
     private func shot(_ name: String) -> XCTAttachment {

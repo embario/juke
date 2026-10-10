@@ -124,7 +124,7 @@ struct RadioIssueView: View {
                 Button("Connect Spotify") { model.openSpotifyConnection() }
                     .buttonStyle(PaneButtonStyle(fill: theme.accent.color, text: theme.onAccent.color))
                     .accessibilityIdentifier("radio.connectSpotify")
-            case .noActiveDevice, .spotifyFailed, .unavailable:
+            case .noActiveDevice, .spotifyFailed, .unavailable, .picksUnavailable, .offline:
                 Button("Try again") { Task { await retry() } }
                     .buttonStyle(PaneButtonStyle(fill: theme.card.color, text: theme.ink.color))
             case .noTracks, .signedOut:

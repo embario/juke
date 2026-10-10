@@ -15,9 +15,14 @@ import Testing
     }
 
     @Test func photoBeatsVideoAndArtwork() {
-        let photo = media("image")
+        let photo = media("photo")
         let result = MemoryThumbnailChoice.choose(for: memory(media: [media("video"), photo], artwork: URL(string: "https://a.example/c.jpg")))
         #expect(result == .photo(photo))
+    }
+
+    @Test func imageKindRemainsSupportedAsALegacyPhotoValue() {
+        let image = media("image")
+        #expect(MemoryThumbnailChoice.choose(for: memory(media: [image])) == .photo(image))
     }
 
     @Test func videoBeatsArtwork() {
@@ -32,5 +37,15 @@ import Testing
 
     @Test func placeholderWhenNothingToShow() {
         #expect(MemoryThumbnailChoice.choose(for: memory()) == .placeholder)
+    }
+
+    @Test func viewerFollowsMemoryMediaPriorityAndUsesArtworkOnlyAsFallback() {
+        let photo = media("photo")
+        let video = media("video")
+        let artwork = URL(string: "https://a.example/c.jpg")!
+        #expect(MemoryThumbnailChoice.choose(for: memory(media: [video, photo], artwork: artwork)).viewerItem == .attachment(photo))
+        #expect(MemoryThumbnailChoice.choose(for: memory(media: [video], artwork: artwork)).viewerItem == .attachment(video))
+        #expect(MemoryThumbnailChoice.choose(for: memory(artwork: artwork)).viewerItem == .artwork(artwork))
+        #expect(MemoryThumbnailChoice.choose(for: memory()).viewerItem == nil)
     }
 }

@@ -31,6 +31,11 @@ struct RootView: View {
             }
         }
         .onChange(of: model.nowPlaying.track?.id) { _, _ in model.trackChanged() }
+        // A failed Next or Previous is felt and, with VoiceOver, spoken, whichever tab is showing.
+        .sensoryFeedback(.warning, trigger: model.radio.failedPresses)
+        .onChange(of: model.radio.failedPresses) { _, _ in
+            if let message = model.radio.issue?.message { AccessibilityNotification.Announcement(message).post() }
+        }
     }
 
     private var main: some View {

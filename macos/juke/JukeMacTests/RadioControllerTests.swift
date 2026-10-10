@@ -435,6 +435,60 @@ final class RadioControllerTests: XCTestCase {
         XCTAssertEqual(radio.issue, .noTracks(stationName: "Night Drive"))
     }
 
+    func testEveryFailedNextIsReportedEvenWithTheSameAnswer() async {
+        let radio = await onAir()
+        XCTAssertEqual(radio.failedPresses, 0)
+        await backend.setPlayError(JukeAPIError.rejected(status: 409, code: "radio_no_tracks", detail: "nothing"))
+        for press in 1...3 {
+            await radio.skip()
+            XCTAssertEqual(radio.issue, .noTracks(stationName: "My Station"))
+            XCTAssertEqual(radio.failedPresses, press, "press \(press) is answered, although the answer is the same")
+            XCTAssertEqual(radio.track, first, "the playing song stays")
+        }
+    }
+
+    func testAFailedNextSaysWhetherTheStationIsEmptyOrOnlyUnavailableOrOffline() async {
+        let radio = await onAir()
+        await backend.setPlayError(JukeAPIError.server(status: 503, code: "radio_picks_unavailable", detail: nil))
+        await radio.skip()
+        XCTAssertEqual(radio.issue, .picksUnavailable(stationName: "My Station"))
+        XCTAssertEqual(radio.issue?.nextOutcome, .retry)
+        await backend.setPlayError(JukeAPIError.offline)
+        await radio.skip()
+        XCTAssertEqual(radio.issue, .offline)
+        XCTAssertEqual(radio.issue?.nextOutcome, .offline)
+        await backend.setPlayError(JukeAPIError.rejected(status: 409, code: "radio_no_tracks", detail: nil))
+        await radio.skip()
+        XCTAssertEqual(radio.issue?.nextOutcome, .exhausted)
+        XCTAssertEqual(radio.failedPresses, 3)
+    }
+
+    func testPollsAndASuccessfulNextDoNotCountAsFailedPresses() async {
+        let radio = await onAir()
+        await backend.setPlayError(JukeAPIError.rejected(status: 409, code: "radio_no_tracks", detail: nil))
+        await radio.skip()
+        XCTAssertEqual(radio.failedPresses, 1)
+        // Polls keep reading Spotify while the problem stands: nothing new to say.
+        for _ in 0..<5 {
+            clock.advance(3)
+            await playback.set(playing(first, at: 3))
+            await radio.refresh()
+        }
+        XCTAssertEqual(radio.failedPresses, 1)
+        XCTAssertEqual(radio.issue, .noTracks(stationName: "My Station"), "the answer stays up without flickering")
+        // The background queue attempt near the end of the song fails quietly too.
+        clock.advance(190)
+        await playback.set(playing(first, at: 195))
+        await radio.refresh()
+        XCTAssertEqual(radio.failedPresses, 1)
+
+        await backend.setPlayError(nil)
+        await radio.skip()
+        XCTAssertNil(radio.issue)
+        XCTAssertEqual(radio.failedPresses, 1, "a Next that worked is not a failure")
+        XCTAssertEqual(radio.track, second)
+    }
+
     func testPlayingSongLostAfterRepeatedMissingStates() async {
         let radio = await onAir()
         clock.advance(10)

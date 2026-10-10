@@ -100,7 +100,8 @@ final class VibeAppModel {
             scoped.wasPlaying = scoped.hasTunedIn
             scoped.recentRadioTrackIDs = [RadioFixturePlayback.initialTrackID]
             let playback = RadioFixturePlayback()
-            radio = RadioController(backend: RadioFixtureBackend(playback: playback), playback: playback,
+            let failing = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("--uitesting-next-fails=") }.map { String($0.dropFirst(23)) }
+            radio = RadioController(backend: RadioFixtureBackend(playback: playback, pickError: failing.flatMap(RadioFixtureBackend.pickError)), playback: playback,
                                     preferences: preferences, coordinator: coordinator, saveMemory: saveMemory)
         } else {
             radio = RadioController(
