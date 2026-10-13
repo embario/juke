@@ -128,6 +128,7 @@ actor JukeAuthenticationService {
         let (data, response) = try await session.data(for: request)
         guard data.count <= 1_048_576,
               let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw JukeAuthError.exchangeUnavailable }
+        guard pendingAttempt.server == baseURL else { throw JukeAuthError.invalidCallback }
         let value = try JSONDecoder().decode(JukeSession.self, from: data)
         try save(value)
         return value

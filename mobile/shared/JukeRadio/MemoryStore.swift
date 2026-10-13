@@ -11,7 +11,7 @@ final class MemoryStore {
     var isSaving = false
     private(set) var token: String?
     private var accountID: String?
-    let client: MemoryClient
+    private(set) var client: MemoryClient
     private var generation = UUID()
     private var mutationVersion = 0
     private var cachedMedia: [UUID: URL] = [:]
@@ -31,6 +31,7 @@ final class MemoryStore {
     }
 
     func reset() {
+        client = client.replacingApplicationSession()
         generation = UUID(); accountID = nil; token = nil
         memories = []; reusableTags = []; insights = .empty; error = nil
         isLoading = false; isSaving = false
@@ -40,6 +41,7 @@ final class MemoryStore {
 
     func refresh() async {
         guard let token else { return }
+        let client = client
         let requestGeneration = generation
         let startingVersion = mutationVersion
         isLoading = true; error = nil
@@ -62,6 +64,7 @@ final class MemoryStore {
     @discardableResult
     func save(_ draft: MemoryDraft) async throws -> MusicMemory {
         guard let token, !isSaving else { throw MemoryServiceError(message: "Sign in before saving a memory.") }
+        let client = client
         let requestGeneration = generation
         isSaving = true
         defer { if generation == requestGeneration { isSaving = false } }
@@ -79,6 +82,7 @@ final class MemoryStore {
 
     func updateTags(_ tags: [String], for memory: MusicMemory) async throws {
         guard let token else { return }
+        let client = client
         let requestGeneration = generation
         let updated = try await client.updateTags(memory: memory, tags: MemoryDraft.normalizedTags(tags), token: token)
         guard generation == requestGeneration else { return }
@@ -106,6 +110,7 @@ final class MemoryStore {
 
     private func apply(to memory: MusicMemory, text: String?, mediaIDs: [UUID]?) async throws {
         guard let token else { throw MemoryServiceError(message: "Sign in to change this memory.") }
+        let client = client
         let requestGeneration = generation
         let updated = try await client.update(memory: memory, text: text, mediaIDs: mediaIDs, token: token)
         guard generation == requestGeneration else { throw CancellationError() }
@@ -115,6 +120,7 @@ final class MemoryStore {
 
     func delete(_ memory: MusicMemory) async throws {
         guard let token else { throw MemoryServiceError(message: "Sign in before deleting a memory.") }
+        let client = client
         let requestGeneration = generation
         try await client.delete(memory, token: token)
         guard generation == requestGeneration else { throw CancellationError() }
@@ -124,6 +130,7 @@ final class MemoryStore {
 
     func upload(_ data: Data, filename: String, contentType: String) async throws -> MemoryMedia {
         guard let token else { throw MemoryServiceError(message: "Sign in to attach media.") }
+        let client = client
         let requestGeneration = generation
         let media = try await client.upload(data: data, filename: filename, contentType: contentType, token: token)
         guard generation == requestGeneration else {
@@ -135,12 +142,14 @@ final class MemoryStore {
 
     func discardMedia(_ media: [MemoryMedia]) async {
         guard let token else { return }
+        let client = client
         for item in media { await client.discardMedia(item, token: token) }
     }
 
     func localMediaURL(_ media: MemoryMedia) async throws -> URL {
         if let cached = cachedMedia[media.id] { return cached }
         guard let token else { throw MemoryServiceError(message: "Sign in to view this attachment.") }
+        let client = client
         let requestGeneration = generation
         let data = try await client.mediaData(media, token: token)
         guard requestGeneration == generation else { throw CancellationError() }

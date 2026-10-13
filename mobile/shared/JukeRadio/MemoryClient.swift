@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 struct MemoryServiceError: LocalizedError {
     let message: String
@@ -8,9 +9,10 @@ struct MemoryServiceError: LocalizedError {
 actor MemoryClient {
     /// The configured backend's Vibe memories root (`<api>/vibe/`).
     static var defaultBaseURL: URL { JukeServer.apiURL().appending(path: "vibe/") }
-    /// A fixed root for tests and the live check; `nil` follows Settings.
-    private let fixedBaseURL: URL?
-    nonisolated var baseURL: URL { fixedBaseURL ?? Self.defaultBaseURL }
+    /// Snapshot the server for this client; an old token must never follow Settings.
+    nonisolated let baseURL: URL
+    private nonisolated let followsSettings: Bool
+    private nonisolated let invalidated = Mutex(false)
     private let session: URLSession
     private let fixtures: Bool
     private var fixtureMemories: [MusicMemory] = []
@@ -21,11 +23,35 @@ actor MemoryClient {
 
     init(baseURL: URL? = nil, session: URLSession? = nil, fixtures: Bool = false,
          fixtureSamples: (@Sendable () async -> (memories: [MusicMemory], media: [(MemoryMedia, Data)]))? = nil) {
-        fixedBaseURL = baseURL; self.fixtures = fixtures; self.fixtureSamples = fixtureSamples
+        self.baseURL = baseURL ?? Self.defaultBaseURL
+        followsSettings = baseURL == nil && !fixtures
+        self.fixtures = fixtures; self.fixtureSamples = fixtureSamples
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 45
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         self.session = session ?? URLSession(configuration: config)
+    }
+
+    /// Cancel in-flight requests and reject queued work synchronously at sign-out.
+    nonisolated func invalidate() {
+        invalidated.withLock { $0 = true }
+        session.invalidateAndCancel()
+    }
+
+    /// Explicit test/fixture clients keep their injected transport and data.
+    nonisolated func replacingApplicationSession() -> MemoryClient {
+        guard followsSettings else { return self }
+        invalidate()
+        return Self.applicationClient()
+    }
+
+    private func authenticatedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try Task.checkCancellation()
+        guard !invalidated.withLock({ $0 }) else { throw CancellationError() }
+        let result = try await session.data(for: request)
+        try Task.checkCancellation()
+        guard !invalidated.withLock({ $0 }) else { throw CancellationError() }
+        return result
     }
 
     nonisolated static func applicationClient() -> MemoryClient {
@@ -50,7 +76,7 @@ actor MemoryClient {
         var request = URLRequest(url: baseURL.appending(path: "memory-media/\(media.id.uuidString.lowercased())/content/"))
         request.httpMethod = "DELETE"
         request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
-        _ = try? await session.data(for: request)
+        _ = try? await authenticatedData(for: request)
     }
 
     func list(token: String) async throws -> [MusicMemory] {
@@ -141,7 +167,7 @@ actor MemoryClient {
         var request = URLRequest(url: baseURL.appending(path: "memories/\(memory.id.uuidString.lowercased())/"))
         request.httpMethod = "DELETE"
         request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await authenticatedData(for: request)
         try Self.validate(response, data: data)
     }
 
@@ -172,7 +198,7 @@ actor MemoryClient {
         }
         var request = URLRequest(url: url)
         request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await authenticatedData(for: request)
         try Self.validate(response, data: data)
         guard data.count <= 50 * 1_024 * 1_024 else { throw MemoryServiceError(message: "This attachment is too large to display.") }
         return data
@@ -183,7 +209,7 @@ actor MemoryClient {
         request.httpMethod = method; request.httpBody = data
         request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
         if data != nil { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await authenticatedData(for: request)
         try Self.validate(response, data: data)
         return try Self.decoder().decode(T.self, from: data)
     }

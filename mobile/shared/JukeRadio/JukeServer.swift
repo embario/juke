@@ -3,8 +3,9 @@ import Foundation
 /// The one place that knows which Juke backend the app talks to.
 ///
 /// The base URL is a user setting (`JukeSettings.backendURL`). Every client
-/// resolves it per request through this type, so a change in Settings applies
-/// to the next request without restarting the app. Reading `UserDefaults` is
+/// resolves it through this type. Clients retaining a token snapshot their
+/// server and are replaced on sign-out; they must not follow Settings mid-operation.
+/// Reading `UserDefaults` is
 /// thread-safe, which keeps this usable from actors and nonisolated code.
 enum JukeServer {
     static let defaultBaseURL = URL(string: "https://neptune.tail647b75.ts.net/")!

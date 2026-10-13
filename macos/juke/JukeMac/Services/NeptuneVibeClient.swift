@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 enum NeptuneVibeError: LocalizedError {
     case invalidResponse, cloudAIUnavailable
@@ -21,14 +22,30 @@ actor NeptuneVibeClient {
     }
 
     private struct ChangeSet: Codable { let envelopes: [EncryptedEnvelope]; let cursor: String? }
-    private var baseURL: URL { JukeServer.apiURL() }
+    private let baseURL: URL
+    private nonisolated let invalidated = Mutex(false)
     private let session: URLSession
 
-    init() {
+    init(baseURL: URL = JukeServer.apiURL(), session: URLSession? = nil) {
+        self.baseURL = baseURL
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 20
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        session = URLSession(configuration: configuration)
+        self.session = session ?? URLSession(configuration: configuration)
+    }
+
+    nonisolated func invalidate() {
+        invalidated.withLock { $0 = true }
+        session.invalidateAndCancel()
+    }
+
+    private func authenticatedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try Task.checkCancellation()
+        guard !invalidated.withLock({ $0 }) else { throw CancellationError() }
+        let result = try await session.data(for: request)
+        try Task.checkCancellation()
+        guard !invalidated.withLock({ $0 }) else { throw CancellationError() }
+        return result
     }
 
     func openingQuestion(token: String, currentTrack: String?, signals: [String]) async throws -> String {
@@ -49,13 +66,13 @@ actor NeptuneVibeClient {
         var request = URLRequest(url: baseURL.appending(path: "vibe/encrypted-chat-records/\(envelope.recordID.uuidString)"))
         request.httpMethod = "PUT"; request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization"); request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try Self.envelopeEncoder().encode(envelope)
-        let (_, response) = try await session.data(for: request)
+        let (_, response) = try await authenticatedData(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw NeptuneVibeError.invalidResponse }
     }
 
     func encryptedChanges(token: String) async throws -> [EncryptedEnvelope] {
         var request = URLRequest(url: baseURL.appending(path: "vibe/encrypted-chat-records")); request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await authenticatedData(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw NeptuneVibeError.invalidResponse }
         return try Self.envelopeDecoder().decode(ChangeSet.self, from: data).envelopes
     }
@@ -66,7 +83,7 @@ actor NeptuneVibeClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await authenticatedData(for: request)
         guard data.count <= 1_048_576, let http = response as? HTTPURLResponse else { throw NeptuneVibeError.invalidResponse }
         if http.statusCode == 403 { throw NeptuneVibeError.cloudAIUnavailable }
         guard http.statusCode == 200 else { throw NeptuneVibeError.invalidResponse }

@@ -64,7 +64,8 @@ final class AppModel {
     private let context: ModelContext
     private let auth = JukeAuthenticationService()
     private let browserAuthentication = JukeBrowserAuthentication()
-    private let neptune = NeptuneVibeClient()
+    private var neptune = NeptuneVibeClient()
+    private var sessionGeneration = UUID()
     private let localIntelligence = LocalVibeIntelligence()
     private let isUITesting: Bool
     @ObservationIgnored private let accessToken = AccessTokenStore()
@@ -219,8 +220,11 @@ final class AppModel {
     }
 
     func completeAuthentication(_ url: URL) async {
+        let generation = sessionGeneration
         do {
-            session = try await auth.complete(callbackURL: url)
+            let restored = try await auth.complete(callbackURL: url)
+            guard generation == sessionGeneration else { return }
+            session = restored
             presentPrivacyWelcomeIfNeeded()
             await synchronizeEncryptedHistory()
             loadMessages()
@@ -237,9 +241,14 @@ final class AppModel {
 
     /// The synchronous half of signing out: nothing can use the token after this.
     private func endSession() {
+        sessionGeneration = UUID()
+        neptune.invalidate()
+        neptune = NeptuneVibeClient()
         accessToken.set(nil)
         replyTask?.cancel()
         replyTask = nil
+        isSending = false
+        isAwaitingReply = false
         detection.revokeAccess()
         backgroundRecognition.reset()
         session = nil
@@ -265,19 +274,25 @@ final class AppModel {
         draft = ""
         isSending = true
         let currentTrack = trackLabel
+        let neptune = neptune
+        let generation = sessionGeneration
         replyTask = Task { [weak self] in
             guard let self else { return }
-            await self.completeSend(text: text, currentTrack: currentTrack, session: session, token: token)
+            await self.completeSend(text: text, currentTrack: currentTrack, session: session, token: token, client: neptune, generation: generation)
         }
     }
 
-    private func completeSend(text: String, currentTrack: String?, session: JukeSession, token: String) async {
+    private func completeSend(text: String, currentTrack: String?, session: JukeSession, token: String, client: NeptuneVibeClient, generation: UUID) async {
         defer {
-            isSending = false
-            isAwaitingReply = false
-            replyTask = nil
+            if generation == sessionGeneration {
+                isSending = false
+                isAwaitingReply = false
+                replyTask = nil
+            }
         }
         do {
+            try Task.checkCancellation()
+            guard generation == sessionGeneration else { throw CancellationError() }
             try await store(text, role: .user)
             isAwaitingReply = true
             let reply: String
@@ -287,7 +302,7 @@ final class AppModel {
                 try await Task.sleep(for: .seconds(3))
                 reply = "That muted trumpet opens a spacious conversation. What part of the performance draws you back in?"
             } else if session.account.cloudAIEnabled {
-                reply = try await neptune.chat(message: text, currentTrack: currentTrack, token: token)
+                reply = try await client.chat(message: text, currentTrack: currentTrack, token: token)
             } else {
                 reply = try await localIntelligence.respond(
                     message: text,
@@ -296,11 +311,13 @@ final class AppModel {
                     recentConversation: messages.map { "\($0.role.rawValue): \($0.content)" }
                 )
             }
+            try Task.checkCancellation()
+            guard generation == sessionGeneration else { throw CancellationError() }
             try await store(reply, role: .assistant)
         } catch is CancellationError {
             return
         } catch {
-            banner = error.localizedDescription
+            if generation == sessionGeneration { banner = error.localizedDescription }
         }
     }
 
@@ -322,8 +339,11 @@ final class AppModel {
     }
 
     private func restoreSession() async {
+        let generation = sessionGeneration
         do {
-            session = try await auth.restoreSession()
+            let restored = try await auth.restoreSession()
+            guard generation == sessionGeneration else { return }
+            session = restored
             if session != nil {
                 await synchronizeEncryptedHistory()
                 loadMessages()
@@ -335,20 +355,24 @@ final class AppModel {
     }
 
     private func store(_ text: String, role: ChatMessage.Role) async throws {
-        guard let accountID = session?.account.id else { return }
+        guard let session else { return }
+        let accountID = session.account.id
+        let client = neptune
+        let generation = sessionGeneration
         let id = UUID()
         let createdAt = Date()
         let payload = PrivateChatPayload(role: role.rawValue, content: text, trackIdentity: trackLabel, createdAt: createdAt)
         let encrypted = try await vault(for: accountID).seal(payload, messageID: id)
+        try Task.checkCancellation()
+        guard generation == sessionGeneration else { throw CancellationError() }
         context.insert(ChatMessage(id: id, accountID: accountID, role: role, encryptedContent: encrypted, trackIdentity: trackLabel, createdAt: createdAt))
         try context.save()
         messages.append(DisplayChatMessage(id: id, role: role, content: text, createdAt: createdAt))
-        if let token = session?.accessToken, !isUITesting {
+        if let token = session.accessToken, !isUITesting {
             let envelope = NeptuneVibeClient.EncryptedEnvelope(recordID: id, accountID: accountID, kind: "chatMessage", ciphertext: encrypted, modifiedAt: createdAt, encryptionVersion: 1)
-            Task { [weak self] in
-                guard let self else { return }
+            Task { [client] in
                 do {
-                    try await neptune.upload(envelope, token: token)
+                    try await client.upload(envelope, token: token)
                 } catch {
                     // The encrypted local record remains canonical while sync is unavailable.
                 }
@@ -364,7 +388,9 @@ final class AppModel {
         )
         do {
             let records = try context.fetch(descriptor)
+            let generation = sessionGeneration
             Task {
+                guard generation == sessionGeneration else { return }
                 let vault = vault(for: accountID)
                 var output: [DisplayChatMessage] = []
                 for record in records {
@@ -373,6 +399,7 @@ final class AppModel {
                         output.append(DisplayChatMessage(id: record.id, role: role, content: payload.content, createdAt: record.createdAt))
                     }
                 }
+                guard generation == sessionGeneration else { return }
                 messages = output
             }
         } catch { banner = "Your private conversations could not be opened." }
@@ -380,14 +407,18 @@ final class AppModel {
 
     private func synchronizeEncryptedHistory() async {
         guard let session, let token = session.accessToken else { return }
+        let generation = sessionGeneration
+        let client = neptune
         do {
-            let incoming = try await neptune.encryptedChanges(token: token)
+            let incoming = try await client.encryptedChanges(token: token)
+            guard generation == sessionGeneration else { return }
             let existing = try context.fetch(FetchDescriptor<ChatMessage>())
             let ids = Set(existing.map(\.id))
             let vault = vault(for: session.account.id)
             for envelope in incoming where !ids.contains(envelope.recordID) && envelope.accountID == session.account.id {
                 guard let payload = try? await vault.open(envelope.ciphertext, messageID: envelope.recordID),
                       let role = ChatMessage.Role(rawValue: payload.role) else { continue }
+                guard generation == sessionGeneration else { return }
                 context.insert(ChatMessage(id: envelope.recordID, accountID: envelope.accountID, role: role, encryptedContent: envelope.ciphertext, trackIdentity: payload.trackIdentity, createdAt: payload.createdAt))
             }
             try context.save()

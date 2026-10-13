@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import Synchronization
 @testable import Juke
 
 final class MemoryDraftTests: XCTestCase {
@@ -85,6 +86,48 @@ final class MemoryDraftTests: XCTestCase {
 }
 
 final class MemoryClientTests: XCTestCase {
+    func testInvalidationStopsPaginationAndLateMediaCleanup() async throws {
+        let state = MemoryInvalidationState()
+        let client = makeClient { _ in
+            state.requests.withLock { $0 += 1 }
+            state.client.withLock { $0 }?.invalidate()
+            return (200, Data(#"{"memories":[],"nextOffset":1}"#.utf8))
+        }
+        state.client.withLock { $0 = client }
+        do {
+            _ = try await client.list(token: "old-server-token")
+            XCTFail("An invalidated session must not return data or request another page")
+        } catch { /* URLSession cancellation or the invalidation guard. */ }
+        let media = MemoryMedia(id: UUID(), kind: "photo", filename: "photo.jpg", contentType: "image/jpeg", url: "memory-media/photo/")
+        await client.discardMedia(media, token: "old-server-token")
+        do {
+            _ = try await client.upload(data: Data([1]), filename: "photo.jpg", contentType: "image/jpeg", token: "old-server-token")
+            XCTFail("A queued upload must not start after sign-out")
+        } catch is CancellationError { }
+        XCTAssertEqual(state.requests.withLock { $0 }, 1)
+    }
+
+    func testQueuedChatUploadCannotUseInvalidatedClient() async throws {
+        let host = "\(UUID().uuidString.lowercased()).memory-tests.example"
+        MemoryURLProtocol.handlers.set({ _ in
+            XCTFail("An upload retaining the old token must not reach either server")
+            return (200, Data())
+        }, host: host)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MemoryURLProtocol.self]
+        let client = NeptuneVibeClient(baseURL: URL(string: "https://\(host)/api/v1/")!, session: URLSession(configuration: config))
+        client.invalidate()
+        let envelope = NeptuneVibeClient.EncryptedEnvelope(recordID: UUID(), accountID: "old-account", kind: "chatMessage", ciphertext: Data([1]), modifiedAt: .now, encryptionVersion: 1)
+        do {
+            try await client.upload(envelope, token: "old-server-token")
+            XCTFail("A deferred upload must be rejected after server change")
+        } catch is CancellationError { }
+        do {
+            _ = try await client.chat(message: "private", currentTrack: nil, token: "old-server-token")
+            XCTFail("A deferred chat request must be rejected after server change")
+        } catch is CancellationError { }
+    }
+
     func testListFollowsOffsetsWithoutDroppingOlderMemories() async throws {
         let first = sampleMemory()
         var second = sampleMemory(); second.title = "Older memory"
@@ -226,6 +269,17 @@ final class MemoryClientTests: XCTestCase {
 
 @MainActor
 final class MemoryStoreTests: XCTestCase {
+    func testResetInvalidatesAndReplacesTheApplicationClient() async throws {
+        let store = MemoryStore()
+        let previous = store.client
+        store.reset()
+        XCTAssertFalse(previous === store.client)
+        do {
+            _ = try await previous.tags(token: "old-server-token")
+            XCTFail("An operation queued on the old client must not reach the network")
+        } catch is CancellationError { }
+    }
+
     func testSaveSortsTimelineAndKeepsTagsAvailableForAnotherMemory() async throws {
         let store = MemoryStore(client: MemoryClient(fixtures: true))
         await store.configure(session: testSession())
@@ -311,6 +365,11 @@ private func makeClient(handler: @escaping @Sendable (URLRequest) throws -> (Int
     let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [MemoryURLProtocol.self]
     return MemoryClient(baseURL: URL(string: "https://\(host)/api/v1/vibe/")!, session: URLSession(configuration: config))
+}
+
+private final class MemoryInvalidationState: Sendable {
+    let client = Mutex<MemoryClient?>(nil)
+    let requests = Mutex(0)
 }
 
 private final class MemoryRequestHandlers: @unchecked Sendable {

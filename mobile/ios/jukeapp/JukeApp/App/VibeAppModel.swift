@@ -185,8 +185,11 @@ final class VibeAppModel {
         recents.use(accountID: value.account.id)
         if polling, let token = value.accessToken { nowPlaying.start(token: token) }
         recognition.reevaluate()
+        let server = JukeServer.baseURL()
         Task {
+            guard session?.accessToken == value.accessToken, server == JukeServer.baseURL() else { return }
             await memories.configure(session: value)
+            guard session?.accessToken == value.accessToken, server == JukeServer.baseURL() else { return }
             await radio.start(accountID: value.account.id)
         }
     }
