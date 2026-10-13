@@ -17,6 +17,16 @@ class StationAdmin(admin.ModelAdmin):
     raw_id_fields = ('user',)
     inlines = [ExclusionInline]
 
+    def save_formset(self, request, form, formset, change):
+        instances = formset.save(commit=False)
+        for instance in formset.deleted_objects:
+            instance.delete()
+        for instance in instances:
+            instance.user = form.instance.user
+            instance.station = None if instance.scope == 'everywhere' else form.instance
+            instance.save()
+        formset.save_m2m()
+
 
 @admin.register(Exclusion)
 class ExclusionAdmin(admin.ModelAdmin):

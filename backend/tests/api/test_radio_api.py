@@ -277,6 +277,15 @@ class PlayTests(RadioAPITestCase):
         # The queued track is remembered so the next pick moves on.
         self.assertEqual(self.client.post(f"{BASE}stations/{self.station['id']}/next", {}, format='json').data['tracks'], [])
 
+    def test_successful_queue_survives_state_lookup_failure(self):
+        self.spotipy.current_playback.side_effect = SpotifyException(503, 1, 'Unavailable')
+        response = self.client.post(f'{BASE}play/', {'stationId': self.station['id'], 'mode': 'queue'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIsNone(response.data['state'])
+        self.spotipy.add_to_queue.assert_called_once_with('spotify:track:next-1')
+        self.assertTrue(ListeningEvent.objects.filter(user=self.user, event='queued', spotify_track_id='next-1').exists())
+        self.assertEqual(self.client.post(f"{BASE}stations/{self.station['id']}/next", {}, format='json').data['tracks'], [])
+
     def test_queue_targets_device(self):
         self.client.post(f'{BASE}play', {'stationId': self.station['id'], 'mode': 'queue', 'deviceId': 'dev-9'}, format='json')
         self.spotipy.add_to_queue.assert_called_once_with('spotify:track:next-1', device_id='dev-9')

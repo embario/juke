@@ -159,7 +159,13 @@ class PlaybackService:
 
     def queue(self, *, track_uri: str, device_id: Optional[str]) -> Optional[Dict[str, Any]]:
         self.provider.queue(track_uri=track_uri, device_id=device_id)
-        return self.provider.state()
+        try:
+            return self.provider.state()
+        except PlaybackError:
+            # The command already succeeded. A failed read must not invite a
+            # retry that inserts the same track into the provider queue again.
+            logger.warning('Playback state unavailable after successful queue insertion')
+            return None
 
     def state(self) -> Optional[Dict[str, Any]]:
         return self.provider.state()

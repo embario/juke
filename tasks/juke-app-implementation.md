@@ -186,3 +186,16 @@ Endpoints:
 - Next: S7 — end-to-end pass with a Spotify-linked account against the extra stack,
   then the final PR from `integration/juke-app` to `master` (left open for the owner).
 - Blockers: none in code; see the manual steps above.
+
+## PR #177 review follow-up (2026-10-13)
+
+- Scope: resolve the five open Copilot findings in the integration PR: server-bound
+  memory/chat requests, successful queue commands surviving state lookup failures,
+  station admin exclusion ownership, and nearest-slot frequency rounding.
+- Acceptance: focused regressions pass; no old token follows a changed server;
+  existing integration behavior remains intact. Final merge and deployment stay outside this review.
+- Validation and handoff: on strider-dev, 75 focused backend tests and changed-file
+  Ruff checks pass. Added Apple client regressions for invalidation, pagination, and
+  deferred requests. Apple platform CI must validate those changes because this
+  Linux host has no Xcode or CoreSimulator. The same retained-token defect was
+  fixed in the iOS chat/playback client and authentication exchange.

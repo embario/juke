@@ -22,10 +22,9 @@ def from_tenths(tenths: int) -> Decimal:
 
 def snap_tenths(value) -> int:
     """Clamp into the band and round to the nearest odd tenth (exact even tenths round up)."""
-    tenths = min(max(to_tenths(value), MIN_TENTHS), MAX_TENTHS)
-    if tenths % 2 == 0:
-        tenths = tenths + 1 if tenths < MAX_TENTHS else tenths - 1
-    return tenths
+    tenths = min(max(Decimal(str(value)) * 10, Decimal(MIN_TENTHS)), Decimal(MAX_TENTHS))
+    slot = ((tenths - MIN_TENTHS) / 2).to_integral_value(rounding=ROUND_HALF_UP)
+    return MIN_TENTHS + 2 * int(slot)
 
 
 def _min_distance(slot: int, taken: list[int]) -> int:

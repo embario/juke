@@ -14,6 +14,13 @@ class FrequencyRuleTests(SimpleTestCase):
         self.assertEqual(fq.from_tenths(fq.snap_tenths(120)), Decimal('107.9'))
         self.assertEqual(fq.from_tenths(fq.snap_tenths(108.0)), Decimal('107.9'))
 
+    def test_snap_uses_nearest_slot_before_rounding_tenths(self):
+        for value, expected in [('95.14', 951), ('95.16', 951), ('95.19', 951),
+                                ('95.20', 953), ('95.21', 953), ('95.24', 953)]:
+            with self.subTest(value=value):
+                self.assertEqual(fq.snap_tenths(value), expected)
+                self.assertEqual(fq.place(value, []), fq.from_tenths(expected))
+
     def test_place_keeps_free_value(self):
         self.assertEqual(fq.place(100.1, [Decimal('88.7'), Decimal('97.9')]), Decimal('100.1'))
 
