@@ -18,7 +18,7 @@ final class NowPlayingObserver: NSObject, SHSessionDelegate {
     private(set) var shazamOffset: TimeInterval?
 
     private let player = MPMusicPlayerController.systemMusicPlayer
-    private let api = VibeAPI()
+    private var api = VibeAPI()
     private var pollTask: Task<Void, Never>?
     private let audioEngine = AVAudioEngine()
     private let shazam = SHSession()
@@ -32,12 +32,15 @@ final class NowPlayingObserver: NSObject, SHSessionDelegate {
         player.beginGeneratingPlaybackNotifications()
         NotificationCenter.default.addObserver(self, selector: #selector(playerChanged), name: .MPMusicPlayerControllerNowPlayingItemDidChange, object: player)
         readAppleMusic()
-        pollTask = Task { [weak self] in
+        let api = api
+        pollTask = Task { [weak self, api] in
             while !Task.isCancelled {
-                if self?.player.playbackState != .playing, let api = self?.api, let spotify = try? await api.spotifyPlayback(token: token) {
+                if self?.player.playbackState != .playing, let spotify = try? await api.spotifyPlayback(token: token) {
+                    guard !Task.isCancelled else { return }
                     self?.spotifyPlaying = true
                     self?.track = spotify
                 } else if self?.player.playbackState != .playing {
+                    guard !Task.isCancelled else { return }
                     self?.spotifyPlaying = false
                 }
                 self?.refreshPlaying()
@@ -48,6 +51,8 @@ final class NowPlayingObserver: NSObject, SHSessionDelegate {
     }
 
     func stopPolling() {
+        api.invalidate()
+        api = VibeAPI()
         pollTask?.cancel(); pollTask = nil; player.endGeneratingPlaybackNotifications(); NotificationCenter.default.removeObserver(self)
         spotifyPlaying = false; aroundMeHeardAt = nil; isPlaying = false
     }

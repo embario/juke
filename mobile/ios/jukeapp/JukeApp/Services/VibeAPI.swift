@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 actor VibeAPI {
     struct EncryptedEnvelope: Codable, Sendable {
@@ -10,11 +11,29 @@ actor VibeAPI {
         let encryptionVersion: Int
     }
     private struct ChangeSet: Decodable { let envelopes: [EncryptedEnvelope]; let cursor: String? }
-    private var baseURL: URL { AppConfiguration.currentAPIBaseURL }
+    private let baseURL: URL
+    private nonisolated let invalidated = Mutex(false)
     /// Injectable so tests can intercept requests deterministically.
     private let session: URLSession
 
-    init(session: URLSession = .shared) { self.session = session }
+    init(baseURL: URL = AppConfiguration.currentAPIBaseURL, session: URLSession? = nil) {
+        self.baseURL = baseURL
+        self.session = session ?? URLSession(configuration: .ephemeral)
+    }
+
+    nonisolated func invalidate() {
+        invalidated.withLock { $0 = true }
+        session.invalidateAndCancel()
+    }
+
+    private func authenticatedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try Task.checkCancellation()
+        guard !invalidated.withLock({ $0 }) else { throw CancellationError() }
+        let result = try await session.data(for: request)
+        try Task.checkCancellation()
+        guard !invalidated.withLock({ $0 }) else { throw CancellationError() }
+        return result
+    }
 
     func chat(_ message: String, currentTrack: String?, token: String) async throws -> String {
         struct Body: Encodable { let message: String; let currentTrack: String? }
@@ -32,7 +51,7 @@ actor VibeAPI {
         var request = URLRequest(url: components.url!)
         // /playback/state/ uses DRF TokenAuthentication, which only reads "Token" (the Vibe endpoints accept both).
         request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await authenticatedData(for: request)
         guard let http = response as? HTTPURLResponse else { return nil }
         if http.statusCode == 204 { return nil }
         guard http.statusCode == 200 else { throw CocoaError(.fileReadUnknown) }
@@ -46,7 +65,7 @@ actor VibeAPI {
         var components = URLComponents(url: baseURL.appending(path: "\(kind)/"), resolvingAgainstBaseURL: false)!
         components.queryItems = [.init(name: "external", value: "true"), .init(name: "q", value: query)]
         var request = URLRequest(url: components.url!); request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await authenticatedData(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw CocoaError(.fileReadUnknown) }
         if let page = try? JSONDecoder().decode(Page.self, from: data) { return page.results }
         return try JSONDecoder().decode([CatalogItem].self, from: data)
@@ -56,7 +75,7 @@ actor VibeAPI {
         var request = URLRequest(url: baseURL.appending(path: "vibe/encrypted-chat-records/\(envelope.recordID.uuidString)")); request.httpMethod = "PUT"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization"); request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(envelope)
-        let (_, response) = try await session.data(for: request)
+        let (_, response) = try await authenticatedData(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw CocoaError(.fileWriteUnknown) }
     }
 
@@ -68,7 +87,7 @@ actor VibeAPI {
             if let cursor { components.queryItems = [.init(name: "cursor", value: cursor)] }
             var request = URLRequest(url: components.url!)
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await authenticatedData(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw CocoaError(.fileReadUnknown) }
             let page = try JSONDecoder().decode(ChangeSet.self, from: data)
             envelopes.append(contentsOf: page.envelopes)
@@ -82,7 +101,7 @@ actor VibeAPI {
         var request = URLRequest(url: baseURL.appending(path: path)); request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization"); request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
-        let (data, value) = try await session.data(for: request)
+        let (data, value) = try await authenticatedData(for: request)
         guard let http = value as? HTTPURLResponse, http.statusCode == 200 else { throw CocoaError(.fileReadUnknown) }
         return try JSONDecoder().decode(Reply.self, from: data)
     }

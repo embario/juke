@@ -11,8 +11,12 @@ final class JukeAuthService: NSObject, ASWebAuthenticationPresentationContextPro
     nonisolated static let redirectURI = "juke-app://auth/callback"
         private let keychainService = "com.juke.app.ios.authentication"
     private var webSession: ASWebAuthenticationSession?
+    private var attemptGeneration = UUID()
 
     func signIn(path: String = "accounts/login") async throws -> JukeSession {
+        let generation = UUID()
+        attemptGeneration = generation
+        let apiURL = AppConfiguration.currentAPIBaseURL
         let state = randomString(24)
         let verifier = randomString(32)
         let challenge = base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
@@ -30,15 +34,17 @@ final class JukeAuthService: NSObject, ASWebAuthenticationPresentationContextPro
             webSession = session
             session.start()
         }
+        guard generation == attemptGeneration, apiURL == AppConfiguration.currentAPIBaseURL else { throw CancellationError() }
         guard let returned = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems,
               returned.first(where: { $0.name == "state" })?.value == state,
               let code = returned.first(where: { $0.name == "code" })?.value else { throw CocoaError(.validationMissingMandatoryProperty) }
         struct Body: Encodable { let code: String; let code_verifier: String; let redirect_uri: String }
-        var request = URLRequest(url: AppConfiguration.currentAPIBaseURL.appending(path: "auth/vibe/exchange"))
+        var request = URLRequest(url: apiURL.appending(path: "auth/vibe/exchange"))
         request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(Body(code: code, code_verifier: verifier, redirect_uri: Self.redirectURI))
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw CocoaError(.fileReadUnknown) }
+        guard generation == attemptGeneration, apiURL == AppConfiguration.currentAPIBaseURL else { throw CancellationError() }
         let value = try JSONDecoder().decode(JukeSession.self, from: data)
         try save(value)
         return value
@@ -53,7 +59,12 @@ final class JukeAuthService: NSObject, ASWebAuthenticationPresentationContextPro
         return try JSONDecoder().decode(JukeSession.self, from: data)
     }
 
-    func logout() { SecItemDelete(keychainQuery() as CFDictionary) }
+    func logout() {
+        attemptGeneration = UUID()
+        webSession?.cancel()
+        webSession = nil
+        SecItemDelete(keychainQuery() as CFDictionary)
+    }
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows).first { $0.isKeyWindow } ?? ASPresentationAnchor()
     }

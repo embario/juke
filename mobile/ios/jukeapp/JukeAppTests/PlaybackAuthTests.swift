@@ -15,6 +15,24 @@ private final class CapturingProtocol: URLProtocol {
 }
 
 @Suite(.serialized) struct PlaybackAuthTests {
+    @Test func invalidatedClientRejectsRetainedCredentials() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CapturingProtocol.self]
+        CapturingProtocol.authorization = nil
+        let client = VibeAPI(baseURL: URL(string: "https://old-server.example/api/v1/")!, session: URLSession(configuration: configuration))
+        client.invalidate()
+        await #expect(throws: CancellationError.self) {
+            _ = try await client.spotifyPlayback(token: "old-server-token")
+        }
+        await #expect(throws: CancellationError.self) {
+            _ = try await client.encryptedChanges(token: "old-server-token")
+        }
+        await #expect(throws: CancellationError.self) {
+            _ = try await client.chat("private", currentTrack: nil, token: "old-server-token")
+        }
+        #expect(CapturingProtocol.authorization == nil)
+    }
+
     @Test func spotifyPlaybackUsesTokenScheme() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [CapturingProtocol.self]

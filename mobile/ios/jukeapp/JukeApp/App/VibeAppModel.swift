@@ -46,12 +46,14 @@ final class VibeAppModel {
     @ObservationIgnored private let accessToken = AccessTokenStore()
     private let context: ModelContext
     private let auth = JukeAuthService()
-    private let vibe = VibeAPI()
+    private var vibe: VibeAPI
+    private var sessionGeneration = UUID()
     private let local = LocalVibeIntelligence()
 
     init(container: ModelContainer) {
         context = ModelContext(container)
         AppConfiguration.installLaunchFallback()
+        vibe = VibeAPI()
         let accessToken = accessToken
         api = JukeAPI(token: { accessToken.get() })
         #if DEBUG
@@ -203,7 +205,6 @@ final class VibeAppModel {
 
     /// The server changed in Settings: a token belongs to the server that issued it.
     func backendChanged() {
-        guard session != nil else { return }
         logout()
         banner = "The Juke server changed. Sign in again to continue."
     }
@@ -211,26 +212,32 @@ final class VibeAppModel {
     var trackLabel: String? { radio.isOnAir ? radio.track.map { "\($0.title) — \($0.artist)" } : nowPlaying.track?.label }
 
     func signIn(create: Bool = false) async {
+        let generation = sessionGeneration
         do {
             let value = try await auth.signIn(path: create ? "accounts/signup" : "accounts/login")
+            guard generation == sessionGeneration else { return }
             session = value; beginSession(value); await synchronize(); load(); await refreshQuestion()
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func logout() { memoryPlayer.reset(); nowPlaying.stopPolling(); recognition.reset(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; recents.use(accountID: nil); messages = [] }
+    func logout() { sessionGeneration = UUID(); vibe.invalidate(); vibe = VibeAPI(); isSending = false; memoryPlayer.reset(); nowPlaying.stopPolling(); recognition.reset(); radio.stop(); memories.reset(); coordinator.reset(); auth.logout(); session = nil; recents.use(accountID: nil); messages = [] }
 
     func send() async {
         guard let session, let token = session.accessToken else { return }
         guard ChatComposer.canSend(draft: draft, isSending: isSending) else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        draft = ""; isSending = true; defer { isSending = false }
+        let client = vibe
+        let generation = sessionGeneration
+        draft = ""; isSending = true
+        defer { if generation == sessionGeneration { isSending = false } }
         do {
             try await store(text, role: "user")
             let reply = session.account.cloudAIEnabled
-                ? try await vibe.chat(text, currentTrack: trackLabel, token: token)
+                ? try await client.chat(text, currentTrack: trackLabel, token: token)
                 : try await local.respond(text, track: trackLabel, history: messages.map { "\($0.role): \($0.content)" })
+            guard generation == sessionGeneration else { return }
             try await store(reply, role: "assistant")
-        } catch { errorMessage = error.localizedDescription }
+        } catch { if generation == sessionGeneration { errorMessage = error.localizedDescription } }
     }
 
     func trackChanged() {
@@ -244,14 +251,22 @@ final class VibeAppModel {
     }
 
     private func store(_ text: String, role: String) async throws {
-        guard let accountID = session?.account.id else { return }; let id = UUID(); let createdAt = Date()
+        guard let session else { return }
+        let accountID = session.account.id
+        let client = vibe
+        let generation = sessionGeneration
+        let id = UUID(); let createdAt = Date()
         let payload = PrivateChatPayload(role: role, content: text, trackIdentity: trackLabel, createdAt: createdAt)
         let sealed = try await ChatVault(accountID: accountID).seal(payload, id: id)
+        guard generation == sessionGeneration else { throw CancellationError() }
         context.insert(EncryptedChatMessage(id: id, accountID: accountID, role: role, encryptedContent: sealed, trackIdentity: trackLabel, createdAt: createdAt)); try context.save()
         messages.append(ChatLine(id: id, role: role, content: text, createdAt: createdAt))
-        if let token = session?.accessToken {
-            do { try await vibe.upload(.init(recordID: id, accountID: accountID, kind: "chatMessage", ciphertext: sealed, modifiedAt: createdAt, encryptionVersion: 1), token: token) }
-            catch { presentMessageSafetyNotice(accountID: accountID, token: token) }
+        if let token = session.accessToken {
+            do { try await client.upload(.init(recordID: id, accountID: accountID, kind: "chatMessage", ciphertext: sealed, modifiedAt: createdAt, encryptionVersion: 1), token: token) }
+            catch {
+                guard generation == sessionGeneration else { throw CancellationError() }
+                presentMessageSafetyNotice(accountID: accountID, token: token, client: client)
+            }
         }
     }
 
@@ -259,47 +274,54 @@ final class VibeAppModel {
         guard let accountID = session?.account.id else { return }
         let descriptor = FetchDescriptor<EncryptedChatMessage>(predicate: #Predicate { $0.accountID == accountID }, sortBy: [SortDescriptor(\.createdAt)])
         guard let records = try? context.fetch(descriptor) else { return }
+        let generation = sessionGeneration
         Task { var output: [ChatLine] = []; let vault = ChatVault(accountID: accountID)
             for record in records { if let value = try? await vault.open(record.encryptedContent, id: record.id) { output.append(ChatLine(id: record.id, role: record.role, content: value.content, createdAt: record.createdAt)) } }
+            guard generation == sessionGeneration else { return }
             messages = output
         }
     }
 
     private func synchronize() async {
         guard let session, let token = session.accessToken else { return }
+        let client = vibe
+        let generation = sessionGeneration
         do {
-            let incoming = try await vibe.encryptedChanges(token: token)
+            let incoming = try await client.encryptedChanges(token: token)
+            guard generation == sessionGeneration else { return }
             let acknowledged = incoming.contains { $0.accountID == session.account.id && $0.kind == MessageSafetyNotice.recordKind }
             if acknowledged { MessageSafetyNotice.markShown(for: session.account.id) }
             else if MessageSafetyNotice.hasBeenShown(for: session.account.id) {
-                await uploadMessageSafetyAcknowledgement(accountID: session.account.id, token: token)
+                await uploadMessageSafetyAcknowledgement(accountID: session.account.id, token: token, client: client)
+                guard generation == sessionGeneration else { return }
             }
             let existing = try context.fetch(FetchDescriptor<EncryptedChatMessage>())
             let ids = Set(existing.map(\.id)); let vault = ChatVault(accountID: session.account.id)
             for envelope in incoming where !ids.contains(envelope.recordID) && envelope.accountID == session.account.id {
                 guard envelope.kind == "chatMessage" else { continue }
                 guard let payload = try? await vault.open(envelope.ciphertext, id: envelope.recordID) else { continue }
+                guard generation == sessionGeneration else { return }
                 context.insert(EncryptedChatMessage(id: envelope.recordID, accountID: envelope.accountID, role: payload.role, encryptedContent: envelope.ciphertext, trackIdentity: payload.trackIdentity, createdAt: payload.createdAt))
             }
             try context.save()
         } catch { }
     }
 
-    private func presentMessageSafetyNotice(accountID: String, token: String) {
+    private func presentMessageSafetyNotice(accountID: String, token: String, client: VibeAPI) {
         guard MessageSafetyNotice.markShown(for: accountID) else { return }
         errorMessage = MessageSafetyNotice.message
         if !ProcessInfo.processInfo.arguments.contains("--uitesting") {
-            Task { await uploadMessageSafetyAcknowledgement(accountID: accountID, token: token) }
+            Task { [client] in await uploadMessageSafetyAcknowledgement(accountID: accountID, token: token, client: client) }
         }
     }
 
-    private func uploadMessageSafetyAcknowledgement(accountID: String, token: String) async {
+    private func uploadMessageSafetyAcknowledgement(accountID: String, token: String, client: VibeAPI) async {
         let id = MessageSafetyNotice.recordID(for: accountID)
         let createdAt = Date()
         let payload = PrivateChatPayload(role: "messageSafetyNotice", content: "shown", trackIdentity: nil, createdAt: createdAt)
         do {
             let ciphertext = try await ChatVault(accountID: accountID).seal(payload, id: id)
-            try await vibe.upload(
+            try await client.upload(
                 .init(recordID: id, accountID: accountID, kind: MessageSafetyNotice.recordKind, ciphertext: ciphertext, modifiedAt: createdAt, encryptionVersion: 1),
                 token: token
             )
