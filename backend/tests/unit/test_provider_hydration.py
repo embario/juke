@@ -1,4 +1,5 @@
 import tempfile
+from types import SimpleNamespace
 import uuid
 from datetime import timedelta
 from io import StringIO
@@ -14,6 +15,7 @@ from django.utils import timezone
 from mlcore.management.commands.hydrate_spotify_from_isrc import wait_for_database
 from mlcore.models import CanonicalItem, CanonicalItemAlias, ProviderHydrationItem, ProviderHydrationRun
 from mlcore.services.provider_hydration import (
+    AdaptiveRateController,
     ProviderHydrationError,
     IncrementalSeedResult,
     ReconciliationResult,
@@ -157,6 +159,224 @@ class SpotifyHydrationQuotaGuardTests(TestCase):
 
         self.assertEqual(self.guard.delay_seconds(replacement), 45)
         self.assertEqual(inherited['last_limit_reason'], 'QUOTA_EXCEEDED')
+
+
+class FakeRun:
+    """Stands in for ProviderHydrationRun where no database is needed."""
+
+    def __init__(self, metadata=None):
+        self.metadata = metadata or {}
+
+    def save(self, **_kwargs):
+        pass
+
+
+def make_controller(clock, **overrides):
+    options = dict(
+        floor_rps=0.05, ceiling_rps=0.25, start_rps=0.1, adaptive=True,
+        step_rps=0.05, ramp_interval_seconds=600, server_error_streak=3, now=lambda: clock[0],
+    )
+    options.update(overrides)
+    return AdaptiveRateController(**options)
+
+
+class AdaptiveRateControllerTests(SimpleTestCase):
+    def setUp(self):
+        self.clock = [1_000.0]
+        self.run = FakeRun()
+
+    def controller(self, **overrides):
+        controller = make_controller(self.clock, **overrides)
+        self.run.metadata = {controller.metadata_key: controller.initial_state()}
+        return controller
+
+    def test_rate_rises_one_step_per_quiet_period_up_to_the_ceiling(self):
+        controller = self.controller()
+        observed = [controller.rps(self.run)]
+        for _ in range(5):
+            controller.success(self.run)          # inside the quiet period: nothing changes
+            self.assertAlmostEqual(controller.rps(self.run), observed[-1])
+            self.clock[0] += 600
+            controller.success(self.run)
+            observed.append(round(controller.rps(self.run), 4))
+        self.assertEqual(observed, [0.1, 0.15, 0.2, 0.25, 0.25, 0.25])
+
+    def test_429_halves_the_rate_down_to_the_floor_and_restarts_the_quiet_period(self):
+        controller = self.controller(start_rps=0.2)
+        controller.rate_limited(self.run)
+        self.assertAlmostEqual(controller.rps(self.run), 0.1)
+        self.clock[0] += 599
+        controller.success(self.run)
+        self.assertAlmostEqual(controller.rps(self.run), 0.1, msg='the quiet period restarted at the 429')
+        self.clock[0] += 1
+        controller.success(self.run)
+        self.assertAlmostEqual(controller.rps(self.run), 0.15)
+        for _ in range(6):
+            controller.rate_limited(self.run)
+        self.assertEqual(controller.rps(self.run), 0.05)
+        self.assertEqual(self.run.metadata[controller.metadata_key]['rate_limited_total'], 7)
+
+    def test_a_streak_of_5xx_backs_off_but_a_success_resets_the_streak(self):
+        controller = self.controller(start_rps=0.2)
+        controller.server_error(self.run)
+        controller.server_error(self.run)
+        controller.success(self.run)
+        controller.server_error(self.run)
+        controller.server_error(self.run)
+        self.assertEqual(controller.rps(self.run), 0.2)
+        controller.server_error(self.run)  # third in a row
+        self.assertAlmostEqual(controller.rps(self.run), 0.15)
+        self.assertEqual(self.run.metadata[controller.metadata_key]['server_error_total'], 5)
+
+    def test_without_an_operator_ceiling_the_rate_never_moves(self):
+        controller = self.controller(adaptive=False, start_rps=0.058, ceiling_rps=0.058, floor_rps=0.001)
+        for _ in range(3):
+            self.clock[0] += 10_000
+            controller.success(self.run)
+        controller.rate_limited(self.run)
+        for _ in range(9):
+            controller.server_error(self.run)
+        self.assertEqual(controller.rps(self.run), 0.058)
+        state = self.run.metadata[controller.metadata_key]
+        self.assertEqual((state['rate_limited_total'], state['server_error_total']), (1, 9))
+
+    def test_a_restart_resumes_from_the_learned_rate_clamped_to_the_configured_bounds(self):
+        controller = self.controller()
+        self.clock[0] += 1_200
+        controller.success(self.run)
+        learned = controller.rps(self.run)
+        self.assertGreater(learned, 0.1)
+        previous = dict(self.run.metadata)
+
+        restarted = make_controller(self.clock)
+        self.assertEqual(restarted.initial_state(previous)['learned_rps'], learned)
+        lowered = make_controller(self.clock, ceiling_rps=0.12)
+        self.assertEqual(lowered.initial_state(previous)['learned_rps'], 0.12)
+        raised_floor = make_controller(self.clock, floor_rps=0.2)
+        self.assertEqual(raised_floor.initial_state(previous)['learned_rps'], 0.2)
+        not_adaptive = make_controller(self.clock, adaptive=False, start_rps=0.058, ceiling_rps=0.058)
+        self.assertEqual(not_adaptive.initial_state(previous)['learned_rps'], 0.058)
+
+    @override_settings(
+        SPOTIFY_HYDRATION_MAX_RPS=0, SPOTIFY_HYDRATION_MIN_RPS=0, SPOTIFY_HYDRATION_REQUEST_BUDGET=5000,
+        SPOTIFY_HYDRATION_BUDGET_WINDOW_SECONDS=86400,
+    )
+    def test_defaults_keep_todays_rate_and_do_not_ramp(self):
+        guard = SpotifyHydrationQuotaGuard(5000, 86400)
+        controller = AdaptiveRateController.from_settings(guard, 1.0)
+        self.assertFalse(controller.adaptive)
+        self.assertAlmostEqual(controller.start_rps, 5000 / 86400)
+        self.assertAlmostEqual(controller.ceiling_rps, 5000 / 86400)
+
+    @override_settings(
+        SPOTIFY_HYDRATION_MAX_RPS=2.0, SPOTIFY_HYDRATION_MIN_RPS=0.02, SPOTIFY_HYDRATION_REQUEST_BUDGET=5000,
+        SPOTIFY_HYDRATION_BUDGET_WINDOW_SECONDS=86400,
+    )
+    def test_the_budget_stays_the_hard_ceiling_even_when_the_operator_sets_a_higher_max(self):
+        guard = SpotifyHydrationQuotaGuard(5000, 86400)
+        controller = AdaptiveRateController.from_settings(guard, 1.0)
+        self.assertTrue(controller.adaptive)
+        self.assertAlmostEqual(controller.ceiling_rps, 5000 / 86400)
+        guard = SpotifyHydrationQuotaGuard(100_000, 86400)
+        self.assertAlmostEqual(AdaptiveRateController.from_settings(guard, 1.0).ceiling_rps, 100_000 / 86400)
+        self.assertAlmostEqual(AdaptiveRateController.from_settings(guard, 1.0).start_rps, 1.0)
+        unlimited = SpotifyHydrationQuotaGuard(0, 86400)
+        self.assertEqual(AdaptiveRateController.from_settings(unlimited, 1.0).ceiling_rps, 2.0)
+
+
+class AdaptiveRateRestartTests(TestCase):
+    def test_learned_rate_survives_a_new_run_through_the_database(self):
+        clock = [0.0]
+        controller = make_controller(clock)
+        first = ProviderHydrationRun.objects.create(
+            provider='spotify', metadata={controller.metadata_key: controller.initial_state()},
+        )
+        clock[0] += 700
+        controller.success(first)
+        controller.server_error(first)
+        first.refresh_from_db()
+        learned = first.metadata[controller.metadata_key]['learned_rps']
+        self.assertAlmostEqual(learned, 0.15)
+
+        previous = ProviderHydrationRun.objects.filter(provider='spotify').first()
+        second = ProviderHydrationRun.objects.create(
+            provider='spotify',
+            metadata={controller.metadata_key: make_controller(clock).initial_state(previous.metadata)},
+        )
+        self.assertAlmostEqual(make_controller(clock).rps(second), learned)
+
+
+class ServerErrorBudgetTests(TestCase):
+    def test_a_burst_of_502s_leaves_the_budget_substantially_intact(self):
+        guard = SpotifyHydrationQuotaGuard(1000, 86400, now=lambda: 1_000.0)
+        run = ProviderHydrationRun.objects.create(
+            provider='spotify', metadata={guard.metadata_key: guard.initial_state()},
+        )
+        for _ in range(100):
+            guard.record_request(run)
+            guard.refund_request(run, charged_weight=0.1)
+        run.refresh_from_db()
+        self.assertAlmostEqual(run.metadata[guard.metadata_key]['requests_used'], 10.0)
+
+    def test_refund_never_drives_usage_below_zero(self):
+        guard = SpotifyHydrationQuotaGuard(1000, 86400, now=lambda: 1_000.0)
+        run = ProviderHydrationRun.objects.create(
+            provider='spotify', metadata={guard.metadata_key: guard.initial_state()},
+        )
+        guard.refund_request(run, charged_weight=0.0)
+        self.assertEqual(run.metadata[guard.metadata_key]['requests_used'], 0.0)
+
+
+class AdaptiveCommandTests(TestCase):
+    def run_command(self, errors, **settings_overrides):
+        items = [SimpleNamespace(identifier=f'ISRC{n}') for n in range(len(errors))]
+        queue = items + [None]
+        base = 'mlcore.management.commands.hydrate_spotify_from_isrc.'
+        with override_settings(**settings_overrides), \
+                mock.patch(base + 'wait_for_database'), \
+                mock.patch(base + 'spotify_worker_lock') as lock, \
+                mock.patch(base + 'reconcile_stale_hydration_state', return_value=ReconciliationResult(0, 0)), \
+                mock.patch(base + 'SpotifyClient'), \
+                mock.patch(base + 'claim_hydration_item', side_effect=queue), \
+                mock.patch(base + 'hydrate_spotify_item', side_effect=errors), \
+                mock.patch('time.sleep'):
+            lock.return_value.__enter__.return_value = True
+            call_command(
+                'hydrate_spotify_from_isrc', skip_seed=True, skip_incremental_seed=True, exit_when_empty=True,
+                rps=1, json=True, stdout=StringIO(), metrics_path=self.metrics_path,
+            )
+        return ProviderHydrationRun.objects.get()
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.metrics_path = f'{self.directory.name}/hydration.prom'
+
+    def test_502s_are_charged_at_a_reduced_weight_and_counted(self):
+        errors = [ProviderHydrationError('bad gateway', http_status=502) for _ in range(20)]
+        run = self.run_command(
+            errors, SPOTIFY_HYDRATION_MAX_RPS=0, SPOTIFY_HYDRATION_REQUEST_BUDGET=100_000,
+            SPOTIFY_HYDRATION_SERVER_ERROR_WEIGHT=0.1,
+        )
+        self.assertAlmostEqual(run.metadata['spotify_hydration_quota']['requests_used'], 2.0)
+        self.assertEqual(run.metadata['spotify_hydration_rate']['server_error_total'], 20)
+        payload = open(self.metrics_path, encoding='ascii').read()
+        self.assertIn('mlcore_provider_hydration_server_error_total{provider="spotify"', payload)
+        self.assertIn('mlcore_provider_hydration_learned_rps', payload)
+        self.assertIn('mlcore_provider_hydration_budget_used', payload)
+        self.assertIn('mlcore_provider_hydration_adaptive{provider="spotify"', payload)
+
+    def test_a_429_cuts_the_learned_rate_and_is_counted_when_adaptive(self):
+        errors = [ProviderHydrationError('limited', http_status=429, retry_after=30)]
+        run = self.run_command(
+            errors, SPOTIFY_HYDRATION_MAX_RPS=1.0, SPOTIFY_HYDRATION_MIN_RPS=0.001,
+            SPOTIFY_HYDRATION_REQUEST_BUDGET=86_400,
+        )
+        state = run.metadata['spotify_hydration_rate']
+        self.assertTrue(state['adaptive'])
+        self.assertEqual(state['rate_limited_total'], 1)
+        self.assertAlmostEqual(state['learned_rps'], 0.5)
+        self.assertGreater(run.metadata['spotify_hydration_quota']['cooldown_until'], 0)
 
 
 class DatabaseHealthWaitTests(SimpleTestCase):

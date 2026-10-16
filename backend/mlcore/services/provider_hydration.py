@@ -155,9 +155,10 @@ class SpotifyClient:
 class RequestPacer:
     """Single-worker global pacing with additive recovery and multiplicative decrease."""
 
-    def __init__(self, rps, *, sleep=time.sleep, monotonic=time.monotonic, jitter=random.uniform):
+    def __init__(self, rps, *, sleep=time.sleep, monotonic=time.monotonic, jitter=random.uniform, recover=True):
         if rps <= 0:
             raise ValueError('rps must be greater than zero')
+        self.recover = recover
         self.configured_rps = float(rps)
         self.current_rps = float(rps)
         self.sleep = sleep
@@ -174,15 +175,139 @@ class RequestPacer:
 
     def success(self):
         self._successes_since_limit += 1
-        if self._successes_since_limit >= 300 and self.current_rps < self.configured_rps:
+        if self.recover and self._successes_since_limit >= 300 and self.current_rps < self.configured_rps:
             self.current_rps = min(self.configured_rps, self.current_rps + 0.1)
             self._successes_since_limit = 0
+
+    def set_rate(self, rps):
+        """Adopt a rate chosen by ``AdaptiveRateController``; the next gap uses it."""
+        self.current_rps = max(0.001, float(rps))
 
     def rate_limited(self, retry_after):
         self.current_rps = max(0.001, self.current_rps / 2.0)
         self._successes_since_limit = 0
         delay = max(1.0, float(retry_after or 30)) + self.jitter(0.25, 1.25)
         self._next_request_at = self.monotonic() + delay
+
+
+class AdaptiveRateController:
+    """Learns a safe sustained request rate for the dedicated hydration app.
+
+    Additive increase after a quiet period without 429/5xx, multiplicative decrease on a 429 or a
+    streak of 5xx. The learned rate is kept in run metadata so a restart resumes from it. It only
+    ramps when an operator sets ``SPOTIFY_HYDRATION_MAX_RPS``; otherwise ``adaptive`` is False and the
+    rate stays whatever ``RequestPacer`` does today. The budget cap stays the hard ceiling.
+    """
+
+    metadata_key = 'spotify_hydration_rate'
+
+    def __init__(
+        self,
+        *,
+        floor_rps,
+        ceiling_rps,
+        start_rps,
+        adaptive,
+        step_rps=0.01,
+        ramp_interval_seconds=600.0,
+        decrease_factor=0.5,
+        server_error_streak=5,
+        server_error_decrease_factor=0.75,
+        now=time.time,
+    ):
+        self.adaptive = bool(adaptive)
+        self.ceiling_rps = max(0.001, float(ceiling_rps))
+        self.floor_rps = min(max(0.001, float(floor_rps)), self.ceiling_rps)
+        self.start_rps = min(max(float(start_rps), self.floor_rps), self.ceiling_rps)
+        self.step_rps = max(0.0, float(step_rps))
+        self.ramp_interval_seconds = max(1.0, float(ramp_interval_seconds))
+        self.decrease_factor = min(max(float(decrease_factor), 0.05), 1.0)
+        self.server_error_streak = max(1, int(server_error_streak))
+        self.server_error_decrease_factor = min(max(float(server_error_decrease_factor), 0.05), 1.0)
+        self.now = now
+
+    @classmethod
+    def from_settings(cls, quota_guard, requested_rps, *, now=time.time):
+        today = quota_guard.effective_rps(requested_rps)
+        max_rps = float(settings.SPOTIFY_HYDRATION_MAX_RPS)
+        adaptive = max_rps > 0
+        ceiling = today
+        if adaptive:
+            ceiling = min(max_rps, quota_guard.request_budget / quota_guard.window_seconds) \
+                if quota_guard.request_budget > 0 else max_rps
+        return cls(
+            floor_rps=settings.SPOTIFY_HYDRATION_MIN_RPS or 0.001,
+            ceiling_rps=ceiling,
+            start_rps=today,
+            adaptive=adaptive,
+            step_rps=settings.SPOTIFY_HYDRATION_RAMP_STEP_RPS,
+            ramp_interval_seconds=settings.SPOTIFY_HYDRATION_RAMP_INTERVAL_SECONDS,
+            server_error_streak=settings.SPOTIFY_HYDRATION_SERVER_ERROR_STREAK,
+            now=now,
+        )
+
+    def initial_state(self, previous_metadata=None):
+        previous = (previous_metadata or {}).get(self.metadata_key) or {}
+        learned = _safe_float(previous.get('learned_rps'), self.start_rps) if self.adaptive else self.start_rps
+        now = self.now()
+        return {
+            'learned_rps': min(max(learned, self.floor_rps), self.ceiling_rps),
+            'floor_rps': self.floor_rps,
+            'ceiling_rps': self.ceiling_rps,
+            'adaptive': self.adaptive,
+            'last_change_at': now,
+            'consecutive_server_errors': 0,
+            'rate_limited_total': 0,
+            'server_error_total': 0,
+        }
+
+    def rps(self, run):
+        return self._state(run)['learned_rps']
+
+    def success(self, run):
+        state = self._state(run)
+        state['consecutive_server_errors'] = 0
+        if not self.adaptive or state['learned_rps'] >= self.ceiling_rps:
+            return False
+        now = self.now()
+        if now - state['last_change_at'] < self.ramp_interval_seconds:
+            return False
+        state['learned_rps'] = min(self.ceiling_rps, state['learned_rps'] + self.step_rps)
+        state['last_change_at'] = now
+        self._persist(run, state)
+        return True
+
+    def rate_limited(self, run):
+        state = self._state(run)
+        state['rate_limited_total'] += 1
+        state['consecutive_server_errors'] = 0
+        self._decrease(state, self.decrease_factor)
+        self._persist(run, state)
+
+    def server_error(self, run):
+        state = self._state(run)
+        state['server_error_total'] += 1
+        state['consecutive_server_errors'] += 1
+        if state['consecutive_server_errors'] >= self.server_error_streak:
+            state['consecutive_server_errors'] = 0
+            self._decrease(state, self.server_error_decrease_factor)
+        self._persist(run, state)
+
+    def _decrease(self, state, factor):
+        if self.adaptive:
+            state['learned_rps'] = max(self.floor_rps, state['learned_rps'] * factor)
+        state['last_change_at'] = self.now()
+
+    def _state(self, run):
+        state = run.metadata.get(self.metadata_key)
+        if state is None:
+            state = self.initial_state()
+            run.metadata = {**run.metadata, self.metadata_key: state}
+        return state
+
+    def _persist(self, run, state):
+        run.metadata = {**run.metadata, self.metadata_key: state}
+        run.save(update_fields=['metadata', 'updated_at'])
 
 
 class SpotifyHydrationQuotaGuard:
@@ -204,7 +329,7 @@ class SpotifyHydrationQuotaGuard:
         now = self.now()
         previous = (previous_metadata or {}).get(self.metadata_key) or {}
         window_started_at = _safe_float(previous.get('window_started_at'), now)
-        used = max(0, _safe_int(previous.get('requests_used'), 0))
+        used = max(0.0, _safe_float(previous.get('requests_used'), 0.0))
         if now >= window_started_at + self.window_seconds:
             window_started_at = now
             used = 0
@@ -236,6 +361,12 @@ class SpotifyHydrationQuotaGuard:
     def record_request(self, run):
         state = self._state(run)
         state['requests_used'] += 1
+        self._persist(run, state)
+
+    def refund_request(self, run, *, charged_weight):
+        """Give back the unused part of a request's charge (provider 5xx are charged at a reduced weight)."""
+        state = self._state(run)
+        state['requests_used'] = max(0.0, state['requests_used'] - max(0.0, 1.0 - float(charged_weight)))
         self._persist(run, state)
 
     def rate_limited(self, run, *, retry_after, reason=''):
@@ -514,6 +645,16 @@ def write_hydration_metrics(run, *, path, backlog=None):
         f'mlcore_provider_hydration_rate_limited_total{{{labels}}} {run.rate_limited_count}',
         f'mlcore_provider_hydration_throughput_per_second{{{labels}}} {throughput:.8f}',
         f'mlcore_provider_hydration_eta_seconds{{{labels}}} {eta:.3f}',
+    ]
+    rate = run.metadata.get(AdaptiveRateController.metadata_key) or {}
+    quota = run.metadata.get(SpotifyHydrationQuotaGuard.metadata_key) or {}
+    lines += [
+        f'mlcore_provider_hydration_learned_rps{{{labels}}} {_safe_float(rate.get("learned_rps"), 0.0):.6f}',
+        f'mlcore_provider_hydration_rate_ceiling_rps{{{labels}}} {_safe_float(rate.get("ceiling_rps"), 0.0):.6f}',
+        f'mlcore_provider_hydration_adaptive{{{labels}}} {int(bool(rate.get("adaptive")))}',
+        f'mlcore_provider_hydration_server_error_total{{{labels}}} {_safe_int(rate.get("server_error_total"), 0)}',
+        f'mlcore_provider_hydration_budget_used{{{labels}}} {_safe_float(quota.get("requests_used"), 0.0):.3f}',
+        f'mlcore_provider_hydration_budget_limit{{{labels}}} {_safe_int(quota.get("request_budget"), 0)}',
     ]
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

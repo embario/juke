@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from mlcore.models import ProviderHydrationItem, ProviderHydrationRun
 from mlcore.services.provider_hydration import (
+    AdaptiveRateController,
     ProviderHydrationError,
     RequestPacer,
     SpotifyClient,
@@ -132,6 +133,7 @@ class Command(BaseCommand):
                     settings.SPOTIFY_HYDRATION_BUDGET_WINDOW_SECONDS,
                 )
                 effective_rps = quota_guard.effective_rps(options['rps'])
+                controller = AdaptiveRateController.from_settings(quota_guard, options['rps'])
                 run = ProviderHydrationRun.objects.create(
                     provider='spotify',
                     requested_limit=options['max_items'],
@@ -146,13 +148,18 @@ class Command(BaseCommand):
                         'stale_runs_reconciled': reconciliation.stale_runs,
                         'leases_reclaimed': reconciliation.reclaimed_items,
                         quota_guard.metadata_key: quota_guard.initial_state(previous_metadata),
+                        controller.metadata_key: controller.initial_state(previous_metadata),
                     },
                 )
                 client = SpotifyClient(
                     settings.SPOTIFY_HYDRATION_CLIENT_ID,
                     settings.SPOTIFY_HYDRATION_CLIENT_SECRET,
                 )
-                pacer = RequestPacer(effective_rps)
+                if controller.adaptive:
+                    pacer = RequestPacer(controller.ceiling_rps, recover=False)
+                    pacer.set_rate(controller.rps(run))
+                else:
+                    pacer = RequestPacer(effective_rps)
                 last_incremental_seed_at = time.monotonic()
                 if not options['skip_incremental_seed']:
                     seeded += self._incremental_seed(run, options)
@@ -188,16 +195,25 @@ class Command(BaseCommand):
                     try:
                         hydrate_spotify_item(item, run=run, client=client)
                         pacer.success()
+                        controller.success(run)
                     except ProviderHydrationError as exc:
                         if exc.http_status == 429:
                             pacer.rate_limited(exc.retry_after)
+                            controller.rate_limited(run)
                             quota_guard.rate_limited(
                                 run,
                                 retry_after=exc.retry_after,
                                 reason=exc.reason,
                             )
+                        elif exc.http_status is not None and exc.http_status >= 500:
+                            quota_guard.refund_request(
+                                run, charged_weight=settings.SPOTIFY_HYDRATION_SERVER_ERROR_WEIGHT,
+                            )
+                            controller.server_error(run)
                         elif not exc.retryable:
                             self.stderr.write(str(exc))
+                    if controller.adaptive:
+                        pacer.set_rate(controller.rps(run))
                     self._metrics(run, options['metrics_path'])
             except Exception as exc:
                 if run is not None:
