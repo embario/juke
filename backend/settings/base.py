@@ -230,6 +230,16 @@ SPOTIFY_HYDRATION_REQUEST_TIMEOUT_SECONDS = float(
 )
 SPOTIFY_HYDRATION_MAX_ATTEMPTS = int(os.environ.get('SPOTIFY_HYDRATION_MAX_ATTEMPTS', '8'))
 SPOTIFY_HYDRATION_REQUEST_BUDGET = int(os.environ.get('SPOTIFY_HYDRATION_REQUEST_BUDGET', '5000'))
+# Adaptive rate controller (mlcore.services.provider_hydration.AdaptiveRateController). MAX_RPS=0 keeps it off:
+# the rate then stays at today's min(requested, budget / window). The budget remains the hard ceiling, so raising
+# throughput needs MAX_RPS and REQUEST_BUDGET raised together, deliberately, on the dedicated hydration app.
+SPOTIFY_HYDRATION_MIN_RPS = float(os.environ.get('SPOTIFY_HYDRATION_MIN_RPS', '0'))
+SPOTIFY_HYDRATION_MAX_RPS = float(os.environ.get('SPOTIFY_HYDRATION_MAX_RPS', '0'))
+SPOTIFY_HYDRATION_RAMP_STEP_RPS = float(os.environ.get('SPOTIFY_HYDRATION_RAMP_STEP_RPS', '0.01'))
+SPOTIFY_HYDRATION_RAMP_INTERVAL_SECONDS = float(os.environ.get('SPOTIFY_HYDRATION_RAMP_INTERVAL_SECONDS', '600'))
+SPOTIFY_HYDRATION_SERVER_ERROR_STREAK = int(os.environ.get('SPOTIFY_HYDRATION_SERVER_ERROR_STREAK', '5'))
+# Share of a request's budget charge kept when Spotify answers 5xx (the rest is refunded).
+SPOTIFY_HYDRATION_SERVER_ERROR_WEIGHT = float(os.environ.get('SPOTIFY_HYDRATION_SERVER_ERROR_WEIGHT', '0.1'))
 SPOTIFY_HYDRATION_BUDGET_WINDOW_SECONDS = int(
     os.environ.get('SPOTIFY_HYDRATION_BUDGET_WINDOW_SECONDS', str(60 * 60 * 24))
 )
