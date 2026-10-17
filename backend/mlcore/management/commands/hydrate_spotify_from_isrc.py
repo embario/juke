@@ -17,6 +17,7 @@ from mlcore.services.provider_hydration import (
     claim_hydration_item,
     hydrate_spotify_item,
     reconcile_stale_hydration_state,
+    rescore_pending_priorities,
     seed_spotify_hydration_queue,
     seed_spotify_hydration_queue_incrementally,
     spotify_worker_lock,
@@ -31,6 +32,8 @@ DEFAULT_DATABASE_WAIT_INTERVAL_SECONDS = 5.0
 DEFAULT_INCREMENTAL_SEED_INTERVAL_SECONDS = 300.0
 DEFAULT_INCREMENTAL_SEED_SCAN_LIMIT = 10_000
 DEFAULT_IDLE_SLEEP_SECONDS = 5.0
+DEFAULT_PRIORITY_RESCORE_INTERVAL_SECONDS = 60.0
+DEFAULT_PRIORITY_RESCORE_BATCH_SIZE = 400
 
 
 def wait_for_database(*, timeout_seconds, interval_seconds, sleep=time.sleep, monotonic=time.monotonic):
@@ -86,6 +89,17 @@ class Command(BaseCommand):
             default=DEFAULT_INCREMENTAL_SEED_SCAN_LIMIT,
         )
         parser.add_argument('--skip-incremental-seed', action='store_true')
+        parser.add_argument(
+            '--priority-rescore-interval-seconds',
+            type=float,
+            default=DEFAULT_PRIORITY_RESCORE_INTERVAL_SECONDS,
+        )
+        parser.add_argument(
+            '--priority-rescore-batch-size',
+            type=int,
+            default=DEFAULT_PRIORITY_RESCORE_BATCH_SIZE,
+        )
+        parser.add_argument('--skip-priority-rescore', action='store_true')
         parser.add_argument('--exit-when-empty', action='store_true')
         parser.add_argument('--idle-sleep-seconds', type=float, default=DEFAULT_IDLE_SLEEP_SECONDS)
         parser.add_argument('--json', action='store_true')
@@ -145,6 +159,10 @@ class Command(BaseCommand):
                         'incremental_seed_scanned_total': 0,
                         'incremental_seed_created_total': 0,
                         'incremental_seed_passes_completed': 0,
+                        'priority_rescore_cursor': previous_metadata.get('priority_rescore_cursor', 0),
+                        'priority_rescore_scanned_total': 0,
+                        'priority_rescore_updated_total': 0,
+                        'priority_rescore_passes_completed': 0,
                         'stale_runs_reconciled': reconciliation.stale_runs,
                         'leases_reclaimed': reconciliation.reclaimed_items,
                         quota_guard.metadata_key: quota_guard.initial_state(previous_metadata),
@@ -163,6 +181,9 @@ class Command(BaseCommand):
                 last_incremental_seed_at = time.monotonic()
                 if not options['skip_incremental_seed']:
                     seeded += self._incremental_seed(run, options)
+                last_priority_rescore_at = time.monotonic()
+                if not options['skip_priority_rescore']:
+                    self._priority_rescore(run, options)
                 while options['max_items'] is None or run.attempted_count < options['max_items']:
                     if (
                         not options['skip_incremental_seed']
@@ -171,6 +192,13 @@ class Command(BaseCommand):
                     ):
                         seeded += self._incremental_seed(run, options)
                         last_incremental_seed_at = time.monotonic()
+                    if (
+                        not options['skip_priority_rescore']
+                        and time.monotonic() - last_priority_rescore_at
+                        >= options['priority_rescore_interval_seconds']
+                    ):
+                        self._priority_rescore(run, options)
+                        last_priority_rescore_at = time.monotonic()
                     quota_delay = quota_guard.delay_seconds(run)
                     if quota_delay > 0:
                         time.sleep(min(options['idle_sleep_seconds'], quota_delay))
@@ -235,7 +263,13 @@ class Command(BaseCommand):
     def _validate(options):
         if options['rps'] <= 0:
             raise CommandError('--rps must be greater than zero.')
-        for option in ('seed_limit', 'max_items', 'batch_size', 'incremental_seed_scan_limit'):
+        for option in (
+            'seed_limit',
+            'max_items',
+            'batch_size',
+            'incremental_seed_scan_limit',
+            'priority_rescore_batch_size',
+        ):
             if options.get(option) is not None and options[option] < 1:
                 raise CommandError(f'--{option.replace("_", "-")} must be greater than zero.')
         for option in (
@@ -243,6 +277,7 @@ class Command(BaseCommand):
             'database_wait_interval_seconds',
             'incremental_seed_interval_seconds',
             'idle_sleep_seconds',
+            'priority_rescore_interval_seconds',
         ):
             if options[option] <= 0:
                 raise CommandError(f'--{option.replace("_", "-")} must be greater than zero.')
@@ -272,6 +307,24 @@ class Command(BaseCommand):
         }
         run.save(update_fields=['metadata', 'updated_at'])
         return result.created
+
+    @staticmethod
+    def _priority_rescore(run, options):
+        result = rescore_pending_priorities(
+            after_id=run.metadata.get('priority_rescore_cursor', 0),
+            batch_size=options['priority_rescore_batch_size'],
+        )
+        run.metadata = {
+            **run.metadata,
+            'priority_rescore_cursor': result.next_cursor,
+            'priority_rescore_scanned_total': run.metadata.get('priority_rescore_scanned_total', 0) + result.scanned,
+            'priority_rescore_updated_total': run.metadata.get('priority_rescore_updated_total', 0) + result.updated,
+            'priority_rescore_passes_completed': (
+                run.metadata.get('priority_rescore_passes_completed', 0) + int(result.pass_complete)
+            ),
+            'priority_rescore_last_at': timezone.now().isoformat(),
+        }
+        run.save(update_fields=['metadata', 'updated_at'])
 
     @staticmethod
     def _metrics(run, path):
