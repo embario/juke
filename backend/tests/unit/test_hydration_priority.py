@@ -155,7 +155,7 @@ class BackfillCommandTests(QueueFixtureMixin, TestCase):
         output = StringIO()
         call_command('rescore_hydration_priority', batch_size=2, sleep_seconds=0, stdout=output)
         self.assertIn('pass_complete=True', output.getvalue().splitlines()[-1])
-        self.assertEqual(len(output.getvalue().splitlines()), 3)
+        self.assertEqual(len(output.getvalue().splitlines()), 4, "boost line + three batches")
         priorities = list(ProviderHydrationItem.objects.order_by('identifier').values_list('priority', flat=True))
         self.assertEqual(priorities[0], UNSCORED_PRIORITY)
         self.assertEqual(priorities, sorted(priorities, reverse=True))

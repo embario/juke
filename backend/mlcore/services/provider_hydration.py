@@ -439,13 +439,15 @@ def listen_popularity(canonical_item_ids):
     return {row['canonical_item_id']: float(row['sessions']) for row in rows}
 
 
-def rescore_pending_priorities(*, after_id=0, batch_size=2_000):
+def rescore_pending_priorities(*, after_id=0, batch_size=2_000, boosts=None):
     """Re-score one bounded slice of pending/retry items and move the cursor.
 
     Touches only rows whose priority actually changes, in one short transaction of at most
     ``batch_size`` rows. It never locks the table, and ``claim_hydration_item`` uses
     ``SKIP LOCKED`` so it passes over any row this pass is holding. Running, matched and
-    terminal rows are left alone. At the end of a pass the cursor resets to 0.
+    terminal rows are left alone. At the end of a pass the cursor resets to 0. ``boosts`` maps
+    canonical item ids to a fixed priority (items users reference, see ``hydration_boosts``) that
+    replaces the listen-score priority, so a re-score never undoes a boost.
     """
     if batch_size < 1:
         raise ValueError('batch_size must be greater than zero')
@@ -457,7 +459,9 @@ def rescore_pending_priorities(*, after_id=0, batch_size=2_000):
     popularity = listen_popularity({canonical_item_id for _id, canonical_item_id, _priority in rows})
     changes = {}
     for item_id, canonical_item_id, current in rows:
-        wanted = priority_for_popularity(popularity.get(canonical_item_id, 0.0))
+        wanted = (boosts or {}).get(canonical_item_id)
+        if wanted is None:
+            wanted = priority_for_popularity(popularity.get(canonical_item_id, 0.0))
         if wanted != current:
             changes[item_id] = wanted
     updated = 0

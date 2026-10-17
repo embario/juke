@@ -8,6 +8,7 @@ from django.db import InterfaceError, OperationalError, connection
 from django.utils import timezone
 
 from mlcore.models import ProviderHydrationItem, ProviderHydrationRun
+from mlcore.services.hydration_boosts import apply_referenced_boosts, referenced_canonical_priorities
 from mlcore.services.provider_hydration import (
     AdaptiveRateController,
     ProviderHydrationError,
@@ -34,6 +35,7 @@ DEFAULT_INCREMENTAL_SEED_SCAN_LIMIT = 10_000
 DEFAULT_IDLE_SLEEP_SECONDS = 5.0
 DEFAULT_PRIORITY_RESCORE_INTERVAL_SECONDS = 60.0
 DEFAULT_PRIORITY_RESCORE_BATCH_SIZE = 400
+DEFAULT_PRIORITY_BOOST_INTERVAL_SECONDS = 300.0
 
 
 def wait_for_database(*, timeout_seconds, interval_seconds, sleep=time.sleep, monotonic=time.monotonic):
@@ -100,6 +102,12 @@ class Command(BaseCommand):
             default=DEFAULT_PRIORITY_RESCORE_BATCH_SIZE,
         )
         parser.add_argument('--skip-priority-rescore', action='store_true')
+        parser.add_argument(
+            '--priority-boost-interval-seconds',
+            type=float,
+            default=DEFAULT_PRIORITY_BOOST_INTERVAL_SECONDS,
+        )
+        parser.add_argument('--skip-priority-boost', action='store_true')
         parser.add_argument('--exit-when-empty', action='store_true')
         parser.add_argument('--idle-sleep-seconds', type=float, default=DEFAULT_IDLE_SLEEP_SECONDS)
         parser.add_argument('--json', action='store_true')
@@ -278,6 +286,7 @@ class Command(BaseCommand):
             'incremental_seed_interval_seconds',
             'idle_sleep_seconds',
             'priority_rescore_interval_seconds',
+            'priority_boost_interval_seconds',
         ):
             if options[option] <= 0:
                 raise CommandError(f'--{option.replace("_", "-")} must be greater than zero.')
@@ -308,11 +317,31 @@ class Command(BaseCommand):
         run.save(update_fields=['metadata', 'updated_at'])
         return result.created
 
-    @staticmethod
-    def _priority_rescore(run, options):
+    def _refresh_boosts(self, run, options):
+        """Recompute the user-referenced boosts (small tables) and write them onto pending rows."""
+        if options['skip_priority_boost']:
+            return
+        now = time.monotonic()
+        last = getattr(self, '_boosts_at', None)
+        if last is not None and now - last < options['priority_boost_interval_seconds']:
+            return
+        self._boosts = referenced_canonical_priorities()
+        self._boosts_at = now
+        boosted = apply_referenced_boosts(self._boosts)
+        run.metadata = {
+            **run.metadata,
+            'priority_boost_items': len(self._boosts),
+            'priority_boost_rows_updated_total': run.metadata.get('priority_boost_rows_updated_total', 0) + boosted,
+            'priority_boost_last_at': timezone.now().isoformat(),
+        }
+        run.save(update_fields=['metadata', 'updated_at'])
+
+    def _priority_rescore(self, run, options):
+        self._refresh_boosts(run, options)
         result = rescore_pending_priorities(
             after_id=run.metadata.get('priority_rescore_cursor', 0),
             batch_size=options['priority_rescore_batch_size'],
+            boosts=getattr(self, '_boosts', None),
         )
         run.metadata = {
             **run.metadata,

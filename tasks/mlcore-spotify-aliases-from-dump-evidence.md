@@ -82,6 +82,6 @@ Create Spotify track aliases (`source=spotify, resource_type=track`) from eviden
 
 ## Handoff
 
-- Completed: plan drafted from code reading and read-only Neptune queries (2026-10-16). Phase 0 MusicBrainz overlap query (1% sample of hydration items) was started but had not returned when this was written.
+- Completed: plan drafted from code reading and read-only Neptune queries (2026-10-16). A Phase 0 MusicBrainz overlap query (1% `TABLESAMPLE` of hydration items, correlated `EXISTS` through the alias table into `mlcore_musicbrainz_recording_url` with a `::text` cast on `recording_mbid`) hit its 300 s statement timeout without a result. For Phase 0, drive from the smaller side instead: distinct Spotify-track recording MBIDs (~813k) -> alias lookup by `(source, source_id)` -> hydration items by `canonical_item_id`. Check the alias table's indexes first, and run in batches.
 - Next: run Phase 0 and record numbers; then Phase 1.
 - Blockers: none. Not yet added to `tasks/_index.md` (fleet is working in the same worktree; add when committing).
