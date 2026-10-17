@@ -54,6 +54,12 @@ Operational note:
   `scripts/mlcore_evaluation_history_metrics.sh`.
 - Refresh canonical identity inventory metrics with
   `scripts/mlcore_identity_metrics.sh`.
+- Play-weighted identity coverage (MBID / ISRC / Spotify, after redirects) is written by
+  `manage.py export_identity_coverage_metrics` to
+  `/srv/monitoring/node-exporter/textfile/mlcore_identity_coverage.prom`
+  (`mlcore_identity_play_coverage_ratio{scheme=...}` and friends). It is a set-based scan of the
+  whole session table, so run it on demand or weekly, or pass `--sample-percent`; it is deliberately
+  not part of `mlcore_identity_metrics.sh`.
 - `materialize_canonical_aliases` writes live progress metrics to
   `/srv/monitoring/node-exporter/textfile/mlcore_canonical_alias_materialization.prom`
   by default.

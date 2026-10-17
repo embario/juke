@@ -67,3 +67,4 @@ Attach Spotify track IDs, ISRCs, and MBIDs to the canonical items that co-occurr
 - Handoff: implementing in `juke-app/mlcore-spotify-clusters`; B7 shared writer currently being prepared in `juke-app/mlcore-isrc-bridge`.
 
 - B6 validation: 19 PostgreSQL small-fixture tests pass locally (isolated PG14/Django5.2, no Docker or Neptune). Main staging EXPLAINs force sequential/hash joins; lint passes. B7 #258 supplies the shared writer; B6 must merge after it. Operator commands and limitations are in `docs/arch/MLCORE_SPOTIFY_CLUSTER_RUNBOOK.md`.
+- B8 (hydration integration + coverage): seeding skips ISRC aliases whose item or one-hop redirect target already has a Spotify alias; `reconcile_hydration_aliases` marks pending queue rows matched (resolved_by=final_target_spotify_alias) set-based; `export_identity_coverage_metrics` writes play-weighted MBID/ISRC/Spotify coverage to the textfile collector. Operator instructions are in the PR description.
