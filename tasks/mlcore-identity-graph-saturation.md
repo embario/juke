@@ -1,7 +1,7 @@
 ---
 id: mlcore-identity-graph-saturation
 title: Saturate the MLCore identity graph with Spotify, ISRC, and MBID evidence from local ListenBrainz and MusicBrainz data
-status: ready
+status: in_progress
 priority: p1
 owner: unassigned
 area: platform
