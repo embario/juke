@@ -10,11 +10,13 @@ from pathlib import Path
 import requests
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import Count, Exists, F, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from mlcore.models import (
     CanonicalItemAlias,
+    CanonicalItemRedirect,
     ListenBrainzSessionTrack,
     ProviderHydrationItem,
     ProviderHydrationRun,
@@ -488,17 +490,44 @@ def rescore_pending_priorities(*, after_id=0, batch_size=2_000, boosts=None):
     )
 
 
-def seed_spotify_hydration_queue(*, batch_size=10_000, limit=None):
-    spotify_on_item = CanonicalItemAlias.objects.filter(
-        canonical_item_id=OuterRef('canonical_item_id'),
-        source='spotify',
-        resource_type='track',
-        status='active',
+def _spotify_alias_on(item_reference):
+    return Exists(
+        CanonicalItemAlias.objects.filter(
+            canonical_item_id=OuterRef(item_reference),
+            source='spotify',
+            resource_type='track',
+            status='active',
+        )
     )
-    queryset = (
+
+
+def _isrc_aliases_needing_spotify():
+    """Active ISRC aliases whose item, and the item it redirects to, have no Spotify alias.
+
+    An ISRC owned by an item that redirects to a target which already has a Spotify ID would only
+    spend API budget to rediscover it. Redirects are written flat (one hop to the final target, see
+    ``redirect_writes``), so one hop is enough here and costs one primary-key probe per scanned alias;
+    ``reconcile_hydration_aliases`` follows longer legacy chains set-based and marks the queue.
+    """
+    final_item = Coalesce(
+        Subquery(
+            CanonicalItemRedirect.objects.filter(
+                from_canonical_item_id=OuterRef('canonical_item_id'), status='active',
+            ).values('to_canonical_item_id')[:1]
+        ),
+        F('canonical_item_id'),
+    )
+    return (
         CanonicalItemAlias.objects.filter(source='isrc', resource_type='recording', status='active')
-        .annotate(has_spotify=Exists(spotify_on_item))
-        .filter(has_spotify=False)
+        .annotate(final_item_id=final_item)
+        .annotate(has_spotify=_spotify_alias_on('canonical_item_id'), final_has_spotify=_spotify_alias_on('final_item_id'))
+        .filter(has_spotify=False, final_has_spotify=False)
+    )
+
+
+def seed_spotify_hydration_queue(*, batch_size=10_000, limit=None):
+    queryset = (
+        _isrc_aliases_needing_spotify()
         .order_by('source_id')
         .values_list('canonical_item_id', 'source_id', 'source_version')
     )
@@ -526,30 +555,27 @@ def seed_spotify_hydration_queue_incrementally(*, after_source_id='', scan_limit
     """
     if scan_limit < 1:
         raise ValueError('scan_limit must be greater than zero')
-    spotify_on_item = CanonicalItemAlias.objects.filter(
-        canonical_item_id=OuterRef('canonical_item_id'),
-        source='spotify',
-        resource_type='track',
-        status='active',
-    )
-    aliases = list(
+    # Materialize the raw slice before any redirect/Spotify checks. Filtering first
+    # makes LIMIT bound eligible output instead of work, scanning an arbitrarily
+    # long resolved suffix and losing cursor progress when nothing needs hydration.
+    scanned = list(
         CanonicalItemAlias.objects.filter(
-            source='isrc',
-            resource_type='recording',
-            status='active',
-            source_id__gt=after_source_id,
+            source='isrc', resource_type='recording', status='active', source_id__gt=after_source_id,
         )
-        .annotate(has_spotify=Exists(spotify_on_item))
-        .filter(has_spotify=False)
         .order_by('source_id')
-        .values_list('canonical_item_id', 'source_id', 'source_version')[:scan_limit]
+        .values_list('pk', 'source_id')[:scan_limit]
+    )
+    aliases = (
+        _isrc_aliases_needing_spotify()
+        .filter(pk__in=[pk for pk, _source_id in scanned])
+        .values_list('canonical_item_id', 'source_id', 'source_version')
     )
     created = _create_spotify_hydration_items(aliases)
-    pass_complete = len(aliases) < scan_limit
+    pass_complete = len(scanned) < scan_limit
     return IncrementalSeedResult(
-        scanned=len(aliases),
+        scanned=len(scanned),
         created=created,
-        next_cursor='' if pass_complete else aliases[-1][1],
+        next_cursor='' if pass_complete else scanned[-1][1],
         pass_complete=pass_complete,
     )
 
