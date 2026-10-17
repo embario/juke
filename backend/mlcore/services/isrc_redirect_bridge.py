@@ -37,6 +37,7 @@ from mlcore.services.redirect_writes import (
     RedirectBatchResult,
     create_inbound_table,
     explain,
+    explain_flat_redirects,
     follow_redirects,
     insert_flat_redirects,
     run_bulk,
@@ -256,7 +257,7 @@ def latest_musicbrainz_isrc_source_version() -> str:
 
 def sample_basis_points(sample_percent: float) -> int:
     """The effective sample threshold: roots whose bucket is below it are in the sample."""
-    if not math.isfinite(sample_percent):
+    if not math.isfinite(sample_percent) or not 0 < sample_percent <= 100:
         raise ValueError('sample_percent must be a finite number')
     basis_points = int(round(sample_percent * 100))
     if not 1 <= basis_points <= FULL_SAMPLE_BASIS_POINTS:
@@ -347,6 +348,11 @@ def build_workspace(
         root_column='root_id',
         inbound_table=INBOUND_TABLE,
     )
+    if explain_plans:
+        workspace.explains['write_redirects'] = explain_flat_redirects(
+            batch_sql=REDIRECT_BATCH_SQL, batch_params=_batch_params(source_version, None, 50_000),
+            source=REDIRECT_SOURCE, source_version=source_version, inbound_table=INBOUND_TABLE,
+        )
     step(f'classified subjects={workspace.subject_status} roots={workspace.root_status} '
          f'inbound={workspace.inbound_redirects}')
     return workspace
@@ -408,6 +414,7 @@ def _batch_params(source_version: str, last_root: str | None, batch_size: int) -
 AUDIT_COLUMNS = (
     'root_id', 'root_type', 'root_canonical_key', 'target_id', 'recording_mbid', 'musicbrainz_url',
     'isrcs', 'subject_count', 'observation_count', 'inbound_redirects', 'member_msids',
+    'member_provenance_limit',
     'listenbrainz_mapped_mbids', 'musicbrainz_isrcs', 'musicbrainz_spotify_urls', 'redirect_written',
 )
 
@@ -495,6 +502,7 @@ def collect_audit_rows(*, limit: int = 200) -> list[dict[str, Any]]:
             'observation_count': int(observations),
             'inbound_redirects': int(inbound),
             'member_msids': ' '.join(msids.get(root_id, [])),
+            'member_provenance_limit': AUDIT_MEMBERS_PER_ROOT,
             'listenbrainz_mapped_mbids': ' '.join(mappings.get(root_id, [])),
             'musicbrainz_isrcs': mb_isrcs or '',
             'musicbrainz_spotify_urls': mb_urls or '',

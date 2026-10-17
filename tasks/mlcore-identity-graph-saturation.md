@@ -67,3 +67,11 @@ Attach Spotify track IDs, ISRCs, and MBIDs to the canonical items that co-occurr
 - Handoff: implementing in `juke-app/mlcore-spotify-clusters`; B7 shared writer currently being prepared in `juke-app/mlcore-isrc-bridge`.
 
 - B6 validation: 19 PostgreSQL small-fixture tests pass locally (isolated PG14/Django5.2, no Docker or Neptune). Main staging EXPLAINs force sequential/hash joins; lint passes. B7 #258 supplies the shared writer; B6 must merge after it. Operator commands and limitations are in `docs/arch/MLCORE_SPOTIFY_CLUSTER_RUNBOOK.md`.
+
+### B7 follow-up review fixes (2026-10-17)
+
+- ASYNC, owner-authorized follow-up to #258; Refs #230. Address all three P1 and three P2 post-merge findings before operator activation.
+- Scope/acceptance: validate whole clusters before root sampling; veto contradictory/ineligible members; require approval above an effective 1% sample (including resume); persist exact counts; export contributing MSID/mapping provenance; preserve run-bound audit selection across pause/resume and checkpoint failures. Add PostgreSQL regression fixtures for each finding and EXPLAIN the insert/repoint statement.
+- Out of scope: Neptune commands/deployment, Spotify calls, full-run approval, unrelated B6 behavior. Preserve set-based joins, never-overwrite edges and flat redirects.
+- Validation: focused local PG14 suites (Docker forbidden on Uranus), lint and CI. Risk: full evidence staging costs remain even at 1%; freeze competing graph/evidence writers for run/resume.
+- Handoff: all six findings implemented on `juke-app/mlcore-isrc-bridge-fixes`; 61 focused PG14 tests pass (B7, B6, B4, B5), Ruff and diff checks pass. Actual insert/repoint EXPLAIN uses sequential/hash joins. Audit selection is stored before writes; each checkpoint commits with its batch; saved audits can be exported without staging. Algorithm v2 deliberately rejects v1 resume. Member provenance is bounded to 10 MSIDs per audited root (limit included in CSV). PR/review pending; no Neptune execution.

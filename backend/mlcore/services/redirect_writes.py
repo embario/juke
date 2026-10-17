@@ -176,6 +176,7 @@ def insert_flat_redirects(
     appeared since staging would be skipped by the real insert).
     """
     with transaction.atomic(), connection.cursor() as cursor:
+        bulk_join_mode(cursor)
         if write:
             cursor.execute(
                 INSERT_FLAT_REDIRECTS_SQL.format(batch_sql=batch_sql, inbound_table=inbound_table),
@@ -188,3 +189,13 @@ def insert_flat_redirects(
             )
         processed, last_key, inserted, repointed = cursor.fetchone()
     return RedirectBatchResult(int(processed or 0), last_key, int(inserted or 0), int(repointed or 0))
+
+
+def explain_flat_redirects(
+    *, batch_sql: str, batch_params: Sequence[Any], source: str, source_version: str, inbound_table: str,
+) -> list[str]:
+    """Plan the actual insert/repoint statement without executing it."""
+    return explain(
+        INSERT_FLAT_REDIRECTS_SQL.format(batch_sql=batch_sql, inbound_table=inbound_table),
+        [*batch_params, source, source_version, source],
+    )

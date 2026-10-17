@@ -4,8 +4,10 @@ import json
 import tempfile
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 from django.core.management import CommandError, call_command
+from django.db import connection
 from django.test import TestCase
 from django.utils import timezone
 
@@ -15,6 +17,7 @@ from mlcore.models import (
     CanonicalItemRedirect,
     IdentityEvidence,
     MusicBrainzRecordingISRC,
+    ListenBrainzMSIDMBIDMapping,
     SourceIngestionRun,
 )
 from mlcore.services.canonical_items import identity_from_parts
@@ -121,7 +124,7 @@ class ISRCRedirectBridgeTests(TestCase):
                 'not_msid': 1,  # the MBID subject
             },
         )
-        self.assertEqual(workspace.root_status, {'new': 2, 'cluster_conflict': 1})
+        self.assertEqual(workspace.root_status, {'new': 2, 'cluster_conflict': 1, 'multiple_mbids': 1, 'target_missing': 1})
         self.assertEqual(workspace.inbound_redirects, 2)  # S8 and S9 point at cluster C
 
     def test_dry_run_writes_nothing(self):
@@ -216,15 +219,129 @@ class ISRCRedirectBridgeTests(TestCase):
         self.assertEqual(s1['musicbrainz_url'], f'https://musicbrainz.org/recording/{self.mbid["M1"]}')
         self.assertEqual(s1['isrcs'], 'I1 I2')
         self.assertEqual(sorted(s1['musicbrainz_isrcs'].split()), ['I1', 'I2'])
-        self.assertTrue(s1['listenbrainz_msid'])
+        self.assertTrue(s1['member_msids'])
         self.assertEqual(s1['redirect_written'], 'yes')
         cluster = by_root[str(self.cluster.id)]
         self.assertEqual(cluster['root_type'], 'spotify_track')
-        self.assertEqual(cluster['listenbrainz_msid'], '')
+        self.assertIn(self.msid['S8'].canonical_key.split(':')[1], cluster['member_msids'])
 
     def test_explain_covers_main_statements(self):
         workspace = build_workspace(VERSION, explain_plans=True)
         self.assertEqual(
             set(workspace.explains),
-            {'stage_isrcs', 'stage_subjects', 'redirect_hop', 'item_types', 'stage_inbound'},
+            {'stage_isrcs', 'stage_subjects', 'redirect_hop', 'item_types', 'stage_inbound', 'write_redirects'},
         )
+        write_plan = '\n'.join(workspace.explains['write_redirects'])
+        self.assertIn('Hash Join', write_plan)
+        self.assertNotIn('Nested Loop', write_plan)
+        print('\nEXPLAIN B7 insert/repoint (small fixture)\n' + write_plan)
+
+    def test_exact_counts_are_persisted_and_exported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'audit.csv'
+            self._run('--write', '--full-run-approved', '--audit-path', str(path), '--json')
+            with path.open() as handle:
+                row = next(row for row in csv.DictReader(handle) if row['root_id'] == str(self.msid['S1'].id))
+        edge = CanonicalItemRedirect.objects.get(from_canonical_item=self.msid['S1'])
+        self.assertEqual((edge.evidence['subject_count'], edge.evidence['observation_count']), (1, 6))
+        self.assertEqual((row['subject_count'], row['observation_count']), ('1', '6'))
+
+    def test_mixed_rejected_members_veto_cluster(self):
+        for rejected in ('S2', 'S4'):
+            with self.subTest(member=rejected):
+                edge = _redirect(self.msid[rejected], self.cluster)
+                before = list(CanonicalItemRedirect.objects.order_by('pk').values_list(
+                    'from_canonical_item_id', 'to_canonical_item_id'))
+                build_workspace(VERSION)
+                apply_redirect_batch(source_version=VERSION, last_root=None, batch_size=100, write=True)
+                self.assertFalse(CanonicalItemRedirect.objects.filter(from_canonical_item=self.cluster).exists())
+                for from_id, to_id in before:
+                    self.assertEqual(CanonicalItemRedirect.objects.get(from_canonical_item_id=from_id).to_canonical_item_id, to_id)
+                edge.delete()
+
+    def test_conflicting_cluster_is_rejected_even_when_only_one_subject_hash_is_sampled(self):
+        # Select deterministic subject keys straddling 1%; the old per-subject filter accepted A alone.
+        identities = [identity_from_parts(item_type='recording_msid', key_value=uuid.UUID(int=n + 10000))
+                      for n in range(2000)]
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT id::text, mod(abs(hashtext(id::text)::bigint), 10000) '
+                           'FROM unnest(%s::uuid[]) ids(id)', [[str(item.item_id) for item in identities]])
+            buckets = dict(cursor.fetchall())
+        selected = {}
+        for identity in identities:
+            inside = buckets[str(identity.item_id)] < 100
+            if inside not in selected:
+                selected[inside] = self._item('recording_msid', identity.canonical_key.split(':')[1])
+        self.assertEqual(len(selected), 2)
+        CanonicalItemRedirect.objects.filter(to_canonical_item=self.cluster_d).delete()
+        for item, isrc in ((selected[True], 'I1'), (selected[False], 'I3')):
+            _redirect(item, self.cluster_d)
+            IdentityEvidence.objects.create(subject_canonical_item_id=item.id, scheme='isrc', value=isrc,
+                                            source='listenbrainz', source_version='t',
+                                            first_seen=timezone.now(), last_seen=timezone.now())
+        full = build_workspace(VERSION)
+        sample = build_workspace(VERSION, sample_percent=1)
+        self.assertEqual(full.root_status['cluster_conflict'], sample.root_status['cluster_conflict'])
+        apply_redirect_batch(source_version=VERSION, last_root=None, batch_size=100, write=True)
+        self.assertFalse(CanonicalItemRedirect.objects.filter(from_canonical_item=self.cluster_d).exists())
+        for item in selected.values():
+            self.assertEqual(self._target_of(item), self.cluster_d.id)
+
+    def test_gate_uses_effective_percentage_on_new_and_resumed_writes(self):
+        self._run('--write', '--sample-percent', '1', '--json')
+        for percent in ('50', '99.999', '100'):
+            with self.subTest(percent=percent), self.assertRaises(CommandError):
+                self._run('--write', '--sample-percent', percent, '--json')
+        first = self._run('--write', '--full-run-approved', '--batch-size', '1', '--max-batches', '1', '--json')
+        with self.assertRaises(CommandError):
+            self._run('--write', '--resume-run-id', first['run_id'], '--json')
+
+    def test_spotify_root_audit_contains_member_mapping(self):
+        msid = self.msid['S8'].canonical_key.split(':')[1]
+        ListenBrainzMSIDMBIDMapping.objects.create(
+            recording_msid=msid, recording_mbid=self.mbid['M6'], source_version='t', status='active')
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'audit.csv'
+            self._run('--audit-path', str(path), '--json')
+            with path.open() as handle:
+                row = next(row for row in csv.DictReader(handle) if row['root_id'] == str(self.cluster.id))
+        self.assertIn(msid, row['member_msids'])
+        self.assertIn(f'{msid}={self.mbid["M6"]}:active', row['listenbrainz_mapped_mbids'])
+        self.assertEqual(row['inbound_redirects'], '2')
+
+    def test_audit_survives_pause_resume_and_completed_export(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'audit.csv'
+            first = self._run('--write', '--full-run-approved', '--batch-size', '1', '--max-batches', '1',
+                              '--audit-path', str(path), '--json')
+            with path.open() as handle:
+                paused = list(csv.DictReader(handle))
+            self.assertEqual(sorted(row['redirect_written'] for row in paused), ['no', 'yes'])
+            self._run('--write', '--full-run-approved', '--resume-run-id', first['run_id'],
+                      '--audit-path', str(path), '--json')
+            with path.open() as handle:
+                resumed = list(csv.DictReader(handle))
+            self.assertEqual({row['root_id'] for row in paused}, {row['root_id'] for row in resumed})
+            self.assertEqual([row['redirect_written'] for row in resumed], ['yes', 'yes'])
+            self._run('--export-audit-run-id', first['run_id'], '--audit-path', str(path), '--json')
+            with path.open() as handle:
+                self.assertEqual(resumed, list(csv.DictReader(handle)))
+
+    def test_checkpoint_failure_rolls_back_redirect_batch(self):
+        original_save = CanonicalAliasMaterializationRun.save
+
+        def fail_checkpoint(run, *args, **kwargs):
+            if run.status == 'running' and run.processed_items:
+                raise RuntimeError('checkpoint failed')
+            return original_save(run, *args, **kwargs)
+
+        with patch.object(CanonicalAliasMaterializationRun, 'save', fail_checkpoint):
+            with self.assertRaisesRegex(RuntimeError, 'checkpoint failed'):
+                self._run('--write', '--full-run-approved', '--json')
+        self.assertFalse(CanonicalItemRedirect.objects.filter(source=REDIRECT_SOURCE).exists())
+        run = CanonicalAliasMaterializationRun.objects.get()
+        run.refresh_from_db()
+        self.assertEqual(run.processed_items, 0)
+        self.assertEqual(len(run.checkpoints['audit_rows']), 2)
+        resumed = self._run('--write', '--full-run-approved', '--resume-run-id', str(run.id), '--json')
+        self.assertEqual(resumed['redirects_inserted'], 2)
