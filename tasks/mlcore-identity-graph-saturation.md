@@ -3,7 +3,7 @@ id: mlcore-identity-graph-saturation
 title: Saturate the MLCore identity graph with Spotify, ISRC, and MBID evidence from local ListenBrainz and MusicBrainz data
 status: in_progress
 priority: p1
-owner: unassigned
+owner: fleet
 area: platform
 label: BACKEND/ML
 complexity: 5
@@ -56,3 +56,14 @@ Attach Spotify track IDs, ISRCs, and MBIDs to the canonical items that co-occurr
 - Next: owner decisions in plan section 8; then Phase 1.
 - Blockers: Phase 0 decisions.
 - B4 (evidence table + loader): `mlcore_identity_evidence` and `load_identity_evidence` (`mlcore/services/identity_evidence.py`); loads the schema-v3 shard files per scheme in groups, set-based, resumable. Operator instructions are in the PR description.
+
+### B6 execution (2026-10-17, Codex implementer-1)
+
+- Status: in progress; ASYNC, owner-authorized Track B B6 only. Refs #249.
+- Goal/scope: set-based dominant-Spotify clustering from B4 evidence; MBID/URL/unique-ISRC targeting, cap 200, flat redirects using B7's shared writer, conservative aliases, deterministic whole-group sampling, bounded audit/review exports, dry-run default, resumable batches and EXPLAIN tooling.
+- Out of scope: Neptune execution/deployment, API calls, full-run authorization, B7's independent ISRC bridge, #177/master.
+- Acceptance: small PostgreSQL fixtures cover dominance, targeting and conflicts, group cap, active redirect/alias protection, flat promotion, sampling, dry-run, audit and replay. CI green; normal reviewer/integrator pipeline with needs-review/P2/author:codex. Operator instructions include 1% audit (~200 merges), owner approval before full run, flags, timing and resume.
+- Risks: evidence can change between resume attempts (operator freezes ingestion); shared writer dependency must land before B6; full scans cost hours even for a small sample. Never use per-row database lookups.
+- Handoff: implementing in `juke-app/mlcore-spotify-clusters`; B7 shared writer currently being prepared in `juke-app/mlcore-isrc-bridge`.
+
+- B6 validation: 19 PostgreSQL small-fixture tests pass locally (isolated PG14/Django5.2, no Docker or Neptune). Main staging EXPLAINs force sequential/hash joins; lint passes. B7 #258 supplies the shared writer; B6 must merge after it. Operator commands and limitations are in `docs/arch/MLCORE_SPOTIFY_CLUSTER_RUNBOOK.md`.
