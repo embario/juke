@@ -1,4 +1,5 @@
 import base64
+import math
 import random
 import socket
 import time
@@ -9,10 +10,15 @@ from pathlib import Path
 import requests
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
 
-from mlcore.models import CanonicalItemAlias, ProviderHydrationItem, ProviderHydrationRun
+from mlcore.models import (
+    CanonicalItemAlias,
+    ListenBrainzSessionTrack,
+    ProviderHydrationItem,
+    ProviderHydrationRun,
+)
 
 
 SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token'
@@ -57,6 +63,14 @@ class IncrementalSeedResult:
     scanned: int
     created: int
     next_cursor: str
+    pass_complete: bool
+
+
+@dataclass(frozen=True)
+class PriorityRescoreResult:
+    scanned: int
+    updated: int
+    next_cursor: int
     pass_complete: bool
 
 
@@ -390,6 +404,83 @@ class SpotifyHydrationQuotaGuard:
         run.save(update_fields=['metadata', 'updated_at'])
 
 
+# Queue order is ``ORDER BY priority, id`` (lower claims first). Unscored items keep the model default of 100;
+# items with listen evidence are placed in 1..99 so they always claim first, most-listened lowest.
+UNSCORED_PRIORITY = 100
+PRIORITY_SCALE = 12.0
+
+
+def priority_for_popularity(popularity):
+    """Map a damped listen score (>= 0) to a queue priority in 1..100; 0 means no evidence."""
+    if popularity <= 0:
+        return UNSCORED_PRIORITY
+    bucket = min(UNSCORED_PRIORITY - 2, int(round(PRIORITY_SCALE * math.log1p(popularity))))
+    return UNSCORED_PRIORITY - 1 - bucket
+
+
+def listen_popularity(canonical_item_ids):
+    """Listen score per canonical item: the number of distinct listening sessions that played it.
+
+    Counting sessions, not plays, damps one listener's binge (it stays inside a session or two).
+    ``play_count`` is deliberately not read: on the live corpus (~1.4B rows) that forces a heap fetch
+    per row and made the same lookup about 8x slower (read-only measurement on Neptune), while the
+    session count alone is an index-only scan on ``canonical_item_id``. Items without evidence are
+    absent from the result.
+    """
+    ids = list(canonical_item_ids)
+    if not ids:
+        return {}
+    rows = (
+        ListenBrainzSessionTrack.objects.filter(canonical_item_id__in=ids)
+        .order_by()
+        .values('canonical_item_id')
+        .annotate(sessions=Count('id'))
+    )
+    return {row['canonical_item_id']: float(row['sessions']) for row in rows}
+
+
+def rescore_pending_priorities(*, after_id=0, batch_size=2_000):
+    """Re-score one bounded slice of pending/retry items and move the cursor.
+
+    Touches only rows whose priority actually changes, in one short transaction of at most
+    ``batch_size`` rows. It never locks the table, and ``claim_hydration_item`` uses
+    ``SKIP LOCKED`` so it passes over any row this pass is holding. Running, matched and
+    terminal rows are left alone. At the end of a pass the cursor resets to 0.
+    """
+    if batch_size < 1:
+        raise ValueError('batch_size must be greater than zero')
+    rows = list(
+        ProviderHydrationItem.objects.filter(provider='spotify', status__in=['pending', 'retry'], id__gt=after_id)
+        .order_by('id')
+        .values_list('id', 'canonical_item_id', 'priority')[:batch_size]
+    )
+    popularity = listen_popularity({canonical_item_id for _id, canonical_item_id, _priority in rows})
+    changes = {}
+    for item_id, canonical_item_id, current in rows:
+        wanted = priority_for_popularity(popularity.get(canonical_item_id, 0.0))
+        if wanted != current:
+            changes[item_id] = wanted
+    updated = 0
+    if changes:
+        with transaction.atomic():
+            items = list(
+                ProviderHydrationItem.objects.select_for_update(skip_locked=True)
+                .filter(id__in=changes, status__in=['pending', 'retry'])
+                .only('id', 'priority')
+            )
+            for item in items:
+                item.priority = changes[item.id]
+            ProviderHydrationItem.objects.bulk_update(items, ['priority'])
+            updated = len(items)
+    pass_complete = len(rows) < batch_size
+    return PriorityRescoreResult(
+        scanned=len(rows),
+        updated=updated,
+        next_cursor=0 if pass_complete else rows[-1][0],
+        pass_complete=pass_complete,
+    )
+
+
 def seed_spotify_hydration_queue(*, batch_size=10_000, limit=None):
     spotify_on_item = CanonicalItemAlias.objects.filter(
         canonical_item_id=OuterRef('canonical_item_id'),
@@ -504,6 +595,10 @@ def _create_spotify_hydration_items(alias_rows):
             identifier__in=candidates,
         ).values_list('identifier', flat=True)
     )
+    new_candidates = {
+        identifier: values for identifier, values in candidates.items() if identifier not in existing
+    }
+    popularity = listen_popularity({canonical_item_id for canonical_item_id, _version in new_candidates.values()})
     rows = [
         ProviderHydrationItem(
             canonical_item_id=canonical_item_id,
@@ -511,9 +606,9 @@ def _create_spotify_hydration_items(alias_rows):
             identifier_type='isrc',
             identifier=identifier,
             source_version=source_version,
+            priority=priority_for_popularity(popularity.get(canonical_item_id, 0.0)),
         )
-        for identifier, (canonical_item_id, source_version) in candidates.items()
-        if identifier not in existing
+        for identifier, (canonical_item_id, source_version) in new_candidates.items()
     ]
     ProviderHydrationItem.objects.bulk_create(rows, ignore_conflicts=True)
     return len(rows)
