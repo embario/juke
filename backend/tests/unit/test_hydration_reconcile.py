@@ -229,15 +229,51 @@ class SeedingSkipsResolvedItemsTests(TestCase):
     def test_incremental_seeding_skips_them_too(self):
         result = seed_spotify_hydration_queue_incrementally(scan_limit=10)
 
-        self.assertEqual((result.scanned, result.created, result.pass_complete), (2, 2, True))
+        self.assertEqual((result.scanned, result.created, result.pass_complete), (4, 2, True))
         self.assertFalse(ProviderHydrationItem.objects.filter(identifier='USAAA0000001').exists())
+
+    def test_incremental_cursor_crosses_resolved_prefix_and_suffix(self):
+        CanonicalItemAlias.objects.filter(source='isrc').delete()
+        for number in range(1, 6):
+            source = make_item()
+            redirect(source, self.mbid_y)
+            isrc_alias(source, f'USAAA{number:07d}')
+        isrc_alias(self.plain, 'USAAA0000006')
+        source = make_item()
+        redirect(source, self.mbid_y)
+        isrc_alias(source, 'USAAA0000007')
+
+        cursor = ''
+        for expected_cursor, expected_created in (
+            ('USAAA0000002', 0), ('USAAA0000004', 0), ('USAAA0000006', 1),
+        ):
+            result = seed_spotify_hydration_queue_incrementally(after_source_id=cursor, scan_limit=2)
+            self.assertEqual((result.scanned, result.created, result.pass_complete), (2, expected_created, False))
+            self.assertEqual(result.next_cursor, expected_cursor)
+            cursor = result.next_cursor
+        result = seed_spotify_hydration_queue_incrementally(after_source_id=cursor, scan_limit=2)
+        self.assertEqual((result.scanned, result.created, result.pass_complete, result.next_cursor), (1, 0, True, ''))
+        self.assertEqual(list(ProviderHydrationItem.objects.values_list('identifier', flat=True)), ['USAAA0000006'])
 
     def test_seeding_query_plan(self):
         """Prints EXPLAIN for the PR description."""
         from mlcore.services.provider_hydration import _isrc_aliases_needing_spotify
         from django.db import connection
-        queryset = _isrc_aliases_needing_spotify().order_by('source_id').values_list('canonical_item_id', 'source_id')
-        sql, params = queryset.query.sql_with_params()
-        with connection.cursor() as cursor:
-            cursor.execute('EXPLAIN ' + sql, params)
-            print('\nEXPLAIN seeding anti-join (small fixture)\n' + '\n'.join(row[0] for row in cursor.fetchall()))
+        raw = CanonicalItemAlias.objects.filter(
+            source='isrc', resource_type='recording', status='active',
+        ).order_by('source_id').values_list('pk', 'source_id')[:2]
+        scanned = list(raw)
+        bounded = (
+            _isrc_aliases_needing_spotify().filter(pk__in=[pk for pk, _source_id in scanned])
+            .values_list('canonical_item_id', 'source_id', 'source_version')
+        )
+        for name, queryset in (('raw seeding slice', raw), ('bounded seeding anti-join', bounded)):
+            sql, params = queryset.query.sql_with_params()
+            with connection.cursor() as cursor:
+                cursor.execute('EXPLAIN ' + sql, params)
+                plan = '\n'.join(row[0] for row in cursor.fetchall())
+            print(f'\nEXPLAIN {name} (small fixture)\n{plan}')
+            if name == 'raw seeding slice':
+                self.assertIn('Limit', plan)
+                self.assertNotIn('SubPlan', plan)
+        self.assertEqual(list(bounded.values_list('source_id', flat=True)), ['USAAA0000002'])

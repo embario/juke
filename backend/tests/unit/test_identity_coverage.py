@@ -74,13 +74,13 @@ class IdentityCoverageTests(TestCase):
     def test_play_weighted_coverage_follows_redirects_and_counts_final_targets(self):
         coverage = compute_play_weighted_coverage()
 
-        # Resolved plays: a(10)+e(1)->m, b(5), c(3), d(2) = 21; the redirect cycle's 7 plays are reported apart.
-        self.assertEqual(coverage.total_plays, 21)
+        # All 28 plays stay in the denominator; the cycle's 7 plays remain uncovered.
+        self.assertEqual(coverage.total_plays, 28)
         self.assertEqual(coverage.unresolved_plays, 7)
         self.assertEqual(coverage.total_items, 4)  # m, b, c, d (a and e share m)
         self.assertEqual(coverage.covered_plays, {'mbid': 14, 'isrc': 11, 'spotify': 5})
         self.assertEqual(coverage.covered_items, {'mbid': 2, 'isrc': 1, 'spotify': 1})
-        self.assertAlmostEqual(coverage.play_ratio('mbid'), 14 / 21)
+        self.assertAlmostEqual(coverage.play_ratio('mbid'), 14 / 28)
         self.assertAlmostEqual(coverage.item_ratio('spotify'), 1 / 4)
 
     def test_staging_tables_are_dropped(self):
@@ -109,9 +109,9 @@ class IdentityCoverageTests(TestCase):
     def test_metrics_file_is_prometheus_text_and_written_atomically(self):
         coverage = compute_play_weighted_coverage()
         text = render_coverage_metrics(coverage, now=datetime(2026, 10, 17, tzinfo=UTC))
-        self.assertIn('mlcore_identity_play_coverage_ratio{scheme="mbid",sample_percent="100"} 0.66666667', text)
-        self.assertIn('mlcore_identity_play_coverage_ratio{scheme="spotify",sample_percent="100"} 0.23809524', text)
-        self.assertIn('mlcore_identity_coverage_plays{scheme="all",sample_percent="100"} 21', text)
+        self.assertIn('mlcore_identity_play_coverage_ratio{scheme="mbid",sample_percent="100"} 0.50000000', text)
+        self.assertIn('mlcore_identity_play_coverage_ratio{scheme="spotify",sample_percent="100"} 0.17857143', text)
+        self.assertIn('mlcore_identity_coverage_plays{scheme="all",sample_percent="100"} 28', text)
         self.assertIn('mlcore_identity_coverage_plays{scheme="unresolved_redirect_depth",sample_percent="100"} 7', text)
         self.assertIn('mlcore_identity_coverage_last_success_timestamp_seconds 1792195200', text)
         with tempfile.TemporaryDirectory() as directory:
@@ -125,8 +125,8 @@ class IdentityCoverageTests(TestCase):
             stdout, stderr = io.StringIO(), io.StringIO()
             call_command('export_identity_coverage_metrics', '--metrics-path', str(target), '--json', stdout=stdout, stderr=stderr)
             payload = json.loads(stdout.getvalue())
-            self.assertEqual(payload['total_plays'], 21)
-            self.assertEqual(payload['play_coverage']['mbid'], round(14 / 21, 6))
+            self.assertEqual(payload['total_plays'], 28)
+            self.assertEqual(payload['play_coverage']['mbid'], round(14 / 28, 6))
             self.assertIn('mlcore_identity_play_coverage_ratio', target.read_text())
             self.assertIn('event=coverage', stderr.getvalue())
 

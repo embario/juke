@@ -98,7 +98,7 @@ FLAGS_APPLY_SQL = f'''
 
 TOTALS_SQL = f'''
     SELECT
-        COALESCE(SUM(plays) FILTER (WHERE resolved), 0),
+        COALESCE(SUM(plays), 0),
         COUNT(*) FILTER (WHERE resolved),
         COALESCE(SUM(plays) FILTER (WHERE NOT resolved), 0),
         COALESCE(SUM(plays) FILTER (WHERE resolved AND is_mbid), 0),

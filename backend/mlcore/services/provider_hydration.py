@@ -555,18 +555,27 @@ def seed_spotify_hydration_queue_incrementally(*, after_source_id='', scan_limit
     """
     if scan_limit < 1:
         raise ValueError('scan_limit must be greater than zero')
-    aliases = list(
-        _isrc_aliases_needing_spotify()
-        .filter(source_id__gt=after_source_id)
+    # Materialize the raw slice before any redirect/Spotify checks. Filtering first
+    # makes LIMIT bound eligible output instead of work, scanning an arbitrarily
+    # long resolved suffix and losing cursor progress when nothing needs hydration.
+    scanned = list(
+        CanonicalItemAlias.objects.filter(
+            source='isrc', resource_type='recording', status='active', source_id__gt=after_source_id,
+        )
         .order_by('source_id')
-        .values_list('canonical_item_id', 'source_id', 'source_version')[:scan_limit]
+        .values_list('pk', 'source_id')[:scan_limit]
+    )
+    aliases = (
+        _isrc_aliases_needing_spotify()
+        .filter(pk__in=[pk for pk, _source_id in scanned])
+        .values_list('canonical_item_id', 'source_id', 'source_version')
     )
     created = _create_spotify_hydration_items(aliases)
-    pass_complete = len(aliases) < scan_limit
+    pass_complete = len(scanned) < scan_limit
     return IncrementalSeedResult(
-        scanned=len(aliases),
+        scanned=len(scanned),
         created=created,
-        next_cursor='' if pass_complete else aliases[-1][1],
+        next_cursor='' if pass_complete else scanned[-1][1],
         pass_complete=pass_complete,
     )
 
