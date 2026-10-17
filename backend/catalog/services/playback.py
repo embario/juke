@@ -74,6 +74,11 @@ class PlaybackProvider(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def queue(self, *, track_uri: str, device_id: Optional[str]) -> None:
+        """Append a track to the user's playback queue without interrupting the current song."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def state(self) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
 
@@ -151,6 +156,16 @@ class PlaybackService:
     def seek(self, *, position_ms: int, device_id: Optional[str]) -> Optional[Dict[str, Any]]:
         self.provider.seek(position_ms=position_ms, device_id=device_id)
         return self.provider.state()
+
+    def queue(self, *, track_uri: str, device_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        self.provider.queue(track_uri=track_uri, device_id=device_id)
+        try:
+            return self.provider.state()
+        except PlaybackError:
+            # The command already succeeded. A failed read must not invite a
+            # retry that inserts the same track into the provider queue again.
+            logger.warning('Playback state unavailable after successful queue insertion')
+            return None
 
     def state(self) -> Optional[Dict[str, Any]]:
         return self.provider.state()
@@ -257,15 +272,24 @@ class SpotifyPlaybackProvider(PlaybackProvider):
             kwargs['device_id'] = device_id
         self._execute(lambda client: client.seek_track(**kwargs))
 
+    def queue(self, *, track_uri: str, device_id: Optional[str]) -> None:
+        kwargs = {'device_id': device_id} if device_id else {}
+        self._execute(lambda client: client.add_to_queue(track_uri, **kwargs))
+
     def state(self) -> Optional[Dict[str, Any]]:
-        playback = self._execute(lambda client: client.current_playback())
+        # additional_types opts into episodes; Spotify defaults to tracks only.
+        playback = self._execute(lambda client: client.current_playback(additional_types='track,episode'))
         if not playback:
             return None
         track = playback.get('item')
+        if playback.get('currently_playing_type') in ('episode', 'ad'):
+            track = None  # episodes/ads are not catalog tracks
         device = playback.get('device')
         normalized: Dict[str, Any] = {
             'provider': self.slug,
             'is_playing': bool(playback.get('is_playing')),
+            # Spotify reports 'track', 'episode', 'ad' or 'unknown'; clients use it to avoid treating podcasts as songs.
+            'currently_playing_type': playback.get('currently_playing_type') or 'track',
             'progress_ms': playback.get('progress_ms') or 0,
             'updated_at': timezone.now().isoformat(),
             'track': self._normalize_track(track),

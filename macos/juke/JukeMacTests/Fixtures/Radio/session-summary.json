@@ -1,0 +1,8 @@
+{
+  "startedAt": "2026-10-01T18:04:05Z",
+  "songCount": 2,
+  "reactions": ["🌙", "late drive"],
+  "tracks": [
+    {"spotifyId": "0aWMVrwxPNYkKmFthzmpRi", "uri": "spotify:track:0aWMVrwxPNYkKmFthzmpRi", "title": "Blue in Green", "artist": "Miles Davis", "artistId": "0kbYTNQb4Pb1rPbbaF0pT4", "album": "Kind of Blue", "albumId": "1weenld61qoidwYuZ1GESA", "artworkUrl": "https://i.scdn.co/image/kob", "durationMs": 337000}
+  ]
+}

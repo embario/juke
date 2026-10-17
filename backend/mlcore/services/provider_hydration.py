@@ -1,4 +1,5 @@
 import base64
+import math
 import random
 import socket
 import time
@@ -9,10 +10,17 @@ from pathlib import Path
 import requests
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Count, Exists, F, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from mlcore.models import CanonicalItemAlias, ProviderHydrationItem, ProviderHydrationRun
+from mlcore.models import (
+    CanonicalItemAlias,
+    CanonicalItemRedirect,
+    ListenBrainzSessionTrack,
+    ProviderHydrationItem,
+    ProviderHydrationRun,
+)
 
 
 SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token'
@@ -57,6 +65,14 @@ class IncrementalSeedResult:
     scanned: int
     created: int
     next_cursor: str
+    pass_complete: bool
+
+
+@dataclass(frozen=True)
+class PriorityRescoreResult:
+    scanned: int
+    updated: int
+    next_cursor: int
     pass_complete: bool
 
 
@@ -155,9 +171,10 @@ class SpotifyClient:
 class RequestPacer:
     """Single-worker global pacing with additive recovery and multiplicative decrease."""
 
-    def __init__(self, rps, *, sleep=time.sleep, monotonic=time.monotonic, jitter=random.uniform):
+    def __init__(self, rps, *, sleep=time.sleep, monotonic=time.monotonic, jitter=random.uniform, recover=True):
         if rps <= 0:
             raise ValueError('rps must be greater than zero')
+        self.recover = recover
         self.configured_rps = float(rps)
         self.current_rps = float(rps)
         self.sleep = sleep
@@ -174,15 +191,139 @@ class RequestPacer:
 
     def success(self):
         self._successes_since_limit += 1
-        if self._successes_since_limit >= 300 and self.current_rps < self.configured_rps:
+        if self.recover and self._successes_since_limit >= 300 and self.current_rps < self.configured_rps:
             self.current_rps = min(self.configured_rps, self.current_rps + 0.1)
             self._successes_since_limit = 0
+
+    def set_rate(self, rps):
+        """Adopt a rate chosen by ``AdaptiveRateController``; the next gap uses it."""
+        self.current_rps = max(0.001, float(rps))
 
     def rate_limited(self, retry_after):
         self.current_rps = max(0.001, self.current_rps / 2.0)
         self._successes_since_limit = 0
         delay = max(1.0, float(retry_after or 30)) + self.jitter(0.25, 1.25)
         self._next_request_at = self.monotonic() + delay
+
+
+class AdaptiveRateController:
+    """Learns a safe sustained request rate for the dedicated hydration app.
+
+    Additive increase after a quiet period without 429/5xx, multiplicative decrease on a 429 or a
+    streak of 5xx. The learned rate is kept in run metadata so a restart resumes from it. It only
+    ramps when an operator sets ``SPOTIFY_HYDRATION_MAX_RPS``; otherwise ``adaptive`` is False and the
+    rate stays whatever ``RequestPacer`` does today. The budget cap stays the hard ceiling.
+    """
+
+    metadata_key = 'spotify_hydration_rate'
+
+    def __init__(
+        self,
+        *,
+        floor_rps,
+        ceiling_rps,
+        start_rps,
+        adaptive,
+        step_rps=0.01,
+        ramp_interval_seconds=600.0,
+        decrease_factor=0.5,
+        server_error_streak=5,
+        server_error_decrease_factor=0.75,
+        now=time.time,
+    ):
+        self.adaptive = bool(adaptive)
+        self.ceiling_rps = max(0.001, float(ceiling_rps))
+        self.floor_rps = min(max(0.001, float(floor_rps)), self.ceiling_rps)
+        self.start_rps = min(max(float(start_rps), self.floor_rps), self.ceiling_rps)
+        self.step_rps = max(0.0, float(step_rps))
+        self.ramp_interval_seconds = max(1.0, float(ramp_interval_seconds))
+        self.decrease_factor = min(max(float(decrease_factor), 0.05), 1.0)
+        self.server_error_streak = max(1, int(server_error_streak))
+        self.server_error_decrease_factor = min(max(float(server_error_decrease_factor), 0.05), 1.0)
+        self.now = now
+
+    @classmethod
+    def from_settings(cls, quota_guard, requested_rps, *, now=time.time):
+        today = quota_guard.effective_rps(requested_rps)
+        max_rps = float(settings.SPOTIFY_HYDRATION_MAX_RPS)
+        adaptive = max_rps > 0
+        ceiling = today
+        if adaptive:
+            ceiling = min(max_rps, quota_guard.request_budget / quota_guard.window_seconds) \
+                if quota_guard.request_budget > 0 else max_rps
+        return cls(
+            floor_rps=settings.SPOTIFY_HYDRATION_MIN_RPS or 0.001,
+            ceiling_rps=ceiling,
+            start_rps=today,
+            adaptive=adaptive,
+            step_rps=settings.SPOTIFY_HYDRATION_RAMP_STEP_RPS,
+            ramp_interval_seconds=settings.SPOTIFY_HYDRATION_RAMP_INTERVAL_SECONDS,
+            server_error_streak=settings.SPOTIFY_HYDRATION_SERVER_ERROR_STREAK,
+            now=now,
+        )
+
+    def initial_state(self, previous_metadata=None):
+        previous = (previous_metadata or {}).get(self.metadata_key) or {}
+        learned = _safe_float(previous.get('learned_rps'), self.start_rps) if self.adaptive else self.start_rps
+        now = self.now()
+        return {
+            'learned_rps': min(max(learned, self.floor_rps), self.ceiling_rps),
+            'floor_rps': self.floor_rps,
+            'ceiling_rps': self.ceiling_rps,
+            'adaptive': self.adaptive,
+            'last_change_at': now,
+            'consecutive_server_errors': 0,
+            'rate_limited_total': 0,
+            'server_error_total': 0,
+        }
+
+    def rps(self, run):
+        return self._state(run)['learned_rps']
+
+    def success(self, run):
+        state = self._state(run)
+        state['consecutive_server_errors'] = 0
+        if not self.adaptive or state['learned_rps'] >= self.ceiling_rps:
+            return False
+        now = self.now()
+        if now - state['last_change_at'] < self.ramp_interval_seconds:
+            return False
+        state['learned_rps'] = min(self.ceiling_rps, state['learned_rps'] + self.step_rps)
+        state['last_change_at'] = now
+        self._persist(run, state)
+        return True
+
+    def rate_limited(self, run):
+        state = self._state(run)
+        state['rate_limited_total'] += 1
+        state['consecutive_server_errors'] = 0
+        self._decrease(state, self.decrease_factor)
+        self._persist(run, state)
+
+    def server_error(self, run):
+        state = self._state(run)
+        state['server_error_total'] += 1
+        state['consecutive_server_errors'] += 1
+        if state['consecutive_server_errors'] >= self.server_error_streak:
+            state['consecutive_server_errors'] = 0
+            self._decrease(state, self.server_error_decrease_factor)
+        self._persist(run, state)
+
+    def _decrease(self, state, factor):
+        if self.adaptive:
+            state['learned_rps'] = max(self.floor_rps, state['learned_rps'] * factor)
+        state['last_change_at'] = self.now()
+
+    def _state(self, run):
+        state = run.metadata.get(self.metadata_key)
+        if state is None:
+            state = self.initial_state()
+            run.metadata = {**run.metadata, self.metadata_key: state}
+        return state
+
+    def _persist(self, run, state):
+        run.metadata = {**run.metadata, self.metadata_key: state}
+        run.save(update_fields=['metadata', 'updated_at'])
 
 
 class SpotifyHydrationQuotaGuard:
@@ -204,7 +345,7 @@ class SpotifyHydrationQuotaGuard:
         now = self.now()
         previous = (previous_metadata or {}).get(self.metadata_key) or {}
         window_started_at = _safe_float(previous.get('window_started_at'), now)
-        used = max(0, _safe_int(previous.get('requests_used'), 0))
+        used = max(0.0, _safe_float(previous.get('requests_used'), 0.0))
         if now >= window_started_at + self.window_seconds:
             window_started_at = now
             used = 0
@@ -238,6 +379,12 @@ class SpotifyHydrationQuotaGuard:
         state['requests_used'] += 1
         self._persist(run, state)
 
+    def refund_request(self, run, *, charged_weight):
+        """Give back the unused part of a request's charge (provider 5xx are charged at a reduced weight)."""
+        state = self._state(run)
+        state['requests_used'] = max(0.0, state['requests_used'] - max(0.0, 1.0 - float(charged_weight)))
+        self._persist(run, state)
+
     def rate_limited(self, run, *, retry_after, reason=''):
         state = self._state(run)
         state['cooldown_until'] = max(
@@ -259,17 +406,128 @@ class SpotifyHydrationQuotaGuard:
         run.save(update_fields=['metadata', 'updated_at'])
 
 
-def seed_spotify_hydration_queue(*, batch_size=10_000, limit=None):
-    spotify_on_item = CanonicalItemAlias.objects.filter(
-        canonical_item_id=OuterRef('canonical_item_id'),
-        source='spotify',
-        resource_type='track',
-        status='active',
+# Queue order is ``ORDER BY priority, id`` (lower claims first). Unscored items keep the model default of 100;
+# items with listen evidence are placed in 1..99 so they always claim first, most-listened lowest.
+UNSCORED_PRIORITY = 100
+PRIORITY_SCALE = 12.0
+
+
+def priority_for_popularity(popularity):
+    """Map a damped listen score (>= 0) to a queue priority in 1..100; 0 means no evidence."""
+    if popularity <= 0:
+        return UNSCORED_PRIORITY
+    bucket = min(UNSCORED_PRIORITY - 2, int(round(PRIORITY_SCALE * math.log1p(popularity))))
+    return UNSCORED_PRIORITY - 1 - bucket
+
+
+def listen_popularity(canonical_item_ids):
+    """Listen score per canonical item: the number of distinct listening sessions that played it.
+
+    Counting sessions, not plays, damps one listener's binge (it stays inside a session or two).
+    ``play_count`` is deliberately not read: on the live corpus (~1.4B rows) that forces a heap fetch
+    per row and made the same lookup about 8x slower (read-only measurement on Neptune), while the
+    session count alone is an index-only scan on ``canonical_item_id``. Items without evidence are
+    absent from the result.
+    """
+    ids = list(canonical_item_ids)
+    if not ids:
+        return {}
+    rows = (
+        ListenBrainzSessionTrack.objects.filter(canonical_item_id__in=ids)
+        .order_by()
+        .values('canonical_item_id')
+        .annotate(sessions=Count('id'))
     )
-    queryset = (
+    return {row['canonical_item_id']: float(row['sessions']) for row in rows}
+
+
+def rescore_pending_priorities(*, after_id=0, batch_size=2_000, boosts=None):
+    """Re-score one bounded slice of pending/retry items and move the cursor.
+
+    Touches only rows whose priority actually changes, in one short transaction of at most
+    ``batch_size`` rows. It never locks the table, and ``claim_hydration_item`` uses
+    ``SKIP LOCKED`` so it passes over any row this pass is holding. Running, matched and
+    terminal rows are left alone. At the end of a pass the cursor resets to 0. ``boosts`` maps
+    canonical item ids to a fixed priority (items users reference, see ``hydration_boosts``) that
+    replaces the listen-score priority, so a re-score never undoes a boost. A row already in 1..99
+    (listen-scored, or moved up by a wave, see ``hydration_waves``) is only ever improved here.
+    """
+    if batch_size < 1:
+        raise ValueError('batch_size must be greater than zero')
+    rows = list(
+        ProviderHydrationItem.objects.filter(provider='spotify', status__in=['pending', 'retry'], id__gt=after_id)
+        .order_by('id')
+        .values_list('id', 'canonical_item_id', 'priority')[:batch_size]
+    )
+    popularity = listen_popularity({canonical_item_id for _id, canonical_item_id, _priority in rows})
+    changes = {}
+    for item_id, canonical_item_id, current in rows:
+        wanted = (boosts or {}).get(canonical_item_id)
+        if wanted is None:
+            wanted = priority_for_popularity(popularity.get(canonical_item_id, 0.0))
+        if 1 <= current < UNSCORED_PRIORITY:
+            wanted = min(wanted, current)  # scores and wave moves only ever improve a scored row
+        if wanted != current:
+            changes[item_id] = wanted
+    updated = 0
+    if changes:
+        with transaction.atomic():
+            items = list(
+                ProviderHydrationItem.objects.select_for_update(skip_locked=True)
+                .filter(id__in=changes, status__in=['pending', 'retry'])
+                .only('id', 'priority')
+            )
+            for item in items:
+                item.priority = changes[item.id]
+            ProviderHydrationItem.objects.bulk_update(items, ['priority'])
+            updated = len(items)
+    pass_complete = len(rows) < batch_size
+    return PriorityRescoreResult(
+        scanned=len(rows),
+        updated=updated,
+        next_cursor=0 if pass_complete else rows[-1][0],
+        pass_complete=pass_complete,
+    )
+
+
+def _spotify_alias_on(item_reference):
+    return Exists(
+        CanonicalItemAlias.objects.filter(
+            canonical_item_id=OuterRef(item_reference),
+            source='spotify',
+            resource_type='track',
+            status='active',
+        )
+    )
+
+
+def _isrc_aliases_needing_spotify():
+    """Active ISRC aliases whose item, and the item it redirects to, have no Spotify alias.
+
+    An ISRC owned by an item that redirects to a target which already has a Spotify ID would only
+    spend API budget to rediscover it. Redirects are written flat (one hop to the final target, see
+    ``redirect_writes``), so one hop is enough here and costs one primary-key probe per scanned alias;
+    ``reconcile_hydration_aliases`` follows longer legacy chains set-based and marks the queue.
+    """
+    final_item = Coalesce(
+        Subquery(
+            CanonicalItemRedirect.objects.filter(
+                from_canonical_item_id=OuterRef('canonical_item_id'), status='active',
+            ).values('to_canonical_item_id')[:1]
+        ),
+        F('canonical_item_id'),
+    )
+    return (
         CanonicalItemAlias.objects.filter(source='isrc', resource_type='recording', status='active')
-        .annotate(has_spotify=Exists(spotify_on_item))
-        .filter(has_spotify=False)
+        .annotate(final_item_id=final_item)
+        .annotate(has_spotify=_spotify_alias_on('canonical_item_id'), final_has_spotify=_spotify_alias_on('final_item_id'))
+        .filter(has_spotify=False, final_has_spotify=False)
+    )
+
+
+def seed_spotify_hydration_queue(*, batch_size=10_000, limit=None):
+    queryset = (
+        _isrc_aliases_needing_spotify()
         .order_by('source_id')
         .values_list('canonical_item_id', 'source_id', 'source_version')
     )
@@ -297,30 +555,27 @@ def seed_spotify_hydration_queue_incrementally(*, after_source_id='', scan_limit
     """
     if scan_limit < 1:
         raise ValueError('scan_limit must be greater than zero')
-    spotify_on_item = CanonicalItemAlias.objects.filter(
-        canonical_item_id=OuterRef('canonical_item_id'),
-        source='spotify',
-        resource_type='track',
-        status='active',
-    )
-    aliases = list(
+    # Materialize the raw slice before any redirect/Spotify checks. Filtering first
+    # makes LIMIT bound eligible output instead of work, scanning an arbitrarily
+    # long resolved suffix and losing cursor progress when nothing needs hydration.
+    scanned = list(
         CanonicalItemAlias.objects.filter(
-            source='isrc',
-            resource_type='recording',
-            status='active',
-            source_id__gt=after_source_id,
+            source='isrc', resource_type='recording', status='active', source_id__gt=after_source_id,
         )
-        .annotate(has_spotify=Exists(spotify_on_item))
-        .filter(has_spotify=False)
         .order_by('source_id')
-        .values_list('canonical_item_id', 'source_id', 'source_version')[:scan_limit]
+        .values_list('pk', 'source_id')[:scan_limit]
+    )
+    aliases = (
+        _isrc_aliases_needing_spotify()
+        .filter(pk__in=[pk for pk, _source_id in scanned])
+        .values_list('canonical_item_id', 'source_id', 'source_version')
     )
     created = _create_spotify_hydration_items(aliases)
-    pass_complete = len(aliases) < scan_limit
+    pass_complete = len(scanned) < scan_limit
     return IncrementalSeedResult(
-        scanned=len(aliases),
+        scanned=len(scanned),
         created=created,
-        next_cursor='' if pass_complete else aliases[-1][1],
+        next_cursor='' if pass_complete else scanned[-1][1],
         pass_complete=pass_complete,
     )
 
@@ -373,6 +628,10 @@ def _create_spotify_hydration_items(alias_rows):
             identifier__in=candidates,
         ).values_list('identifier', flat=True)
     )
+    new_candidates = {
+        identifier: values for identifier, values in candidates.items() if identifier not in existing
+    }
+    popularity = listen_popularity({canonical_item_id for canonical_item_id, _version in new_candidates.values()})
     rows = [
         ProviderHydrationItem(
             canonical_item_id=canonical_item_id,
@@ -380,25 +639,38 @@ def _create_spotify_hydration_items(alias_rows):
             identifier_type='isrc',
             identifier=identifier,
             source_version=source_version,
+            priority=priority_for_popularity(popularity.get(canonical_item_id, 0.0)),
         )
-        for identifier, (canonical_item_id, source_version) in candidates.items()
-        if identifier not in existing
+        for identifier, (canonical_item_id, source_version) in new_candidates.items()
     ]
     ProviderHydrationItem.objects.bulk_create(rows, ignore_conflicts=True)
     return len(rows)
 
 
-def claim_hydration_item(*, run, worker_id, lease_seconds=120):
+def claim_hydration_item(*, run, worker_id, lease_seconds=120, tail_sweep=False):
+    """Lease the next item. ``tail_sweep`` takes the oldest unscored item instead of the best one, so
+    the long tail is hydrated at a steady trickle while popular items keep claiming first."""
+    if tail_sweep:
+        item = _claim(run, worker_id, lease_seconds, tail_only=True)
+        if item is not None:
+            return item
+    return _claim(run, worker_id, lease_seconds)
+
+
+def _claim(run, worker_id, lease_seconds, *, tail_only=False):
     now = timezone.now()
     with transaction.atomic():
-        item = (
+        queryset = (
             ProviderHydrationItem.objects.select_for_update(skip_locked=True)
             .filter(provider=run.provider)
             .filter(Q(status__in=['pending', 'retry']) | Q(status='running', lease_expires_at__lt=now))
             .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
-            .order_by('priority', 'id')
-            .first()
         )
+        if tail_only:
+            queryset = queryset.filter(priority__gte=UNSCORED_PRIORITY).order_by('id')
+        else:
+            queryset = queryset.order_by('priority', 'id')
+        item = queryset.first()
         if item is None:
             return None
         item.status = 'running'
@@ -514,6 +786,16 @@ def write_hydration_metrics(run, *, path, backlog=None):
         f'mlcore_provider_hydration_rate_limited_total{{{labels}}} {run.rate_limited_count}',
         f'mlcore_provider_hydration_throughput_per_second{{{labels}}} {throughput:.8f}',
         f'mlcore_provider_hydration_eta_seconds{{{labels}}} {eta:.3f}',
+    ]
+    rate = run.metadata.get(AdaptiveRateController.metadata_key) or {}
+    quota = run.metadata.get(SpotifyHydrationQuotaGuard.metadata_key) or {}
+    lines += [
+        f'mlcore_provider_hydration_learned_rps{{{labels}}} {_safe_float(rate.get("learned_rps"), 0.0):.6f}',
+        f'mlcore_provider_hydration_rate_ceiling_rps{{{labels}}} {_safe_float(rate.get("ceiling_rps"), 0.0):.6f}',
+        f'mlcore_provider_hydration_adaptive{{{labels}}} {int(bool(rate.get("adaptive")))}',
+        f'mlcore_provider_hydration_server_error_total{{{labels}}} {_safe_int(rate.get("server_error_total"), 0)}',
+        f'mlcore_provider_hydration_budget_used{{{labels}}} {_safe_float(quota.get("requests_used"), 0.0):.3f}',
+        f'mlcore_provider_hydration_budget_limit{{{labels}}} {_safe_int(quota.get("request_budget"), 0)}',
     ]
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

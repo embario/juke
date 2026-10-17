@@ -1,0 +1,96 @@
+import SwiftUI
+
+struct SettingsView: View {
+    @Environment(VibeAppModel.self) private var model
+    @State private var serverText = ""
+    @State private var serverError: String?
+    @State private var loaded = false
+    @AppStorage("juke.settings.appearance") private var appearanceRaw = AppearanceChoice.system.rawValue
+    @AppStorage(JukeRecognitionSetting.key) private var recognizeMusic = true
+    @AppStorage("vibe.chatTextSize") private var chatTextSize = 17.0
+    @AppStorage("juke.settings.crateFlipDirection") private var flipRaw = CrateFlipDirection.sideToSide.rawValue
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("https://neptune.tail647b75.ts.net", text: $serverText)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                    .onSubmit(saveServer)
+                if let serverError { Text(serverError).font(.caption).foregroundStyle(.red) }
+                HStack {
+                    Button("Use default") { serverText = ""; saveServer() }
+                    Spacer()
+                    Button("Save", action: saveServer)
+                }
+            } header: { Text("Juke server") } footer: {
+                Text("HTTPS is required (plain HTTP only for localhost). Changing the server signs you out, because a sign-in belongs to the server that issued it.")
+            }
+            Section("Appearance") {
+                Picker("Appearance", selection: $appearanceRaw) {
+                    ForEach(AppearanceChoice.allCases) { Label($0.label, systemImage: $0.symbol).tag($0.rawValue) }
+                }.pickerStyle(.segmented)
+            }
+            Section("Library") {
+                Picker("Crate flips", selection: $flipRaw) {
+                    ForEach(CrateFlipDirection.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+            }
+            Section("Visual atmosphere") {
+                Toggle("Respond to the music", isOn: Bindable(model.atmosphere).enabled)
+                Text("Current artwork shapes the colors. Motion follows your Accessibility settings.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Music detection") {
+                Toggle("Recognize music while Juke is open", isOn: $recognizeMusic)
+                    .onChange(of: recognizeMusic) { _, _ in model.recognition.reevaluate() }
+                LabeledContent("Radio", value: "Spotify through Juke")
+                LabeledContent("Apple Music", value: "On while active")
+                Toggle("Identify Around Me", isOn: Binding(get: { model.nowPlaying.isListeningAroundMe }, set: { enabled in Task { await model.nowPlaying.setAroundMe(enabled) } }))
+                Text("iOS does not expose a universal queue or another app's raw audio. Juke reads Apple Music's current item, checks linked Spotify playback through Juke, and uses the microphone only when you enable Around Me.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Privacy lock") {
+                Picker("Lock after", selection: Bindable(model.lock).lockAfterMinutes) {
+                    Text("Immediately").tag(0); Text("1 minute").tag(1); Text("5 minutes").tag(5); Text("15 minutes").tag(15)
+                }
+                Button("Lock now") { model.lock.lockNow() }
+                Text("Face ID or your passcode is asked when you come back after this long away, and on a fresh launch.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Chat") {
+                HStack {
+                    Text("Text size")
+                    Slider(value: $chatTextSize, in: 14...22, step: 1)
+                    Text("\(Int(chatTextSize)) pt").monospacedDigit().foregroundStyle(.secondary).frame(width: 46, alignment: .trailing)
+                }
+            }
+            Section("Conversation privacy") {
+                Label("Encrypted before local storage", systemImage: "lock.shield")
+                Text("Past chat stays private on your devices. A cloud model receives only text you deliberately submit for that reply.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                if let account = model.session?.account { LabeledContent("Signed in as", value: account.displayName) }
+                Button("Log out", role: .destructive) { model.logout() }
+            }
+        }
+        .scrollContentBackground(.hidden).background(VibeBackground(atmosphere: model.atmosphere)).navigationTitle("Settings")
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true
+            serverText = UserDefaults.standard.string(forKey: JukeServer.backendURLKey) ?? ""
+        }
+    }
+
+    private func saveServer() {
+        let text = serverText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let previous = JukeServer.baseURL()
+        if text.isEmpty {
+            UserDefaults.standard.removeObject(forKey: JukeServer.backendURLKey)
+            serverError = nil
+        } else if let url = JukeServer.normalizedBaseURL(text) {
+            UserDefaults.standard.set(url.absoluteString, forKey: JukeServer.backendURLKey)
+            serverText = url.absoluteString; serverError = nil
+        } else {
+            serverError = "Enter an https:// address (http only for localhost)."
+            return
+        }
+        if JukeServer.baseURL() != previous { model.backendChanged() }
+    }
+}

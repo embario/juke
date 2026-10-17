@@ -14,10 +14,10 @@ if not ENGINE_BASE_URL:
 DEFAULT_TIMEOUT = int(getattr(settings, 'RECOMMENDER_ENGINE_TIMEOUT', 15))
 
 
-def _request(path: str, payload: Dict[str, Any], *, request_id: str | None = None) -> Dict[str, Any]:
+def _request(path: str, payload: Dict[str, Any], *, request_id: str | None = None, timeout: float | None = None) -> Dict[str, Any]:
     url = f"{ENGINE_BASE_URL.rstrip('/')}{path}"
     logger.debug('Recommender engine request %s payload=%s', url, payload)
-    kwargs = {'json': payload, 'timeout': DEFAULT_TIMEOUT}
+    kwargs = {'json': payload, 'timeout': timeout or DEFAULT_TIMEOUT}
     if request_id:
         kwargs['headers'] = {'X-Request-ID': request_id}
     response = requests.post(url, **kwargs)
@@ -37,14 +37,19 @@ def resolve_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     return _request('/resolve', {'items': items})
 
 
-def fetch_identity_recommendations(ranker: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Call an MLCore ranker using external music identity seeds."""
+def fetch_identity_recommendations(ranker: str, payload: Dict[str, Any], *, timeout: float | None = None) -> Dict[str, Any]:
+    """Call an MLCore ranker using external music identity seeds.
+
+    ``timeout`` overrides ``RECOMMENDER_ENGINE_TIMEOUT`` for latency-sensitive callers (radio).
+    """
     if ranker not in {'metadata', 'cooccurrence'}:
         raise ValueError(f"Unsupported MLCore ranker: {ranker}")
+    extra = {'timeout': timeout} if timeout else {}
     return _request(
         f'/engine/recommend/{ranker}/identity',
         payload,
         request_id=str(payload.get('request_id') or ''),
+        **extra,
     )
 
 

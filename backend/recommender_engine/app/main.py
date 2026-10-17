@@ -23,6 +23,10 @@ MODEL_VERSION = os.environ.get('RECOMMENDER_MODEL_VERSION', 'v1.0.0')
 VECTOR_DIM = int(os.environ.get('RECOMMENDER_VECTOR_DIM', '32'))
 DB_POOL_MIN = int(os.environ.get('RECOMMENDER_DB_POOL_MIN', '1'))
 DB_POOL_MAX = int(os.environ.get('RECOMMENDER_DB_POOL_MAX', '10'))
+# Server-side cap on any single engine query. Clients (e.g. radio) give up after a few seconds;
+# without this, an expensive multi-seed query keeps running on the shared database after they leave.
+# 0 disables the cap.
+DB_STATEMENT_TIMEOUT_MS = int(os.environ.get('RECOMMENDER_DB_STATEMENT_TIMEOUT_MS', '30000'))
 DEFAULT_LIMIT = int(os.environ.get('JUKE_RECOMMENDER_DEFAULT_LIMIT', '10'))
 MLCORE_API_VERSION = os.environ.get('MLCORE_API_VERSION', 'v1')
 TRAINING_VERSION_FALLBACK = os.environ.get('MLCORE_TRAINING_VERSION', 'unversioned')
@@ -52,10 +56,17 @@ def _database_conninfo() -> str:
     return f"dbname={name} user={user} password={password} host={host} port={port}"
 
 
+def _connection_kwargs() -> Dict[str, Any]:
+    if DB_STATEMENT_TIMEOUT_MS <= 0:
+        return {}
+    return {'options': f'-c statement_timeout={DB_STATEMENT_TIMEOUT_MS}'}
+
+
 DB_POOL = ConnectionPool(
     conninfo=_database_conninfo(),
     min_size=DB_POOL_MIN,
     max_size=DB_POOL_MAX,
+    kwargs=_connection_kwargs(),
     open=False,
 )
 
@@ -467,13 +478,23 @@ _COOCCURRENCE_SQL = """
     WITH RECURSIVE requested_seed(id) AS (
         SELECT unnest(%s::uuid[])
     ),
+    redirect_chain(id, path, depth) AS (
+        SELECT id, ARRAY[id]::uuid[], 0
+        FROM requested_seed
+        UNION ALL
+        SELECT
+            redirect.from_canonical_item_id,
+            chain.path || redirect.from_canonical_item_id,
+            chain.depth + 1
+        FROM redirect_chain chain
+        JOIN mlcore_canonical_item_redirect redirect
+          ON redirect.to_canonical_item_id = chain.id
+         AND redirect.status = 'active'
+        WHERE chain.depth < 8
+          AND NOT redirect.from_canonical_item_id = ANY(chain.path)
+    ),
     model_seed(id) AS (
-        SELECT id FROM requested_seed
-        UNION
-        SELECT redirect.from_canonical_item_id
-        FROM mlcore_canonical_item_redirect redirect
-        JOIN requested_seed ON requested_seed.id = redirect.to_canonical_item_id
-        WHERE redirect.status = 'active'
+        SELECT DISTINCT id FROM redirect_chain
     ),
     pairs AS (
         SELECT item_b_juke_id AS neighbour, pmi_score, co_count

@@ -33,20 +33,21 @@ global:
       key_password_env_var: ANDROID_KEY_PASSWORD
 
 projects:
-  jukevibe:
+  jukeapp:
+    # Formerly "Juke Vibe" (com.juke.vibe). Distinct from the older `juke` project below.
     shared:
-      display_name: Juke Vibe
-      session_key_prefix: jukevibe
+      display_name: Juke
+      session_key_prefix: jukeapp
 
     ios:
-      xcodeproj: mobile/ios/jukevibe/JukeVibe.xcodeproj
-      scheme: JukeVibe
-      target_name: JukeVibe
-      bundle_id: com.juke.vibe
-      test_bundle_id: com.juke.vibe.tests
-      ui_test_bundle_id: com.juke.vibe.uitests
+      xcodeproj: mobile/ios/jukeapp/JukeApp.xcodeproj
+      scheme: JukeApp
+      target_name: JukeApp
+      bundle_id: com.juke.app
+      test_bundle_id: com.juke.app.tests
+      ui_test_bundle_id: com.juke.app.uitests
       url_schemes:
-        - juke-vibe
+        - juke-app
       universal_link_hosts: []
 
   juke:

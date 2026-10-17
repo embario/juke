@@ -1,0 +1,7 @@
+{
+  "items": [
+    {"id": "t1", "kind": "track", "spotifyId": "0aWMVrwxPNYkKmFthzmpRi", "title": "Blue in Green", "subtitle": "Miles Davis", "artworkUrl": "https://i.scdn.co/image/kob",
+     "track": {"spotifyId": "0aWMVrwxPNYkKmFthzmpRi", "uri": "spotify:track:0aWMVrwxPNYkKmFthzmpRi", "title": "Blue in Green", "artist": "Miles Davis", "artistId": null, "album": "Kind of Blue", "albumId": null, "artworkUrl": "https://i.scdn.co/image/kob", "durationMs": 337000}},
+    {"id": 44, "kind": "artists", "spotifyId": "0kbYTNQb4Pb1rPbbaF0pT4", "title": "Miles Davis", "subtitle": "Artist", "artworkUrl": null}
+  ]
+}

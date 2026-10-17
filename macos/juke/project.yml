@@ -1,0 +1,79 @@
+name: JukeMac
+options:
+  bundleIdPrefix: com.juke
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.2.0
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 2WMS6785YD
+targets:
+  JukeMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: JukeMac
+      - path: ../../mobile/shared/JukeRadio
+        group: Shared
+      - path: Config/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.juke.mac
+        PRODUCT_NAME: Juke
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: JukeMac/Info.plist
+        CODE_SIGN_ENTITLEMENTS: JukeMac/JukeMac.entitlements
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+  JukeMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: JukeMacTests
+    dependencies:
+      - target: JukeMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.juke.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Juke.app/Contents/MacOS/Juke"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+  JukeMacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: JukeMacUITests
+    dependencies:
+      - target: JukeMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.juke.mac.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+        TEST_TARGET_NAME: JukeMac
+schemes:
+  JukeMac:
+    build:
+      targets:
+        JukeMac: all
+        JukeMacTests: [test]
+    test:
+      targets:
+        - JukeMacTests
+  JukeMacUIAutomation:
+    build:
+      targets:
+        JukeMac: all
+        JukeMacUITests: [test]
+    test:
+      targets:
+        - JukeMacUITests

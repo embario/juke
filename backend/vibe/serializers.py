@@ -9,6 +9,7 @@ from vibe.models import VibeEncryptedRecord
 
 APPLE_REFERENCE_DATE = datetime(2001, 1, 1, tzinfo=datetime_timezone.utc)
 MAX_CIPHERTEXT_BYTES = 1024 * 1024
+MESSAGE_SAFETY_NOTICE_KIND = 'messageSafetyNotice'
 
 
 class StrictSerializer(serializers.Serializer):
@@ -54,7 +55,7 @@ class RemoteMetadataPromptSerializer(StrictSerializer):
 class EncryptedVibeEnvelopeSerializer(StrictSerializer):
     recordID = serializers.UUIDField()
     accountID = serializers.CharField(max_length=64)
-    kind = serializers.ChoiceField(choices=VibeEncryptedRecord.Kind.values)
+    kind = serializers.ChoiceField(choices=(*VibeEncryptedRecord.Kind.values, MESSAGE_SAFETY_NOTICE_KIND))
     ciphertext = serializers.CharField(max_length=((MAX_CIPHERTEXT_BYTES + 2) // 3) * 4)
     modifiedAt = serializers.FloatField(min_value=-978307200, max_value=32503680000)
     encryptionVersion = serializers.IntegerField(min_value=1, max_value=32767)

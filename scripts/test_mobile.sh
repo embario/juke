@@ -19,7 +19,7 @@ usage() {
 Usage: $(basename "$0") -p <project> [-s simulator] [-o os] [--ios-only | --android-only] [--include-jukekit-tests]
 
 Options:
-  -p  Project name (required): juke, jukevibe, shotclock, or tunetrivia
+  -p  Project name (required): juke, jukeapp, shotclock, or tunetrivia
   -s  Simulator name or UUID (default: ${SIM_TARGET_DEFAULT})
   -o  Simulator OS version (default: ${SIM_OS_DEFAULT})
   --ios-only      Run only iOS tests
@@ -83,13 +83,13 @@ if [[ -z "${PROJECT_NAME}" ]]; then
     exit 2
 fi
 
-if [[ "${PROJECT_NAME}" != "juke" && "${PROJECT_NAME}" != "jukevibe" && "${PROJECT_NAME}" != "shotclock" && "${PROJECT_NAME}" != "tunetrivia" ]]; then
-    echo "Unsupported project '${PROJECT_NAME}'. Use 'juke', 'jukevibe', 'shotclock', or 'tunetrivia'." >&2
+if [[ "${PROJECT_NAME}" != "juke" && "${PROJECT_NAME}" != "jukeapp" && "${PROJECT_NAME}" != "shotclock" && "${PROJECT_NAME}" != "tunetrivia" ]]; then
+    echo "Unsupported project '${PROJECT_NAME}'. Use 'juke', 'jukeapp', 'shotclock', or 'tunetrivia'." >&2
     exit 2
 fi
 
-if [[ "${PROJECT_NAME}" == "jukevibe" && "${run_android}" == "true" ]]; then
-    echo "Juke Vibe is currently iOS-only; pass --ios-only." >&2
+if [[ "${PROJECT_NAME}" == "jukeapp" && "${run_android}" == "true" ]]; then
+    echo "The Juke app (jukeapp) is currently iOS-only; pass --ios-only." >&2
     exit 2
 fi
 
@@ -197,8 +197,8 @@ if "${run_ios}"; then
         juke)
             run_ios_tests "${IOS_ROOT}/juke" "juke-iOS" "juke-iOS"
             ;;
-        jukevibe)
-            run_ios_tests "${IOS_ROOT}/jukevibe" "JukeVibe" "JukeVibe"
+        jukeapp)
+            run_ios_tests "${IOS_ROOT}/jukeapp" "JukeApp" "JukeApp"
             ;;
         shotclock)
             run_ios_tests "${IOS_ROOT}/shotclock" "ShotClock" "ShotClock"

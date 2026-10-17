@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import uuid
+from compression import zstd
 from pathlib import Path
 
 from django.core.management import call_command
@@ -21,7 +22,9 @@ from mlcore.models import (
 from mlcore.services.canonical_items import identity_from_parts
 from mlcore.services.listenbrainz_identity_bridge import (
     CONFLICT_RESOLVER_SOURCE_ID,
+    EXTRACTION_SCHEMA_VERSION,
     expand_listenbrainz_identity_graph,
+    extract_listenbrainz_identity_shard,
     import_listenbrainz_identity_bridge,
     materialize_listenbrainz_isrc_aliases,
     resolve_listenbrainz_identity_conflicts,
@@ -190,14 +193,14 @@ class ListenBrainzIdentityBridgeTests(TestCase):
         self.assertEqual(result.isrc_observation_count, 6)
         self.assertEqual(result.malformed_row_count, 2)
 
-    def test_pre_isrc_checkpoint_is_reextracted_once(self):
+    def test_pre_v3_checkpoint_is_reextracted_once(self):
         first = import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
         ListenBrainzIdentityShard.objects.filter(source_version=self.source_version).update(
-            extraction_schema_version=1,
+            extraction_schema_version=2,
             isrc_observation_count=0,
             unique_isrc_pair_count=0,
         )
-        for path in self.output_root.rglob('*.msid-isrc.tsv'):
+        for path in self.output_root.rglob('*.msid-isrc.tsv.zst'):
             path.unlink()
 
         replay = import_listenbrainz_identity_bridge(self.manifest_path, output_root=self.output_root)
@@ -206,7 +209,7 @@ class ListenBrainzIdentityBridgeTests(TestCase):
         self.assertEqual(replay.isrc_observation_count, 6)
         self.assertTrue(
             all(
-                version == 2
+                version == EXTRACTION_SCHEMA_VERSION
                 for version in ListenBrainzIdentityShard.objects.filter(
                     source_version=self.source_version
                 ).values_list('extraction_schema_version', flat=True)
@@ -345,6 +348,109 @@ class ListenBrainzIdentityBridgeTests(TestCase):
         self.assertEqual(placement['mlcore_listenbrainz_msid_mbid_mapping'][0], 'juke_mlcore_cold')
         self.assertEqual(placement['mlcore_listenbrainz_identity_shard'][0], 'juke_mlcore_cold')
         self.assertEqual(placement['mlcore_canonical_item_redirect'][0], 'juke_mlcore_hot')
+
+    @staticmethod
+    def _read_zst(path):
+        with zstd.open(path, 'rt', encoding='utf-8') as handle:
+            return handle.read().splitlines()
+
+    def test_v3_shard_outputs_carry_counts_and_are_zstd(self):
+        spotify = '4uLU6hMCjMI75M1A2tKUQC'
+        other = '1DFixLWgh2zZWvxKbdw5Rk'
+        msid_a, msid_b = uuid.uuid4(), uuid.uuid4()
+
+        def listen(msid, mbid=None, isrc=None, **info):
+            payload = {'recording_msid': str(msid), 'track_metadata': {'additional_info': dict(info)}}
+            if mbid:
+                payload['track_metadata']['mbid_mapping'] = {'recording_mbid': str(mbid)}
+            if isrc:
+                payload['track_metadata']['additional_info']['isrc'] = isrc
+            return json.dumps(payload)
+
+        shard = self.root / 'v3.jsonl'
+        shard.write_text('\n'.join([
+            listen(msid_a, self.mbid_one, 'USAAA2400001', spotify_id=spotify),
+            listen(msid_a, self.mbid_one, 'USAAA2400001', origin_url=f'https://open.spotify.com/intl-de/track/{spotify}?si=x'),
+            listen(msid_a, None, 'USAAA2400001', spotify_id=f'spotify:track:{spotify}'),
+            listen(msid_a, None, 'USAAA2400009', spotify_id=other),
+            listen(msid_b, None, None, spotify_id='https://open.spotify.com/album/' + other),
+            listen(msid_b, None, None, media_player_track_id='local-file-9'),
+        ]) + '\n')
+        scratch = self.root / 'nvme-scratch'
+        result = extract_listenbrainz_identity_shard(
+            shard,
+            source_version=self.source_version,
+            shard_key='v3.jsonl',
+            source_sha256='0' * 64,
+            output_root=self.output_root,
+            sort_tmp_dir=scratch,
+            sort_buffer_size='16M',
+        )
+
+        self.assertEqual(self._read_zst(result.output_path), [f'{msid_a}\t{self.mbid_one}'])
+        self.assertEqual(
+            self._read_zst(result.isrc_output_path),
+            [f'{msid_a}\tUSAAA2400001\t3', f'{msid_a}\tUSAAA2400009\t1'],
+        )
+        self.assertEqual(
+            sorted(self._read_zst(result.spotify_output_path)),
+            sorted([f'{msid_a}\t{spotify}\t3', f'{msid_a}\t{other}\t1']),
+        )
+        self.assertEqual(result.spotify_observation_count, 4)
+        self.assertEqual(result.unique_spotify_pair_count, 2)
+        self.assertEqual(result.unique_isrc_pair_count, 2)
+        self.assertTrue(scratch.is_dir(), 'sort spill directory is the configured one')
+        self.assertEqual(list(self.output_root.rglob('*.part')), [])
+        self.assertFalse((self.output_root / '.sort-tmp').exists())
+
+        ListenBrainzIdentityShard.objects.filter(
+            source_version=self.source_version, shard_key='v3.jsonl'
+        ).update(status='succeeded')
+        replay = extract_listenbrainz_identity_shard(
+            shard,
+            source_version=self.source_version,
+            shard_key='v3.jsonl',
+            source_sha256='0' * 64,
+            output_root=self.output_root,
+            sort_tmp_dir=scratch,
+        )
+        self.assertTrue(replay.skipped)
+        self.assertEqual(replay.spotify_observation_count, 4)
+        self.assertEqual(replay.unique_spotify_pair_count, 2)
+
+    def test_shard_without_spotify_or_isrc_still_writes_readable_empty_outputs(self):
+        shard = self.root / 'empty.jsonl'
+        shard.write_text(self._listen(uuid.uuid4()) + '\n')
+        result = extract_listenbrainz_identity_shard(
+            shard,
+            source_version=self.source_version,
+            shard_key='empty.jsonl',
+            source_sha256='1' * 64,
+            output_root=self.output_root,
+        )
+
+        for path in (result.output_path, result.isrc_output_path, result.spotify_output_path):
+            self.assertEqual(self._read_zst(path), [])
+        self.assertEqual(result.unique_spotify_pair_count, 0)
+
+    def test_command_accepts_scratch_options(self):
+        stdout = io.StringIO()
+        scratch = self.root / 'scratch'
+
+        call_command(
+            'import_listenbrainz_identity_bridge',
+            '--manifest', str(self.manifest_path),
+            '--output-root', str(self.output_root),
+            '--sort-tmp-dir', str(scratch),
+            '--sort-buffer-size', '16M',
+            '--zstd-level', '1',
+            '--json',
+            stdout=stdout,
+        )
+
+        self.assertTrue(scratch.is_dir())
+        self.assertEqual(json.loads(stdout.getvalue())['spotify_observation_count'], 0)
+        self.assertTrue(list(self.output_root.rglob('*.msid-spotify.tsv.zst')))
 
     def test_command_emits_json(self):
         stdout = io.StringIO()
