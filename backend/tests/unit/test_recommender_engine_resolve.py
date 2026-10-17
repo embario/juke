@@ -5,9 +5,13 @@ from unittest import mock, skipIf
 from pydantic import ValidationError
 
 try:
+    from django.db import connection
+    from django.test import TransactionTestCase
     from django.test import SimpleTestCase
 except ModuleNotFoundError:  # pragma: no cover - standalone recommender-engine image
+    connection = None
     from unittest import TestCase as SimpleTestCase
+    TransactionTestCase = SimpleTestCase
 
 os.environ.setdefault('POSTGRES_PORT', '5432')
 
@@ -25,6 +29,79 @@ class ResolveEndpointTests(SimpleTestCase):
     conflict_spotify_id = '2VjIjW4GlUZAMYd2vXMi3b'
     seed_spotify_id = '3VjIjW4GlUZAMYd2vXMi3b'
     exclude_spotify_id = '4VjIjW4GlUZAMYd2vXMi3b'
+
+    def test_cooccurrence_sql_recursively_includes_redirect_sources(self):
+        sql = engine_main._COOCCURRENCE_SQL
+        self.assertIn('WITH RECURSIVE requested_seed(id)', sql)
+        self.assertIn('redirect_chain(id, path, depth)', sql)
+        self.assertIn('redirect.to_canonical_item_id = chain.id', sql)
+        self.assertIn('chain.depth < 8', sql)
+        self.assertIn('NOT redirect.from_canonical_item_id = ANY(chain.path)', sql)
+        self.assertIn('SELECT DISTINCT id FROM redirect_chain', sql)
+
+
+@skipIf(
+    engine_main is None or connection is None,
+    'recommender engine and Django database dependencies are not installed',
+)
+class CooccurrenceRedirectExpansionDatabaseTests(TransactionTestCase):
+    """Exercise the serving SQL against a tiny redirect/co-occurrence fixture."""
+
+    def _drop_fixture_tables(self):
+        with connection.cursor() as cursor:
+            cursor.execute('DROP TABLE IF EXISTS pg_temp.mlcore_canonical_item_redirect')
+            cursor.execute('DROP TABLE IF EXISTS pg_temp.mlcore_item_cooccurrence')
+
+    def test_seed_reaches_neighbours_of_every_item_in_two_hop_chain(self):
+        seed_id, middle_id, oldest_id, *neighbour_ids = [uuid.uuid4() for _ in range(6)]
+        self.addCleanup(self._drop_fixture_tables)
+
+        with connection.cursor() as cursor:
+            cursor.execute('DROP TABLE IF EXISTS pg_temp.mlcore_canonical_item_redirect')
+            cursor.execute('DROP TABLE IF EXISTS pg_temp.mlcore_item_cooccurrence')
+            cursor.execute(
+                """
+                CREATE TEMP TABLE mlcore_canonical_item_redirect (
+                    from_canonical_item_id uuid,
+                    to_canonical_item_id uuid,
+                    status text
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TEMP TABLE mlcore_item_cooccurrence (
+                    item_a_juke_id uuid,
+                    item_b_juke_id uuid,
+                    pmi_score double precision,
+                    co_count integer
+                )
+                """
+            )
+            cursor.executemany(
+                """
+                INSERT INTO mlcore_canonical_item_redirect
+                    (from_canonical_item_id, to_canonical_item_id, status)
+                VALUES (%s, %s, 'active')
+                """,
+                [(middle_id, seed_id), (oldest_id, middle_id)],
+            )
+            cursor.executemany(
+                """
+                INSERT INTO mlcore_item_cooccurrence
+                    (item_a_juke_id, item_b_juke_id, pmi_score, co_count)
+                VALUES (%s, %s, 1.0, 1)
+                """,
+                [
+                    (oldest_id, neighbour_ids[0]),
+                    (middle_id, neighbour_ids[1]),
+                    (seed_id, neighbour_ids[2]),
+                ],
+            )
+            cursor.execute(engine_main._COOCCURRENCE_SQL, [[seed_id]])
+            actual_neighbours = {row[0] for row in cursor.fetchall()}
+
+        self.assertEqual(actual_neighbours, set(neighbour_ids[:3]))
 
     def test_resolve_returns_resolved_unresolved_conflict_and_invalid_items(self):
         resolved_id = uuid.uuid4()
