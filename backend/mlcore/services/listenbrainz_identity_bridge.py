@@ -5,15 +5,18 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 from uuid import UUID
 
+from compression import zstd
 from django.db import connection, transaction
 from django.utils import timezone
 
+from mlcore.ingestion.listenbrainz import _extract_spotify_id
 from mlcore.models import CanonicalItem, ListenBrainzIdentityShard, SourceIngestionRun
 from mlcore.services.canonical_items import ITEM_TYPE_RECORDING_MSID, canonical_item_uuid
 
@@ -23,7 +26,12 @@ CONFLICT_RESOLVER_POLICY_VERSION = 'shard-dominance-v1'
 PAIR_STAGE_TABLE = 'mlcore_listenbrainz_identity_pair_stage'
 DEFAULT_OUTPUT_ROOT = '/srv/data/backups/juke/listenbrainz/identity-evidence'
 PROGRESS_INTERVAL_ROWS = 1_000_000
-EXTRACTION_SCHEMA_VERSION = 2
+# v3: per-shard msid<TAB>spotify_id<TAB>count and msid<TAB>isrc<TAB>count (zstd), msid<TAB>mbid kept.
+EXTRACTION_SCHEMA_VERSION = 3
+DEFAULT_ZSTD_LEVEL = 3
+MBID_SUFFIX = '.msid-mbid.tsv.zst'
+ISRC_SUFFIX = '.msid-isrc.tsv.zst'
+SPOTIFY_SUFFIX = '.msid-spotify.tsv.zst'
 ISRC_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$')
 
 
@@ -43,6 +51,8 @@ class ListenBrainzIdentityBridgeResult:
     redirect_count: int
     redirect_conflict_count: int
     elapsed_seconds: float
+    spotify_observation_count: int = 0
+    unique_spotify_pair_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -57,6 +67,9 @@ class ShardExtractionResult:
     unique_isrc_pair_count: int
     malformed_row_count: int
     skipped: bool = False
+    spotify_output_path: str = ''
+    spotify_observation_count: int = 0
+    unique_spotify_pair_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -105,6 +118,9 @@ def import_listenbrainz_identity_bridge(
     output_root: str | Path | None = None,
     max_shards: int | None = None,
     force: bool = False,
+    sort_tmp_dir: str | Path | None = None,
+    sort_buffer_size: str | None = None,
+    zstd_level: int = DEFAULT_ZSTD_LEVEL,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> ListenBrainzIdentityBridgeResult:
     started = time.monotonic()
@@ -155,6 +171,8 @@ def import_listenbrainz_identity_bridge(
         'unique_pair_count': 0,
         'isrc_observation_count': 0,
         'unique_isrc_pair_count': 0,
+        'spotify_observation_count': 0,
+        'unique_spotify_pair_count': 0,
         'malformed_row_count': 0,
         'processed_bytes': 0,
     }
@@ -168,6 +186,9 @@ def import_listenbrainz_identity_bridge(
                 source_sha256=str(shard.get('sha256') or ''),
                 output_root=target_root,
                 force=force,
+                sort_tmp_dir=sort_tmp_dir,
+                sort_buffer_size=sort_buffer_size,
+                zstd_level=zstd_level,
                 progress_callback=progress_callback,
             )
             _load_shard_pairs(result, source_version=source_version, source_sha256=str(shard.get('sha256') or ''))
@@ -176,6 +197,8 @@ def import_listenbrainz_identity_bridge(
             totals['unique_pair_count'] += result.unique_pair_count
             totals['isrc_observation_count'] += result.isrc_observation_count
             totals['unique_isrc_pair_count'] += result.unique_isrc_pair_count
+            totals['spotify_observation_count'] += result.spotify_observation_count
+            totals['unique_spotify_pair_count'] += result.unique_spotify_pair_count
             totals['malformed_row_count'] += result.malformed_row_count
             totals['processed_bytes'] += int(shard.get('size_bytes') or 0)
             elapsed = max(time.monotonic() - started, 0.001)
@@ -190,6 +213,8 @@ def import_listenbrainz_identity_bridge(
                 'unique_pair_count': totals['unique_pair_count'],
                 'isrc_observation_count': totals['isrc_observation_count'],
                 'unique_isrc_pair_count': totals['unique_isrc_pair_count'],
+                'spotify_observation_count': totals['spotify_observation_count'],
+                'unique_spotify_pair_count': totals['unique_spotify_pair_count'],
                 'malformed_row_count': totals['malformed_row_count'],
                 'throughput_bytes_per_second': totals['processed_bytes'] / elapsed,
                 'eta_seconds': _eta_seconds(
@@ -238,6 +263,8 @@ def import_listenbrainz_identity_bridge(
             unique_pair_count=totals['unique_pair_count'],
             isrc_observation_count=totals['isrc_observation_count'],
             unique_isrc_pair_count=totals['unique_isrc_pair_count'],
+            spotify_observation_count=totals['spotify_observation_count'],
+            unique_spotify_pair_count=totals['unique_spotify_pair_count'],
             malformed_row_count=totals['malformed_row_count'],
             elapsed_seconds=elapsed_seconds,
             **summary,
@@ -553,13 +580,21 @@ def extract_listenbrainz_identity_shard(
     source_sha256: str,
     output_root: str | Path,
     force: bool = False,
+    sort_tmp_dir: str | Path | None = None,
+    sort_buffer_size: str | None = None,
+    zstd_level: int = DEFAULT_ZSTD_LEVEL,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> ShardExtractionResult:
+    """Extract one shard into three zstd TSVs: msid-mbid (unique), msid-isrc and msid-spotify (with counts).
+
+    ``output_root`` and ``sort_tmp_dir`` are independent so the operator can point both at NVMe scratch.
+    """
     source_path = Path(source_path)
     if not source_path.is_file():
         raise FileNotFoundError(f'ListenBrainz shard does not exist: {source_path}')
-    output_path = Path(output_root) / f'{shard_key}.msid-mbid.tsv'
-    isrc_output_path = Path(output_root) / f'{shard_key}.msid-isrc.tsv'
+    output_path = Path(output_root) / f'{shard_key}{MBID_SUFFIX}'
+    isrc_output_path = Path(output_root) / f'{shard_key}{ISRC_SUFFIX}'
+    spotify_output_path = Path(output_root) / f'{shard_key}{SPOTIFY_SUFFIX}'
     output_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint = ListenBrainzIdentityShard.objects.filter(
         source_version=source_version,
@@ -572,7 +607,10 @@ def extract_listenbrainz_identity_shard(
         and checkpoint.source_sha256 == source_sha256
         and checkpoint.extraction_schema_version >= EXTRACTION_SCHEMA_VERSION
         and output_path.is_file()
+        and isrc_output_path.is_file()
+        and spotify_output_path.is_file()
     ):
+        spotify_unique, spotify_observations = _count_counted_file(spotify_output_path)
         return ShardExtractionResult(
             shard_key=shard_key,
             output_path=str(output_path),
@@ -584,6 +622,9 @@ def extract_listenbrainz_identity_shard(
             unique_isrc_pair_count=checkpoint.unique_isrc_pair_count,
             malformed_row_count=checkpoint.malformed_row_count,
             skipped=True,
+            spotify_output_path=str(spotify_output_path),
+            spotify_observation_count=spotify_observations,
+            unique_spotify_pair_count=spotify_unique,
         )
 
     checkpoint, _ = ListenBrainzIdentityShard.objects.update_or_create(
@@ -604,38 +645,40 @@ def extract_listenbrainz_identity_shard(
             'last_error': '',
         },
     )
-    temp_path = output_path.with_suffix(output_path.suffix + '.part')
-    isrc_temp_path = isrc_output_path.with_suffix(isrc_output_path.suffix + '.part')
-    temp_path.unlink(missing_ok=True)
-    isrc_temp_path.unlink(missing_ok=True)
-    sort_tmp = output_path.parent / '.sort-tmp'
+    sort_tmp = Path(sort_tmp_dir) if sort_tmp_dir else output_path.parent / '.sort-tmp'
     sort_tmp.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, 'LC_ALL': 'C'}
-    process = _start_unique_sort(temp_path, sort_tmp=sort_tmp, env=env)
-    isrc_process = _start_unique_sort(isrc_temp_path, sort_tmp=sort_tmp, env=env)
+    options = dict(sort_tmp=sort_tmp, sort_buffer_size=sort_buffer_size, level=zstd_level)
+    mbid_sort = _SortedZstdOutput(output_path, with_counts=False, **options)
+    pipelines = [mbid_sort]
     source_rows = 0
     mapped_rows = 0
     isrc_observations = 0
+    spotify_observations = 0
     malformed_rows = 0
     try:
-        assert process.stdin is not None
-        assert isrc_process.stdin is not None
+        isrc_sort = _SortedZstdOutput(isrc_output_path, with_counts=True, **options)
+        pipelines.append(isrc_sort)
+        spotify_sort = _SortedZstdOutput(spotify_output_path, with_counts=True, **options)
+        pipelines.append(spotify_sort)
         with source_path.open('rb') as source:
             for raw_line in source:
                 source_rows += 1
                 try:
                     payload = json.loads(raw_line)
-                    pair, isrc_pairs, invalid_isrc_count = _extract_identity_pairs(payload)
+                    extracted = _extract_identity_pairs(payload)
                 except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
                     malformed_rows += 1
                     continue
-                malformed_rows += invalid_isrc_count
-                if pair is not None:
+                malformed_rows += extracted.invalid_isrc_count
+                if extracted.mbid_pair is not None:
                     mapped_rows += 1
-                    process.stdin.write(f'{pair[0]}\t{pair[1]}\n')
-                for msid, isrc in isrc_pairs:
+                    mbid_sort.write(f'{extracted.mbid_pair[0]}\t{extracted.mbid_pair[1]}\n')
+                for msid, isrc in extracted.isrc_pairs:
                     isrc_observations += 1
-                    isrc_process.stdin.write(f'{msid}\t{isrc}\n')
+                    isrc_sort.write(f'{msid}\t{isrc}\n')
+                if extracted.spotify_pair is not None:
+                    spotify_observations += 1
+                    spotify_sort.write(f'{extracted.spotify_pair[0]}\t{extracted.spotify_pair[1]}\n')
                 if source_rows % PROGRESS_INTERVAL_ROWS == 0:
                     _report(progress_callback, {
                         'event': 'extract_progress',
@@ -643,20 +686,16 @@ def extract_listenbrainz_identity_shard(
                         'source_row_count': source_rows,
                         'mapped_row_count': mapped_rows,
                         'isrc_observation_count': isrc_observations,
+                        'spotify_observation_count': spotify_observations,
                         'malformed_row_count': malformed_rows,
                     })
-        process.stdin.close()
-        isrc_process.stdin.close()
-        return_code = process.wait()
-        isrc_return_code = isrc_process.wait()
-        if return_code or isrc_return_code:
-            raise RuntimeError(
-                f'sort failed for {shard_key} with exit codes {return_code}/{isrc_return_code}'
-            )
-        unique_pairs = _count_lines(temp_path)
-        unique_isrc_pairs = _count_lines(isrc_temp_path)
-        temp_path.replace(output_path)
-        isrc_temp_path.replace(isrc_output_path)
+        for pipeline in pipelines:
+            pipeline.finish()
+        unique_pairs = mbid_sort.unique_line_count
+        unique_isrc_pairs = isrc_sort.unique_line_count
+        unique_spotify_pairs = spotify_sort.unique_line_count
+        for pipeline in pipelines:
+            pipeline.publish()
         ListenBrainzIdentityShard.objects.filter(pk=checkpoint.pk).update(
             status='running',
             extraction_schema_version=EXTRACTION_SCHEMA_VERSION,
@@ -677,14 +716,13 @@ def extract_listenbrainz_identity_shard(
             isrc_observation_count=isrc_observations,
             unique_isrc_pair_count=unique_isrc_pairs,
             malformed_row_count=malformed_rows,
+            spotify_output_path=str(spotify_output_path),
+            spotify_observation_count=spotify_observations,
+            unique_spotify_pair_count=unique_spotify_pairs,
         )
     except Exception as exc:
-        for active_process in (process, isrc_process):
-            if active_process.poll() is None:
-                active_process.kill()
-                active_process.wait()
-        temp_path.unlink(missing_ok=True)
-        isrc_temp_path.unlink(missing_ok=True)
+        for pipeline in pipelines:
+            pipeline.abort()
         ListenBrainzIdentityShard.objects.filter(pk=checkpoint.pk).update(
             status='failed',
             source_row_count=source_rows,
@@ -697,28 +735,104 @@ def extract_listenbrainz_identity_shard(
         raise
 
 
-def _start_unique_sort(output_path: Path, *, sort_tmp: Path, env: dict[str, str]) -> subprocess.Popen:
-    return subprocess.Popen(
-        ['sort', '-u', '-T', str(sort_tmp), '-o', str(output_path)],
-        stdin=subprocess.PIPE,
-        text=True,
-        encoding='utf-8',
-        env=env,
-    )
+class _SortedZstdOutput:
+    """``sort`` (``-u``) or ``sort | uniq -c`` fed line by line, drained into a zstd file.
+
+    Counted outputs end up as ``key<TAB>key<TAB>count``. Written to ``<path>.part`` and renamed by
+    ``publish()`` so an interrupted shard never leaves a half-written file under the final name.
+    """
+
+    def __init__(
+        self,
+        output_path: Path,
+        *,
+        with_counts: bool,
+        sort_tmp: Path,
+        sort_buffer_size: str | None,
+        level: int,
+    ) -> None:
+        self.output_path = output_path
+        self.part_path = output_path.with_name(output_path.name + '.part')
+        self.part_path.unlink(missing_ok=True)
+        self.with_counts = with_counts
+        self.unique_line_count = 0
+        self._level = level
+        self._error: BaseException | None = None
+        env = {**os.environ, 'LC_ALL': 'C'}
+        sort_command = ['sort', '-T', str(sort_tmp)]
+        if sort_buffer_size:
+            sort_command += ['-S', sort_buffer_size]
+        if not with_counts:
+            sort_command.append('-u')
+        self._processes = [subprocess.Popen(
+            sort_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env, bufsize=1 << 20,
+        )]
+        if with_counts:
+            self._processes.append(subprocess.Popen(
+                ['uniq', '-c'], stdin=self._processes[0].stdout, stdout=subprocess.PIPE, env=env,
+            ))
+            self._processes[0].stdout.close()
+        self._thread = threading.Thread(target=self._drain, daemon=True)
+        self._thread.start()
+
+    def write(self, line: str) -> None:
+        self._processes[0].stdin.write(line.encode('utf-8'))
+
+    def _drain(self) -> None:
+        try:
+            with zstd.open(self.part_path, 'wb', level=self._level) as out:
+                for raw in self._processes[-1].stdout:
+                    if self.with_counts:
+                        count, _, rest = raw.lstrip(b' ').partition(b' ')
+                        raw = rest.rstrip(b'\n') + b'\t' + count + b'\n'
+                    out.write(raw)
+                    self.unique_line_count += 1
+        except BaseException as exc:  # surfaced by finish()
+            self._error = exc
+
+    def finish(self) -> None:
+        self._processes[0].stdin.close()
+        self._thread.join()
+        codes = [process.wait() for process in self._processes]
+        if self._error is not None:
+            raise self._error
+        if any(codes):
+            raise RuntimeError(f'sort pipeline failed for {self.output_path.name} with exit codes {codes}')
+
+    def publish(self) -> None:
+        self.part_path.replace(self.output_path)
+
+    def abort(self) -> None:
+        for process in self._processes:
+            if process.poll() is None:
+                process.kill()
+        for process in self._processes:
+            process.wait()
+        try:
+            self._processes[0].stdin.close()
+        except (BrokenPipeError, ValueError):
+            pass
+        if self._thread.is_alive():
+            self._thread.join()
+        self.part_path.unlink(missing_ok=True)
 
 
 def _isrc_output_path(msid_mbid_output_path: Path) -> Path:
-    suffix = '.msid-mbid.tsv'
-    if not msid_mbid_output_path.name.endswith(suffix):
+    if not msid_mbid_output_path.name.endswith(MBID_SUFFIX):
         raise ValueError(f'Unexpected ListenBrainz identity output path: {msid_mbid_output_path}')
     return msid_mbid_output_path.with_name(
-        msid_mbid_output_path.name[:-len(suffix)] + '.msid-isrc.tsv'
+        msid_mbid_output_path.name[:-len(MBID_SUFFIX)] + ISRC_SUFFIX
     )
 
 
-def _extract_identity_pairs(
-    payload: dict[str, Any],
-) -> tuple[tuple[str, str] | None, list[tuple[str, str]], int]:
+class _ExtractedPairs(NamedTuple):
+    mbid_pair: tuple[str, str] | None
+    isrc_pairs: list[tuple[str, str]]
+    invalid_isrc_count: int
+    spotify_pair: tuple[str, str] | None
+
+
+def _extract_identity_pairs(payload: dict[str, Any]) -> _ExtractedPairs:
     metadata = payload.get('track_metadata') or {}
     additional = metadata.get('additional_info') or {}
     mapping = metadata.get('mbid_mapping') or {}
@@ -730,13 +844,15 @@ def _extract_identity_pairs(
         if normalized_msid and mbid
         else None
     )
+    spotify_id = _extract_spotify_id(additional) if normalized_msid else ''
+    spotify_pair = (normalized_msid, spotify_id) if normalized_msid and spotify_id else None
     raw_isrcs = additional.get('isrc')
     if raw_isrcs in (None, '') or normalized_msid is None:
-        return mbid_pair, [], 0
+        return _ExtractedPairs(mbid_pair, [], 0, spotify_pair)
     if isinstance(raw_isrcs, str):
         raw_isrcs = [raw_isrcs]
     if not isinstance(raw_isrcs, (list, tuple, set)):
-        return mbid_pair, [], 1
+        return _ExtractedPairs(mbid_pair, [], 1, spotify_pair)
     isrc_pairs = []
     invalid_isrc_count = 0
     for raw_isrc in raw_isrcs:
@@ -745,7 +861,7 @@ def _extract_identity_pairs(
             invalid_isrc_count += 1
             continue
         isrc_pairs.append((normalized_msid, isrc))
-    return mbid_pair, isrc_pairs, invalid_isrc_count
+    return _ExtractedPairs(mbid_pair, isrc_pairs, invalid_isrc_count, spotify_pair)
 
 
 def _load_shard_pairs(result: ShardExtractionResult, *, source_version: str, source_sha256: str) -> None:
@@ -793,24 +909,61 @@ def _load_shard_pairs(result: ShardExtractionResult, *, source_version: str, sou
         )
 
 
-def _copy_pair_file(cursor, path: Path) -> None:
-    sql = f'COPY {PAIR_STAGE_TABLE} (recording_msid, recording_mbid) FROM STDIN'
+class _ZstdTsvReader:
+    """File-like over a zstd TSV for COPY; keeps only the first ``columns`` columns when given."""
+
+    def __init__(self, path: Path, *, columns: int | None = None) -> None:
+        self._file = zstd.open(path, 'rb')
+        self._columns = columns
+        self._buffer = b''
+
+    def read(self, size: int = -1) -> bytes:
+        size = (1 << 20) if size is None or size < 0 else size
+        while len(self._buffer) < size:
+            chunk = self._file.readlines(size) if self._columns else [self._file.read(size)]
+            if not chunk or not chunk[0]:
+                break
+            for line in chunk:
+                if self._columns:
+                    line = b'\t'.join(line.rstrip(b'\n').split(b'\t')[:self._columns]) + b'\n'
+                self._buffer += line
+        data, self._buffer = self._buffer[:size], self._buffer[size:]
+        return data
+
+    def close(self) -> None:
+        self._file.close()
+
+
+def _copy_zstd_file(cursor, sql: str, path: Path, *, columns: int | None, error: str) -> None:
     raw_cursor = getattr(cursor, 'cursor', cursor)
-    with path.open('r', encoding='utf-8', newline='') as handle:
-        if hasattr(raw_cursor, 'copy_expert'):
-            raw_cursor.copy_expert(sql, handle)
-            return
-    raise RuntimeError('ListenBrainz identity bridge requires PostgreSQL COPY support')
+    if not hasattr(raw_cursor, 'copy_expert'):
+        raise RuntimeError(error)
+    reader = _ZstdTsvReader(path, columns=columns)
+    try:
+        raw_cursor.copy_expert(sql, reader)
+    finally:
+        reader.close()
+
+
+def _copy_pair_file(cursor, path: Path) -> None:
+    _copy_zstd_file(
+        cursor,
+        f'COPY {PAIR_STAGE_TABLE} (recording_msid, recording_mbid) FROM STDIN',
+        path,
+        columns=None,
+        error='ListenBrainz identity bridge requires PostgreSQL COPY support',
+    )
 
 
 def _copy_isrc_file(cursor, path: Path) -> None:
-    sql = 'COPY mlcore_lb_isrc_candidate_stage (recording_msid, isrc) FROM STDIN'
-    raw_cursor = getattr(cursor, 'cursor', cursor)
-    with path.open('r', encoding='utf-8', newline='') as handle:
-        if hasattr(raw_cursor, 'copy_expert'):
-            raw_cursor.copy_expert(sql, handle)
-            return
-    raise RuntimeError('ListenBrainz ISRC alias materialization requires PostgreSQL COPY support')
+    # The file carries a trailing observation count; the stage table only wants (msid, isrc).
+    _copy_zstd_file(
+        cursor,
+        'COPY mlcore_lb_isrc_candidate_stage (recording_msid, isrc) FROM STDIN',
+        path,
+        columns=2,
+        error='ListenBrainz ISRC alias materialization requires PostgreSQL COPY support',
+    )
 
 
 def _count_missing_msid_canonical_items(source_version: str) -> int:
@@ -1351,12 +1504,14 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     return manifest
 
 
-def _count_lines(path: Path) -> int:
-    count = 0
-    with path.open('rb') as handle:
-        for count, _ in enumerate(handle, start=1):
-            pass
-    return count
+def _count_counted_file(path: Path) -> tuple[int, int]:
+    """(unique lines, summed observation counts) of a zstd ``key<TAB>key<TAB>count`` file."""
+    unique = observations = 0
+    with zstd.open(path, 'rb') as handle:
+        for line in handle:
+            unique += 1
+            observations += int(line.rsplit(b'\t', 1)[1])
+    return unique, observations
 
 
 def _eta_seconds(*, processed: int, total: int, elapsed: float) -> float | None:

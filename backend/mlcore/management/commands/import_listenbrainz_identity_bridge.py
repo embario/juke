@@ -3,16 +3,19 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-from mlcore.services.listenbrainz_identity_bridge import import_listenbrainz_identity_bridge
+from mlcore.services.listenbrainz_identity_bridge import DEFAULT_ZSTD_LEVEL, import_listenbrainz_identity_bridge
 from mlcore.services.listenbrainz_shards import configured_listenbrainz_shard_root
 
 
 class Command(BaseCommand):
-    help = 'Extract MSID-to-MBID and MSID-to-ISRC identity candidates from cold ListenBrainz shards.'
+    help = 'Extract MSID-to-MBID, MSID-to-ISRC and MSID-to-Spotify identity candidates from cold ListenBrainz shards.'
 
     def add_arguments(self, parser):
         parser.add_argument('--manifest', help='Path to a materialized ListenBrainz shard manifest.')
         parser.add_argument('--output-root', help='Cold output root for per-shard pair files.')
+        parser.add_argument('--sort-tmp-dir', help='Directory for sort spill files (default: <output-root>/.sort-tmp). Point at NVMe scratch.')
+        parser.add_argument('--sort-buffer-size', help='sort -S memory buffer, e.g. 2G (default: sort decides).')
+        parser.add_argument('--zstd-level', type=int, default=DEFAULT_ZSTD_LEVEL, help='zstd level for the per-shard outputs.')
         parser.add_argument('--max-shards', type=int, help='Limit processing for a bounded validation run.')
         parser.add_argument('--force', action='store_true', help='Replace this source version and re-extract every shard.')
         parser.add_argument('--json', action='store_true', help='Emit machine-readable final output.')
@@ -25,7 +28,8 @@ class Command(BaseCommand):
             if event == 'extract_progress':
                 self.stderr.write(
                     'event=extract_progress shard={shard_key} rows={source_row_count} mapped={mapped_row_count} '
-                    'isrc_observations={isrc_observation_count} malformed={malformed_row_count}'.format(**progress)
+                    'isrc_observations={isrc_observation_count} spotify_observations={spotify_observation_count} '
+                    'malformed={malformed_row_count}'.format(**progress)
                 )
             elif event == 'shard_complete':
                 eta = progress.get('eta_seconds')
@@ -33,6 +37,7 @@ class Command(BaseCommand):
                     'event=shard_complete shard={current_shard} completed={completed_shards}/{shard_count} '
                     'rows={source_row_count} mapped={mapped_row_count} unique_pairs={unique_pair_count} '
                     'isrc_observations={isrc_observation_count} unique_isrc_pairs={unique_isrc_pair_count} '
+                    'spotify_observations={spotify_observation_count} unique_spotify_pairs={unique_spotify_pair_count} '
                     'throughput_bps={throughput_bytes_per_second:.0f} eta_seconds={eta}'.format(
                         eta='unknown' if eta is None else f'{eta:.0f}',
                         **progress,
@@ -44,6 +49,9 @@ class Command(BaseCommand):
             output_root=options.get('output_root'),
             max_shards=options.get('max_shards'),
             force=options['force'],
+            sort_tmp_dir=options.get('sort_tmp_dir'),
+            sort_buffer_size=options.get('sort_buffer_size'),
+            zstd_level=options['zstd_level'],
             progress_callback=report,
         )
         payload = result.__dict__
