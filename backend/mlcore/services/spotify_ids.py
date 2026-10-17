@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 SPOTIFY_TRACK_ID_RE = re.compile(r'^[0-9A-Za-z]{22}$')
-_SPOTIFY_HOSTS = {'open.spotify.com', 'play.spotify.com', 'spotify.link'}
+_SPOTIFY_HOSTS = {'open.spotify.com', 'play.spotify.com'}
 _LOCALE_SEGMENT_RE = re.compile(r'^intl-[a-z]{2}(?:-[a-z]{2,4})?$', re.IGNORECASE)
 
 
