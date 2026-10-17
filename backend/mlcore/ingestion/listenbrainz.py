@@ -52,8 +52,9 @@ SPOTIFY_ID_KEYS = (
     'spotify_track_id',
     'submission_client_track_id',
     'media_player_track_id',
-    'origin_url',
 )
+# Evidence-only: never part of the event signature (see _raw_spotify_value).
+SPOTIFY_EVIDENCE_KEYS = (*SPOTIFY_ID_KEYS, 'origin_url')
 
 
 @dataclass(frozen=True)
@@ -1181,7 +1182,7 @@ def _maybe_uuid(value: Any) -> UUID | None:
 
 def _extract_spotify_id(additional_info: dict[str, Any]) -> str:
     """First key whose value normalises to a Spotify track ID; albums, artists and playlists are ignored."""
-    for key in SPOTIFY_ID_KEYS:
+    for key in SPOTIFY_EVIDENCE_KEYS:
         normalized = normalize_spotify_track_id(additional_info.get(key))
         if normalized:
             return normalized
@@ -1189,6 +1190,7 @@ def _extract_spotify_id(additional_info: dict[str, Any]) -> str:
 
 
 def _raw_spotify_value(additional_info: dict[str, Any]) -> str:
+    """The legacy signature input: first non-empty of the original keys, unnormalised. Do not add keys here."""
     for key in SPOTIFY_ID_KEYS:
         value = additional_info.get(key)
         if value:

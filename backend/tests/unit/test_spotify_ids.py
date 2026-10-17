@@ -102,3 +102,16 @@ class ListenBrainzSpotifyEvidenceTests(SimpleTestCase):
         # Hashed from the raw client value so the existing ledger keeps deduplicating.
         self.assertNotEqual(bare.source_event_signature, url.source_event_signature)
         self.assertEqual(bare.track_identifier_candidates['spotify_id'], url.track_identifier_candidates['spotify_id'])
+
+    def test_origin_url_is_evidence_only_and_never_changes_the_signature(self):
+        for info in [
+            {'origin_url': f'https://open.spotify.com/track/{TRACK}'},
+            {'origin_url': 'https://www.youtube.com/watch?v=abc'},
+            {'origin_url': f'https://open.spotify.com/track/{TRACK}', 'spotify_id': TRACK},
+        ]:
+            with self.subTest(info=info):
+                with_origin = self._parse(info, recording_msid='m')
+                legacy_only = self._parse({k: v for k, v in info.items() if k != 'origin_url'}, recording_msid='m')
+                self.assertEqual(with_origin.source_event_signature, legacy_only.source_event_signature)
+        parsed = self._parse({'origin_url': f'https://open.spotify.com/track/{TRACK}'}, recording_msid='m')
+        self.assertEqual(parsed.metadata['spotify_track_id'], TRACK)
