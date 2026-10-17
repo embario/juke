@@ -1059,3 +1059,71 @@ class ModelPromotion(models.Model):
 
     def __str__(self):
         return f"{self.candidate_label} vs {self.baseline_label} [{self.status}]"
+
+
+class IdentityEvidence(models.Model):
+    """Many-to-many identifier evidence (cold). Aliases stay the one-owner serving index.
+
+    One row per (scheme, value, subject, source), accumulated across shards and source versions;
+    ``source_version`` is the most recent version that touched the row.
+    """
+
+    subject_canonical_item = models.ForeignKey(
+        'mlcore.CanonicalItem',
+        on_delete=models.DO_NOTHING,
+        db_constraint=False,  # bulk loads must not probe the 100M-row item table per row
+        db_index=False,  # the unique constraint and (scheme, value) are the only indexes the plan budgets
+        related_name='identity_evidence',
+    )
+    scheme = models.CharField(max_length=32)
+    value = models.CharField(max_length=255)
+    source = models.CharField(max_length=64)
+    source_version = models.CharField(max_length=255)
+    observation_count = models.BigIntegerField(default=1)
+    shard_count = models.IntegerField(default=1)
+    first_seen = models.DateTimeField()
+    last_seen = models.DateTimeField()
+
+    class Meta:
+        db_table = 'mlcore_identity_evidence'
+        db_tablespace = 'juke_mlcore_cold'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['scheme', 'value', 'subject_canonical_item', 'source'],
+                name='mlcore_idev_unique',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['scheme', 'value'], name='mlcore_idev_scheme_value_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.scheme}:{self.value}->{self.subject_canonical_item_id}'
+
+
+class IdentityEvidenceLoadGroup(models.Model):
+    """Resumable checkpoint for loading a group of shard files of one scheme into IdentityEvidence."""
+
+    source = models.CharField(max_length=64)
+    source_version = models.CharField(max_length=255)
+    scheme = models.CharField(max_length=32)
+    shard_keys = models.JSONField(default=list)
+    status = models.CharField(max_length=16, choices=INGESTION_STATUS_CHOICES, default='pending')
+    raw_row_count = models.BigIntegerField(default=0)
+    stage_row_count = models.BigIntegerField(default=0)
+    applied_through = models.BigIntegerField(default=0)
+    staging_tablespace = models.CharField(max_length=64, blank=True, default='')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'mlcore_identity_evidence_load_group'
+        db_tablespace = 'juke_mlcore_cold'
+        ordering = ['source_version', 'scheme', 'id']
+        indexes = [
+            models.Index(fields=['source', 'source_version', 'scheme', 'status'], name='mlcore_idevlg_lookup_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.source_version}:{self.scheme}:{self.status}'
