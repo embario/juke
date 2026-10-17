@@ -55,3 +55,4 @@ Attach Spotify track IDs, ISRCs, and MBIDs to the canonical items that co-occurr
 - Completed: overnight read-only investigation (2026-10-16/17): storage and snapshot audit, table inventory, identity graph counts, evidence profile of a full month, pipeline timings, code-path review. Written up in the plan doc.
 - Next: owner decisions in plan section 8; then Phase 1.
 - Blockers: Phase 0 decisions.
+- B4 (evidence table + loader): `mlcore_identity_evidence` and `load_identity_evidence` (`mlcore/services/identity_evidence.py`); loads the schema-v3 shard files per scheme in groups, set-based, resumable. Operator instructions are in the PR description.
