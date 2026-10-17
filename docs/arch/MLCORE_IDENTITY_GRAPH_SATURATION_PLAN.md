@@ -87,7 +87,18 @@ What stands out:
 - **ISRC coverage is about 5% of canonical items.** MusicBrainz has 5.8M unambiguous ISRCs but contributed only 1.59M aliases, because ListenBrainz claimed many ISRCs first (on MSID items) and because only MBIDs already in the graph can receive one. Phase 6 and the evidence table address both.
 - **Spotify coverage is 0.24% of canonical items, all from the API.**
 
-Play-weighted and MusicBrainz-URL overlap samples: COVERAGE_PLACEHOLDER
+Samples (2026-10-17):
+
+| Sample | Result | Extrapolated |
+| --- | --- | --- |
+| 1% of MusicBrainz ISRC recordings (58,322) present as canonical MBID items | 19,174 (32.9%) | ~1.94M of 5.90M recordings can receive an ISRC alias today; MusicBrainz contributed 1.59M |
+| 2% of MusicBrainz Spotify-track-URL recordings (16,499): in graph | 5,046 (30.6%) | ~249k of 812,941 |
+| ...of those in graph: already have an ISRC alias | 4,573 (90.6%) | |
+| ...already have an API-hydrated Spotify alias | 885 (17.5%) | ~44k: a ready-made precision check of MusicBrainz links against the API |
+| ...have a pending hydration item | 3,262 (64.6%) | **~161k backlog items resolvable offline in Phase 2** |
+| Play-weighted MBID/ISRC/Spotify coverage (0.002% of session_track) | timed out after 40 min | not measured; see Phase 1 |
+
+Recordings with MusicBrainz links that are not in the graph (~69%) are not useless. If a later ListenBrainz MSID cluster (Phase 5) or ISRC bridge (Phase 6) resolves to one of those MBIDs, the link supplies its Spotify ID immediately.
 
 ### 2.3 Pipelines
 
@@ -142,7 +153,8 @@ ListenBrainz shards ──► MSID ↔ Spotify, MSID ↔ ISRC, MSID ↔ MBID (wi
 - Parse Spotify track IDs from `mlcore_musicbrainz_recording_url` (latest source version; track URLs only; handle `intl-xx/` paths and query strings; validate 22-character base62).
 - Recording MBID -> canonical item, following redirects to the final target. One Spotify ID per recording: active alias on the target with `match_source='musicbrainz_url'`. Several IDs per recording: store as evidence only.
 - Never overwrite an alias owned by another canonical item; count conflicts.
-- Mark matching `ProviderHydrationItem` rows `matched` (skip leased rows).
+- Mark matching `ProviderHydrationItem` rows `matched` (skip leased rows). Sampled estimate: about 161k pending items.
+- **Validate first:** about 44k recordings already have an API-hydrated Spotify alias. Compare their MusicBrainz link IDs against those to measure precision before activating the rest. Spotify relinking means some differences are legitimate regional IDs, so report "same", "different", and "different but same ISRC" separately.
 
 ### Phase 3: ListenBrainz evidence extraction (one pass, schema v3)
 
@@ -305,14 +317,48 @@ Nearly all Spotify IDs come from `music_service=spotify.com` (the ListenBrainz S
 ## 6. Time and I/O
 
 - Phase 3 extraction: one sequential pass over ~384 GB physical of shards. The June run took 6.9-8.5 h; expect similar if the incremental import is paused, much longer if not.
-- Phases 4-6: bulk `COPY` and set-based joins against the canonical item (54 GB), alias (70 GB), and redirect (14 GB) tables. On the HDD pool these are random-I/O bound (130 reads/s per disk observed). Expect hours per phase, consistent with the 16-hour incremental identity pass.
+- Phases 4-6: bulk `COPY` and joins against the canonical item (54 GB), alias (70 GB), and redirect (14 GB) tables. **Measured tonight: about 65 random index lookups per second** (58k `canonical_key` lookups took 15.5 minutes), and full scans run at roughly 20-50 MB/s while the import competes. At that rate, 30M row-by-row lookups would take 5+ days, while one hash join over a full scan of `mlcore_canonical_item` takes about 20-45 minutes. **Every bulk phase must be written as set-based hash or merge joins over sorted staging data, never nested-loop index probes.** Check `EXPLAIN` on a 1% slice before each full run. Expect hours per phase, consistent with the 16-hour incremental identity pass.
+- Phase 1's play-weighted coverage baseline needs the same treatment. The sampled version (index probes per sampled row) timed out at 40 minutes. Compute it once as a set-based job (session_track sample joined by hash to redirect and alias extracts), ideally after the NVMe scratch exists.
 - **NVMe option:** moving the three identity-graph tables (~138 GB today, ~170-200 GB after saturation) to a new NVMe tablespace (`ALTER TABLE ... SET TABLESPACE`, which rewrites and locks each table) would cut these phases and serving lookups by an order of magnitude. It costs NVMe space the owner previously had to free, and removes those tables from ZFS snapshots (acceptable: they are derived data).
 
 ## 7. Policy note
 
 These Spotify identifiers come from ListenBrainz and MusicBrainz data, not from Spotify's API. Spotify's Developer Policy restricts using Spotify content to train ML models (III.14). How MLCore uses provider identifiers is an owner judgement; this plan only stores identifiers for linking.
 
-## 8. Open questions for the owner
+## 8. Owner decisions (2026-10-17)
+
+| # | Decision |
+| --- | --- |
+| 1 | Cut ZFS snapshot retention now (about 7 daily / 4 weekly / 2 monthly) and destroy the excess, after a `zfs destroy -nv` dry run is shown to the owner. Add a nightly `pg_dump` of the Juke app tables first; they currently have no backup. |
+| 2 | Root host operations are run by the operating Claude session (sudo), with owner confirmation before each irreversible destroy. |
+| 3 | Drop `mlcore_item_cooccurrence_v2` and `_v3` (both copies of April run `157bbf43`; live serving is May run `3c96bdf9`). Keep training staging (run `3c96bdf9`; no external identifiers) until identity work is done, to allow a retrain that re-aggregates pairs through new redirects. The live co-occurrence table is never touched. Extracted ListenBrainz shards: undecided (revisit after Phase 3). |
+| 4 | NVMe scratch and a staging/temp tablespace now; decide on moving identity-graph tables to NVMe after the root check of unexplained NVMe usage. |
+| 5 | Pause the incremental listen import and daily sync during this work; redesign the import as a separate task. |
+| 6 | Flat redirect writes **and** a recursive, depth-limited serving expansion. |
+| 7 | One-to-one Spotify and MusicBrainz-URL aliases are automatic (MusicBrainz after the precision check). MSID merges run on a 1% slice, ~200 are audited, and the owner approves the full run. Group cap 200; never overwrite existing redirects or aliases. |
+| 8 | Fleet writes code through its PR flow; the operating session runs host ops, deploys, bulk jobs, audits, and reporting. |
+
+### Execution order
+
+**Track A (operator):** pause import and sync → root checks (NVMe usage, old `juke-dev/postgres-data`) → nightly `pg_dump` → snapshot retention cut and destroy (owner confirms) → drop v2/v3 (owner confirms) → NVMe scratch and tablespace (short DB restart, scheduled with owner) → Phase 1 measurement (set-based coverage baseline, MusicBrainz-link precision check).
+
+**Track B (fleet PRs):**
+
+| PR | Content | Depends on |
+| --- | --- | --- |
+| B1 | Recursive redirect expansion in `_COOCCURRENCE_SQL` + test | none |
+| B2 | Shared Spotify ID normaliser; ingestion keeps Spotify IDs as evidence | none |
+| B3 | Extraction schema v3 with observation counts (Spotify, ISRC) | B2 |
+| B4 | Evidence table and loader | B3 output format |
+| B5 | MusicBrainz-URL Spotify aliases + precision-check command | B2 |
+| B6 | Spotify-ID clustering, flat redirects, audit tooling | B4 |
+| B7 | ISRC bridge to unique MusicBrainz recordings | B4 |
+| B8 | Hydration-queue integration, play-weighted coverage metrics | B5/B6 |
+| B9 | Separate task: incremental listen import redesign | none |
+
+**Then the operator runs, in order:** B5 (after precision check) → B3 extraction pass (~8 h, import paused) → B4 load → B6 on a 1% slice, audit, **owner approval**, full run → B7 → B8 → decide training staging and retrain.
+
+## 9. Open questions (original list, now answered in section 8)
 
 1. Snapshot policy (Phase 0.1): cut retention, or split the database into its own dataset?
 2. Approve NVMe scratch (Phase 0.2) and, separately, an NVMe tablespace for the identity graph (section 6)?

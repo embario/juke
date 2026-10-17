@@ -1,13 +1,13 @@
 ---
 id: spotify-hydration-adaptive-budget-and-popularity-priority
 title: Adaptive Spotify hydration budget with popularity-first, graph-expanding priority
-status: ready
+status: review
 priority: p2
-owner: unassigned
+owner: claude
 area: backend
 label: BACKEND/ML
 complexity: 4
-updated_at: 2026-10-16
+updated_at: 2026-10-17
 ---
 
 ## Goal
@@ -85,6 +85,9 @@ Hydrate the Spotify ISRC backlog faster and more usefully, in two independent pa
 
 ## Handoff
 
-- Completed: Task written from a live read-only inspection of the Neptune hydrator (2026-10-16). The worker was moved to a dedicated Spotify app's credentials and restarted the same day; the budget is still the static 5,000 per 24 h.
-- Next: Start with Part 1. First confirm with a read-only query that the dedicated app is sustaining HTTP 200s, then implement the controller with unit tests. Separately, run read-only scoring queries on Neptune to pick the popularity signal and weights for Part 2.
-- Blockers: None.
+- Completed: Part 1 (adaptive budget controller, 5xx accounting, rate metrics) merged as #243. Part 2 merged in three PRs: S1 listen-count priority at seed time, bounded re-score and `show_hydration_queue` (#245); S2 boosts for items users reference (#247); S3 wave expansion via co-occurrence and siblings plus the tail sweep (#248). No migrations.
+- Deployment state: only Part 1 was deployed to Neptune (as a patch in `/srv/juke-dev`). Adaptive mode was then reverted to the default 5,000 per 24 h budget (`SPOTIFY_HYDRATION_MAX_RPS=0`). Part 2 is NOT deployed.
+- The hydrator `juke-spotify-hydration` is stopped by owner decision. Do not restart it and do not deploy Part 2 without the owner.
+- Facts for whoever deploys Part 2: the ~6.4M existing pending rows need the one-off `rescore_hydration_priority` backfill (about 11 days at the default 400 rows per minute); the S2 boost is inert on dev until user-referenced tracks resolve to canonical items (no ISRCs are persisted for them yet; persisting `external_ids.isrc` may need a migration and owner approval); Vibe memories are end-to-end encrypted and are not a boost source; hub co-occurrence lookups cost ~19 s cold, hence the per-wave time budget.
+- Not verified: the acceptance item on Juke Dev (rate and 24 h count above ~4,100/day), which needs the owner's deploy.
+- Blockers: None for code. Deploy awaits the owner.
