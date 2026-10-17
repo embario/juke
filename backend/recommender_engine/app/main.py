@@ -478,13 +478,23 @@ _COOCCURRENCE_SQL = """
     WITH RECURSIVE requested_seed(id) AS (
         SELECT unnest(%s::uuid[])
     ),
+    redirect_chain(id, path, depth) AS (
+        SELECT id, ARRAY[id]::uuid[], 0
+        FROM requested_seed
+        UNION ALL
+        SELECT
+            redirect.from_canonical_item_id,
+            chain.path || redirect.from_canonical_item_id,
+            chain.depth + 1
+        FROM redirect_chain chain
+        JOIN mlcore_canonical_item_redirect redirect
+          ON redirect.to_canonical_item_id = chain.id
+         AND redirect.status = 'active'
+        WHERE chain.depth < 8
+          AND NOT redirect.from_canonical_item_id = ANY(chain.path)
+    ),
     model_seed(id) AS (
-        SELECT id FROM requested_seed
-        UNION
-        SELECT redirect.from_canonical_item_id
-        FROM mlcore_canonical_item_redirect redirect
-        JOIN requested_seed ON requested_seed.id = redirect.to_canonical_item_id
-        WHERE redirect.status = 'active'
+        SELECT DISTINCT id FROM redirect_chain
     ),
     pairs AS (
         SELECT item_b_juke_id AS neighbour, pmi_score, co_count
