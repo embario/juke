@@ -183,6 +183,12 @@ def _bulk(sql, params=None):
     return run_bulk(sql, params)
 
 
+def _analyze(*tables):
+    with connection.cursor() as cursor:
+        for table in tables:  # one statement per staging relation, never one per identity
+            cursor.execute(f'ANALYZE {table}')
+
+
 def _copy_target_ids():
     """CPU-only UUID5 calculation, bounded COPY; never a per-item database query."""
     with transaction.atomic(), connection.cursor() as cursor:
@@ -196,11 +202,13 @@ def _copy_target_ids():
                     buf.write(f'{key}\t{item_id}\n')
                 buf.seek(0)
                 cursor.copy_expert('COPY tmp_sp_target (target_key, item_id) FROM STDIN', buf)
+    _analyze('tmp_sp_target')
     _bulk('''UPDATE tmp_sp_group g SET target_id = t.item_id
              FROM tmp_sp_target t WHERE t.target_key = g.target_key''')
     # Resolve existing target redirects too; an MBID can have been superseded.
     _bulk('''CREATE TEMP TABLE tmp_sp_target_root AS
              SELECT t.item_id, t.item_id AS final_id, 0::integer AS depth FROM tmp_sp_target t''')
+    _analyze('tmp_sp_target_root')
     follow_redirects('tmp_sp_target_root')
     _bulk('''UPDATE tmp_sp_group g SET status = 'redirect_depth'
              FROM tmp_sp_target_root r WHERE r.item_id = g.target_id AND r.depth >= %s''', [MAX_REDIRECT_DEPTH])
@@ -226,13 +234,19 @@ def build_workspace(*, sample_percent=1, musicbrainz_version, progress=print, pl
         cursor.execute('ANALYZE tmp_sp_member')
     follow_redirects('tmp_sp_member', progress=progress)
     _bulk(GROUP_SQL, [MAX_REDIRECT_DEPTH])
+    _analyze('tmp_sp_group')
+    progress('staging group ISRC dominance (evidence hash scan)')
     _bulk(ISRC_SQL)
+    _analyze('tmp_sp_isrc_dominant')
+    progress('staging MBID targets (resolved roots, B5 aliases, MusicBrainz ISRC hash scans)')
     if plans is not None:
         plans['target_candidates'] = explain(CANDIDATES_SQL, [musicbrainz_version])
     _bulk(CANDIDATES_SQL, [musicbrainz_version])
+    _analyze('tmp_sp_candidate')
     _bulk(TARGET_SQL)
     _bulk('''UPDATE tmp_sp_group SET target_key = 'spotify_track:' || spotify_id,
              target_type = 'spotify_track', target_reason = 'new_spotify' WHERE target_key IS NULL''')
+    progress('resolving target roots and checking redirect/alias ownership')
     _copy_target_ids()
     if plans is not None:
         plans['redirect_conflicts'] = explain(REDIRECT_CONFLICT_SQL)
@@ -242,6 +256,8 @@ def build_workspace(*, sample_percent=1, musicbrainz_version, progress=print, pl
     if plans is not None:
         plans['actions'] = explain(ACTIONS_SQL)
     _bulk(ACTIONS_SQL)
+    _analyze('tmp_sp_action')
+    progress('staging globally unambiguous ISRC aliases (evidence hash scan)')
     _bulk('''CREATE TEMP TABLE tmp_sp_isrc_alias AS
         SELECT e.value AS isrc, MIN(a.to_id::text)::uuid AS to_id,
                MIN(a.batch_key) AS batch_key
@@ -253,6 +269,8 @@ def build_workspace(*, sample_percent=1, musicbrainz_version, progress=print, pl
     with connection.cursor() as cursor:
         cursor.execute('CREATE UNIQUE INDEX ON tmp_sp_action (batch_key)')
         cursor.execute('ANALYZE tmp_sp_action')
+    _analyze('tmp_sp_isrc_alias')
+    progress('staging inbound redirects for flat promotion (redirect hash scan)')
     create_inbound_table('tmp_sp_inbound')
     stage_inbound_redirects(roots_table='tmp_sp_action', root_column='from_id', inbound_table='tmp_sp_inbound')
     with connection.cursor() as cursor:
