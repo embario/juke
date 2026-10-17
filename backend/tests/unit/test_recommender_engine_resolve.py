@@ -47,8 +47,14 @@ class ResolveEndpointTests(SimpleTestCase):
 class CooccurrenceRedirectExpansionDatabaseTests(TransactionTestCase):
     """Exercise the serving SQL against a tiny redirect/co-occurrence fixture."""
 
+    def _drop_fixture_tables(self):
+        with connection.cursor() as cursor:
+            cursor.execute('DROP TABLE IF EXISTS pg_temp.mlcore_canonical_item_redirect')
+            cursor.execute('DROP TABLE IF EXISTS pg_temp.mlcore_item_cooccurrence')
+
     def test_seed_reaches_neighbours_of_every_item_in_two_hop_chain(self):
         seed_id, middle_id, oldest_id, *neighbour_ids = [uuid.uuid4() for _ in range(6)]
+        self.addCleanup(self._drop_fixture_tables)
 
         with connection.cursor() as cursor:
             cursor.execute('DROP TABLE IF EXISTS pg_temp.mlcore_canonical_item_redirect')
