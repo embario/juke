@@ -13,7 +13,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--manifest', help='Path to a materialized ListenBrainz shard manifest.')
         parser.add_argument('--output-root', help='Cold output root for per-shard pair files.')
-        parser.add_argument('--sort-tmp-dir', help='Directory for sort spill files (default: <output-root>/.sort-tmp). Point at NVMe scratch.')
+        parser.add_argument('--sort-tmp-dir', help='Sort spill directory (default: <output-root>/.sort-tmp); point at NVMe scratch.')
         parser.add_argument('--sort-buffer-size', help='sort -S memory buffer, e.g. 2G (default: sort decides).')
         parser.add_argument('--zstd-level', type=int, default=DEFAULT_ZSTD_LEVEL, help='zstd level for the per-shard outputs.')
         parser.add_argument('--max-shards', type=int, help='Limit processing for a bounded validation run.')
