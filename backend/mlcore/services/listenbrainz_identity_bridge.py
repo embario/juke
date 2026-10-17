@@ -787,6 +787,9 @@ class _SortedZstdOutput:
                         raw = rest.rstrip(b'\n') + b'\t' + count + b'\n'
                     out.write(raw)
                     self.unique_line_count += 1
+            if not self.unique_line_count:
+                # No rows: write a valid empty zstd frame so readers and the zstd CLI do not choke.
+                self.part_path.write_bytes(zstd.compress(b'', level=self._level))
         except BaseException as exc:  # surfaced by finish()
             self._error = exc
 

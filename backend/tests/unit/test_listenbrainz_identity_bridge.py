@@ -403,6 +403,9 @@ class ListenBrainzIdentityBridgeTests(TestCase):
         self.assertEqual(list(self.output_root.rglob('*.part')), [])
         self.assertFalse((self.output_root / '.sort-tmp').exists())
 
+        ListenBrainzIdentityShard.objects.filter(
+            source_version=self.source_version, shard_key='v3.jsonl'
+        ).update(status='succeeded')
         replay = extract_listenbrainz_identity_shard(
             shard,
             source_version=self.source_version,
@@ -414,6 +417,21 @@ class ListenBrainzIdentityBridgeTests(TestCase):
         self.assertTrue(replay.skipped)
         self.assertEqual(replay.spotify_observation_count, 4)
         self.assertEqual(replay.unique_spotify_pair_count, 2)
+
+    def test_shard_without_spotify_or_isrc_still_writes_readable_empty_outputs(self):
+        shard = self.root / 'empty.jsonl'
+        shard.write_text(self._listen(uuid.uuid4()) + '\n')
+        result = extract_listenbrainz_identity_shard(
+            shard,
+            source_version=self.source_version,
+            shard_key='empty.jsonl',
+            source_sha256='1' * 64,
+            output_root=self.output_root,
+        )
+
+        for path in (result.output_path, result.isrc_output_path, result.spotify_output_path):
+            self.assertEqual(self._read_zst(path), [])
+        self.assertEqual(result.unique_spotify_pair_count, 0)
 
     def test_command_accepts_scratch_options(self):
         stdout = io.StringIO()
