@@ -34,6 +34,7 @@ from mlcore.services.canonical_items import (
     identity_from_listenbrainz_candidates,
 )
 from mlcore.services.corpus import LicensePolicy
+from mlcore.services.spotify_ids import normalize_spotify_track_id
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ SPOTIFY_ID_KEYS = (
     'spotify_track_id',
     'submission_client_track_id',
     'media_player_track_id',
+    'origin_url',
 )
 
 
@@ -898,7 +900,9 @@ def _parse_listen(payload: dict[str, Any]) -> ParsedListen:
     source_event_signature = _event_signature(
         source_user_id=source_user_id,
         played_at=played_at,
-        candidates=track_identifier_candidates,
+        # Hashed from the raw client value, not the normalised ID, so listens already in the ledger
+        # keep their signature and a re-import does not duplicate them.
+        candidates={**track_identifier_candidates, 'spotify_id': _raw_spotify_value(additional_info)},
         track_name=track_name,
         artist_name=artist_name,
     )
@@ -908,6 +912,8 @@ def _parse_listen(payload: dict[str, Any]) -> ParsedListen:
         'artist_name': artist_name,
         'release_name': release_name,
         'additional_info': additional_info,
+        # Evidence only: the listen identity stays the MBID/MSID (see identity_from_listenbrainz_candidates).
+        'spotify_track_id': spotify_id,
     }
     return ParsedListen(
         source_user_id=source_user_id,
@@ -1174,6 +1180,15 @@ def _maybe_uuid(value: Any) -> UUID | None:
 
 
 def _extract_spotify_id(additional_info: dict[str, Any]) -> str:
+    """First key whose value normalises to a Spotify track ID; albums, artists and playlists are ignored."""
+    for key in SPOTIFY_ID_KEYS:
+        normalized = normalize_spotify_track_id(additional_info.get(key))
+        if normalized:
+            return normalized
+    return ''
+
+
+def _raw_spotify_value(additional_info: dict[str, Any]) -> str:
     for key in SPOTIFY_ID_KEYS:
         value = additional_info.get(key)
         if value:

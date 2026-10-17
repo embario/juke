@@ -56,7 +56,7 @@ class FullIngestionMixin:
             track_name='May Song',
             artist_name='May Artist',
             release_name='May Release',
-            spotify_id='spotify-may',
+            spotify_id='SpotifyMay000000000000',
         )
         self.june_payload = b''.join(
             [
@@ -66,7 +66,7 @@ class FullIngestionMixin:
                     track_name='June Song 1',
                     artist_name='June Artist',
                     release_name='June Release',
-                    spotify_id='spotify-june-1',
+                    spotify_id='SpotifyJune10000000000',
                 ),
                 self._build_listen_row(
                     user_name='alice',
@@ -74,7 +74,7 @@ class FullIngestionMixin:
                     track_name='June Song 2',
                     artist_name='June Artist',
                     release_name='June Release',
-                    spotify_id='spotify-june-2',
+                    spotify_id='SpotifyJune20000000000',
                 ),
             ]
         )
@@ -370,7 +370,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
 
     @override_settings(MLCORE_FULL_INGESTION_TARGET_CHUNK_ROWS=2)
     def test_copy_stage_loads_lean_event_and_session_rows(self):
-        self._create_track(spotify_id='spotify-may')
+        self._create_track(spotify_id='SpotifyMay000000000000')
         archive_path = self._build_archive()
         plan = build_full_ingestion_plan(
             'listenbrainz',
@@ -593,7 +593,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         )
 
     def test_merge_stage_populates_final_tables_and_cleans_load_tables(self):
-        self._create_track(spotify_id='spotify-may')
+        self._create_track(spotify_id='SpotifyMay000000000000')
         archive_path = self._build_archive()
         plan = build_full_ingestion_plan(
             'listenbrainz',
@@ -681,7 +681,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
             self.assertFalse(shadow_tables_exist)
 
     def test_merge_stage_force_can_rerun_failed_all_merged_state_from_load_tables(self):
-        self._create_track(spotify_id='spotify-may')
+        self._create_track(spotify_id='SpotifyMay000000000000')
         archive_path = self._build_archive()
         plan = build_full_ingestion_plan(
             'listenbrainz',
@@ -710,7 +710,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(ListenBrainzSessionTrack.objects.count(), 3)
 
     def test_merge_stage_treats_stale_merging_partition_as_retryable_loaded(self):
-        self._create_track(spotify_id='spotify-may')
+        self._create_track(spotify_id='SpotifyMay000000000000')
         archive_path = self._build_archive()
         plan = build_full_ingestion_plan(
             'listenbrainz',
@@ -734,7 +734,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(resumed.counters['partitions_merged'], 4)
 
     def test_merge_stage_resume_skips_checkpointed_partition_drains(self):
-        self._create_track(spotify_id='spotify-may')
+        self._create_track(spotify_id='SpotifyMay000000000000')
         archive_path = self._build_archive()
         plan = build_full_ingestion_plan(
             'listenbrainz',
@@ -785,7 +785,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(retained_checkpoint_count, 0)
 
     def test_pipeline_executor_completes_end_to_end(self):
-        self._create_track(spotify_id='spotify-may')
+        self._create_track(spotify_id='SpotifyMay000000000000')
         archive_path = self._build_archive()
         plan = build_full_ingestion_plan(
             'listenbrainz',
@@ -807,7 +807,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertEqual(completed.counters['partitions_merged'], 4)
 
     def test_command_can_execute_pipeline(self):
-        self._create_track(spotify_id='spotify-may')
+        self._create_track(spotify_id='SpotifyMay000000000000')
         archive_path = self._build_archive()
         scratch_root = self.temp_dir / 'scratch'
         output_buffer = StringIO()
@@ -837,7 +837,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertIn('completed provider=listenbrainz', output_buffer.getvalue())
 
     def test_status_command_json_includes_finalize_and_cleanup_summary(self):
-        self._create_track(spotify_id='spotify-may')
+        self._create_track(spotify_id='SpotifyMay000000000000')
         archive_path = self._build_archive()
         scratch_root = self.temp_dir / 'scratch'
         call_command(
@@ -876,7 +876,7 @@ class FullIngestionExecutionTests(FullIngestionMixin, TransactionTestCase):
         self.assertFalse(payload['cleanup']['log_root_exists'])
 
     def test_verify_full_ingestion_dataset_command_reports_training_readiness(self):
-        self._create_track(spotify_id='spotify-may')
+        self._create_track(spotify_id='SpotifyMay000000000000')
         archive_path = self._build_archive()
         scratch_root = self.temp_dir / 'scratch'
         call_command(
