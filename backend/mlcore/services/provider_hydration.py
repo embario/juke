@@ -447,7 +447,8 @@ def rescore_pending_priorities(*, after_id=0, batch_size=2_000, boosts=None):
     ``SKIP LOCKED`` so it passes over any row this pass is holding. Running, matched and
     terminal rows are left alone. At the end of a pass the cursor resets to 0. ``boosts`` maps
     canonical item ids to a fixed priority (items users reference, see ``hydration_boosts``) that
-    replaces the listen-score priority, so a re-score never undoes a boost.
+    replaces the listen-score priority, so a re-score never undoes a boost. A row already in 1..99
+    (listen-scored, or moved up by a wave, see ``hydration_waves``) is only ever improved here.
     """
     if batch_size < 1:
         raise ValueError('batch_size must be greater than zero')
@@ -462,6 +463,8 @@ def rescore_pending_priorities(*, after_id=0, batch_size=2_000, boosts=None):
         wanted = (boosts or {}).get(canonical_item_id)
         if wanted is None:
             wanted = priority_for_popularity(popularity.get(canonical_item_id, 0.0))
+        if 1 <= current < UNSCORED_PRIORITY:
+            wanted = min(wanted, current)  # scores and wave moves only ever improve a scored row
         if wanted != current:
             changes[item_id] = wanted
     updated = 0
@@ -618,17 +621,30 @@ def _create_spotify_hydration_items(alias_rows):
     return len(rows)
 
 
-def claim_hydration_item(*, run, worker_id, lease_seconds=120):
+def claim_hydration_item(*, run, worker_id, lease_seconds=120, tail_sweep=False):
+    """Lease the next item. ``tail_sweep`` takes the oldest unscored item instead of the best one, so
+    the long tail is hydrated at a steady trickle while popular items keep claiming first."""
+    if tail_sweep:
+        item = _claim(run, worker_id, lease_seconds, tail_only=True)
+        if item is not None:
+            return item
+    return _claim(run, worker_id, lease_seconds)
+
+
+def _claim(run, worker_id, lease_seconds, *, tail_only=False):
     now = timezone.now()
     with transaction.atomic():
-        item = (
+        queryset = (
             ProviderHydrationItem.objects.select_for_update(skip_locked=True)
             .filter(provider=run.provider)
             .filter(Q(status__in=['pending', 'retry']) | Q(status='running', lease_expires_at__lt=now))
             .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
-            .order_by('priority', 'id')
-            .first()
         )
+        if tail_only:
+            queryset = queryset.filter(priority__gte=UNSCORED_PRIORITY).order_by('id')
+        else:
+            queryset = queryset.order_by('priority', 'id')
+        item = queryset.first()
         if item is None:
             return None
         item.status = 'running'

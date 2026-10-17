@@ -1,0 +1,57 @@
+---
+id: mlcore-identity-graph-saturation
+title: Saturate the MLCore identity graph with Spotify, ISRC, and MBID evidence from local ListenBrainz and MusicBrainz data
+status: ready
+priority: p1
+owner: unassigned
+area: platform
+label: BACKEND/ML
+complexity: 5
+updated_at: 2026-10-17
+---
+
+## Goal
+
+Attach Spotify track IDs, ISRCs, and MBIDs to the canonical items that co-occurrence already uses, using only data on Neptune (ListenBrainz shards, MusicBrainz bridge tables), with no Spotify API calls and within Neptune's disk limits. Full strategy, measurements, and disk budget: `docs/arch/MLCORE_IDENTITY_GRAPH_SATURATION_PLAN.md`.
+
+## Scope
+
+- Phase 0 (owner decisions): snapshot policy for the database tablespaces, NVMe scratch/temp tablespace, pausing the incremental listen import during bulk phases, serving redirect-chain fix.
+- Phase 1: read-only measurement (evidence profile across sampled months; MusicBrainz Spotify-URL overlap driven from the recordings side; play-weighted coverage baseline).
+- Phase 2: MusicBrainz Spotify track URLs to aliases (absorbs `mlcore-spotify-aliases-from-dump-evidence`).
+- Phase 3: extraction schema v3: per-shard MSID-Spotify and MSID-ISRC pairs with observation counts; fix ingestion so new listens keep Spotify IDs as evidence.
+- Phase 4: many-to-many evidence table (cold).
+- Phase 5: cluster MSIDs by dominant Spotify ID; choose MBID or new `spotify_track` target; flat redirects; aliases on final targets.
+- Phase 6: ISRC saturation, including MSID-to-MBID via unique MusicBrainz ISRC.
+- Phase 7: hydration queue integration and play-weighted coverage metrics.
+- Phase 8: keep current through the incremental pipeline and new MusicBrainz releases.
+
+## Out Of Scope
+
+- Spotify API calls (the hydration worker is paused; account quota is shared with sign-in).
+- Deleting or dropping any data, or changing ZFS snapshots, without explicit owner approval (section 4.3 of the plan lists candidates).
+- Redesigning the incremental listen import (flagged as a separate problem).
+- Retraining co-occurrence (not needed: serving maps through redirects).
+- Popularity priority for API hydration (fleet task `spotify-hydration-adaptive-budget-and-popularity-priority`).
+
+## Acceptance Criteria
+
+- Phase 1 numbers recorded in Handoff before any write; estimates in the plan's section 4.2 updated.
+- Tests: Spotify ID/URL normalisation (bare IDs, `spotify:track:`, `open.spotify.com/track/`, `intl-xx/`, query strings, album/artist rejection); extraction with counts and schema-v3 replay; evidence idempotency; dominant-ID rule; group targeting (one MBID, MusicBrainz URL, ISRC bridge, new `spotify_track`, multi-MBID conflict); never overwriting active redirects or aliases owned elsewhere; flat redirects (no chains longer than one hop); group-size cap.
+- Serving: a test showing a seed reaches co-occurrence neighbours through every redirect in its cluster.
+- On Neptune: aliases, redirects, and evidence rows created match Phase 1 within expected conflict losses; play-weighted MBID/ISRC/Spotify coverage reported before and after; zero Spotify API requests from this work; disk usage within the plan's budget (persistent ~20-30 GB physical HDD, scratch ≤50 GB NVMe).
+- Backend tests pass in CI.
+
+## Execution Notes
+
+- ITERATIVE: Phase 0 needs owner decisions; Phase 5 merge rules need a sample audit before bulk activation. Phases 1-4 can run autonomously once Phase 0 is settled.
+- Key files: `backend/mlcore/services/listenbrainz_identity_bridge.py` (extractor, staging, materialisation patterns), `backend/mlcore/ingestion/listenbrainz.py` (`_extract_spotify_id`, `SPOTIFY_ID_KEYS`), `backend/mlcore/services/canonical_items.py` (`identity_from_listenbrainz_candidates`), `backend/mlcore/services/musicbrainz_bridge.py`, `backend/mlcore/services/musicbrainz_isrc_aliases.py`, `backend/mlcore/services/canonical_redirects.py`, `backend/mlcore/services/provider_hydration.py`, `backend/recommender_engine/app/main.py` (`_COOCCURRENCE_SQL`, `_RESOLVE_ALIASES_SQL`), `backend/mlcore/models.py`.
+- Coordination: the fleet is editing `provider_hydration.py` and `hydrate_spotify_from_isrc.py` (Part 2). Keep Phases 1-6 in new modules and commands; take Phase 7 after Part 2 lands.
+- Resource notes: the HDD pool is IOPS-bound (~130 reads/s per disk observed). Use NVMe for scratch; schedule bulk phases with the incremental import paused; batch all writes; run large read-only checks as samples.
+- Risks: wrong merges from community data (mitigated by dominance, group cap, conflict-never-overwrite, sample audit); snapshot pinning of transient data (mitigated by NVMe scratch); one-hop serving expansion (mitigated by flat redirects plus serving fix); Spotify Developer Policy III.14 depending on MLCore's use of provider IDs (owner judgement).
+
+## Handoff
+
+- Completed: overnight read-only investigation (2026-10-16/17): storage and snapshot audit, table inventory, identity graph counts, evidence profile of a full month, pipeline timings, code-path review. Written up in the plan doc.
+- Next: owner decisions in plan section 8; then Phase 1.
+- Blockers: Phase 0 decisions.
