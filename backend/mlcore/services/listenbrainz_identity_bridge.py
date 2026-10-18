@@ -19,6 +19,7 @@ from django.utils import timezone
 from mlcore.ingestion.listenbrainz import _extract_spotify_id
 from mlcore.models import CanonicalItem, ListenBrainzIdentityShard, SourceIngestionRun
 from mlcore.services.canonical_items import ITEM_TYPE_RECORDING_MSID, canonical_item_uuid
+from mlcore.services.identity_safety import stage_holds, assert_hold_snapshot
 
 BRIDGE_SOURCE_ID = 'listenbrainz-identity-bridge'
 CONFLICT_RESOLVER_SOURCE_ID = 'listenbrainz-identity-conflict-resolver'
@@ -418,7 +419,9 @@ def materialize_listenbrainz_isrc_aliases(source_version: str) -> ISRCAliasMater
             unresolved_pair_count=0,
         )
 
+    stage_holds()
     with transaction.atomic(), connection.cursor() as cursor:
+        assert_hold_snapshot()
         cursor.execute("SET LOCAL temp_tablespaces = 'juke_mlcore_cold'")
         cursor.execute('''
             CREATE TEMP TABLE mlcore_lb_isrc_candidate_stage (
@@ -449,6 +452,7 @@ def materialize_listenbrainz_isrc_aliases(source_version: str) -> ISRCAliasMater
                 FROM resolved
                 GROUP BY isrc
                 HAVING COUNT(DISTINCT canonical_item_id) = 1
+                   AND NOT EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'isrc' AND h.value = resolved.isrc)
             )
         '''
         cursor.execute('SELECT COUNT(DISTINCT isrc) FROM mlcore_lb_isrc_candidate_stage')
@@ -1231,6 +1235,7 @@ def _ensure_conflict_resolution_msid_items(
 
 
 def _materialize_conflict_resolution_redirects(source_version: str, *, policy_version: str) -> tuple[int, int]:
+    stage_holds(subjects=True)
     candidates_sql = '''
         SELECT
             source_item.id AS from_id,
@@ -1249,8 +1254,12 @@ def _materialize_conflict_resolution_redirects(source_version: str, *, policy_ve
         WHERE resolution.source_version = %s
           AND resolution.policy_version = %s
           AND resolution.status = 'active'
+          AND NOT EXISTS (SELECT 1 FROM tmp_identity_held_subject h
+                          WHERE h.item_id = source_item.id OR h.final_id = source_item.id
+                                 OR h.item_id = target_item.id)
     '''
     with transaction.atomic(), connection.cursor() as cursor:
+        assert_hold_snapshot()
         cursor.execute(
             f'''
             UPDATE mlcore_canonical_item_redirect redirect
@@ -1348,7 +1357,9 @@ def _materialize_conflict_resolution_redirects(source_version: str, *, policy_ve
 
 
 def _classify_and_materialize(source_version: str) -> dict[str, int]:
+    stage_holds(subjects=True)
     with transaction.atomic(), connection.cursor() as cursor:
+        assert_hold_snapshot()
         cursor.execute(
             '''
             UPDATE mlcore_listenbrainz_msid_mbid_mapping
@@ -1407,6 +1418,9 @@ def _classify_and_materialize(source_version: str) -> dict[str, int]:
               ON target_item.canonical_key = 'recording_mbid:' || mapping.recording_mbid::text
             WHERE mapping.source_version = %s
               AND mapping.status = 'active'
+              AND NOT EXISTS (SELECT 1 FROM tmp_identity_held_subject h
+                              WHERE h.item_id = source_item.id OR h.final_id = source_item.id
+                                 OR h.item_id = target_item.id)
         '''
         cursor.execute(
             f'''

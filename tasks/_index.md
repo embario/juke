@@ -4,6 +4,7 @@ Use this file as the first stop for work selection.
 
 | ID | Title | Status | Priority | Owner | Label | Area | Complexity | File | Updated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mlcore-identity-reference-safeguards | Honor identity quarantines and validate ISRC hydration references | review | p1 | codex | BACKEND/ML | platform | 4 | `tasks/mlcore-identity-reference-safeguards.md` | 2026-10-18 |
 | juke-macos-auth-handoff | Restore Mac sign-in handoff against deployed Neptune | review | p1 | codex | CLIENTS | clients | 3 | `tasks/juke-macos-auth-handoff.md` | 2026-10-01 |
 | juke-macos-sidebar-navigation | Move Juke Mac section navigation into a sidebar | done | p1 | codex | CLIENTS | clients | 2 | `tasks/juke-macos-sidebar-navigation.md` | 2026-10-01 |
 | spotify-oauth-hydrator-quota-isolation | Protect Spotify account linking from bulk hydration quota exhaustion | done | p0 | codex | BACKEND | backend | 3 | `tasks/spotify-oauth-hydrator-quota-isolation.md` | 2026-09-04 |

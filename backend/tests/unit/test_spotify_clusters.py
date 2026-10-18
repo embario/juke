@@ -150,7 +150,9 @@ class SpotifyClusterTests(TestCase):
         self.assertFalse(CanonicalItemRedirect.objects.exists())
         alias.status = 'retired'
         alias.save()
-        self.assertEqual(self.build(), {'alias_conflict': 1})
+        self.assertEqual(self.build(), {'quarantined_reference': 1})
+        self.apply(write=True)
+        self.assertFalse(CanonicalItemRedirect.objects.exists())
 
     def test_foreign_active_msid_redirect_is_conflict(self):
         a, other = self.item(), self.item()

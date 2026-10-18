@@ -192,6 +192,8 @@ class HydrationReconcileTests(TestCase):
                 f'CREATE TEMP TABLE {hydration_reconcile.ALIAS_TABLE} '
                 '(canonical_item_id uuid PRIMARY KEY, spotify_id varchar(512) NOT NULL)'
             )
+        from mlcore.services.identity_safety import stage_holds
+        stage_holds()
         plans = {
             'stage pending queue rows': explain(hydration_reconcile.STAGE_PENDING_SQL, ['spotify', 0], bulk=False),
             'stage Spotify aliases': explain(hydration_reconcile.STAGE_SPOTIFY_ALIASES_SQL, bulk=False),

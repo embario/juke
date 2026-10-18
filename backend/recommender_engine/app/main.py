@@ -524,7 +524,8 @@ _RESOLVE_ALIASES_SQL = """
             alias.source,
             alias.resource_type,
             alias.source_id,
-            alias.status,
+            CASE WHEN alias.metadata ? 'identity_reference_quarantine' THEN 'conflict'
+                 ELSE alias.status END AS status,
             alias.canonical_item_id
         FROM mlcore_canonical_item_alias alias
         JOIN requested

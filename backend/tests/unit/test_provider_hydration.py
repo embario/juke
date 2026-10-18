@@ -13,7 +13,10 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from mlcore.management.commands.hydrate_spotify_from_isrc import wait_for_database
-from mlcore.models import CanonicalItem, CanonicalItemAlias, ProviderHydrationItem, ProviderHydrationRun
+from mlcore.models import (
+    CanonicalItem, CanonicalItemAlias, ProviderHydrationItem, ProviderHydrationRun,
+    MusicBrainzRecordingMetadata, MusicBrainzRecordingISRC,
+)
 from mlcore.services.provider_hydration import (
     AdaptiveRateController,
     ProviderHydrationError,
@@ -497,6 +500,13 @@ class HydrationStateTests(TestCase):
             provider='spotify',
             identifier_type='isrc',
             identifier='USRC17607839',
+        )
+
+        MusicBrainzRecordingISRC.objects.create(recording_mbid=self.canonical.canonical_key.split(':')[1],
+                                                  isrc=self.item.identifier, source_version='')
+        MusicBrainzRecordingMetadata.objects.create(
+            recording_mbid=self.canonical.canonical_key.split(':')[1], source_version='',
+            title='Track', artist_credit='Artist', source_checksum='a'*64, duration_ms=1234,
         )
 
     def test_exact_match_creates_active_alias(self):

@@ -20,7 +20,13 @@ from mlcore.models import (
     ListenBrainzSessionTrack,
     ProviderHydrationItem,
     ProviderHydrationRun,
+    MusicBrainzRecordingMetadata,
+    MusicBrainzRecordingISRC,
 )
+
+
+from mlcore.services.identity_safety import HOLD_KEY, held_aliases, identifier_held
+from mlcore.services.recording_metadata import metadata_verdict
 
 
 SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token'
@@ -497,7 +503,7 @@ def _spotify_alias_on(item_reference):
             source='spotify',
             resource_type='track',
             status='active',
-        )
+        ).exclude(metadata__has_key=HOLD_KEY)
     )
 
 
@@ -522,6 +528,7 @@ def _isrc_aliases_needing_spotify():
         .annotate(final_item_id=final_item)
         .annotate(has_spotify=_spotify_alias_on('canonical_item_id'), final_has_spotify=_spotify_alias_on('final_item_id'))
         .filter(has_spotify=False, final_has_spotify=False)
+        .exclude(metadata__has_key=HOLD_KEY)
     )
 
 
@@ -670,6 +677,10 @@ def _claim(run, worker_id, lease_seconds, *, tail_only=False):
             queryset = queryset.filter(priority__gte=UNSCORED_PRIORITY).order_by('id')
         else:
             queryset = queryset.order_by('priority', 'id')
+        queryset = queryset.exclude(evidence__has_key=HOLD_KEY).annotate(
+            held_isrc=Exists(held_aliases().filter(source='isrc', resource_type='recording',
+                                                 source_id=OuterRef('identifier'))),
+        ).filter(held_isrc=False)
         item = queryset.first()
         if item is None:
             return None
@@ -684,8 +695,48 @@ def _claim(run, worker_id, lease_seconds, *, tail_only=False):
 def hydrate_spotify_item(item, *, run, client):
     item.attempt_count += 1
     run.attempted_count += 1
-    run.request_count += 1
+
+    def hold(reason, evidence=None):
+        # Keep the durable queue marker and alias status under the same lock as bulk write checks.
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(hashtext('mlcore-canonical-alias-materialization'))")
+            item.refresh_from_db(fields=['evidence'])
+            extra = {}
+            if reason in {'version_context_disagrees', 'recording_title_disagrees', 'recording_artist_disagrees',
+                          'recording_duration_disagrees', 'returned_isrc_disagrees', 'isrc_not_on_recording'}:
+                extra[HOLD_KEY] = item.evidence.get(HOLD_KEY) or {
+                    'reason': reason, 'isrc': item.identifier,
+                    'source_version': item.source_version, 'origin': 'hydration_metadata_validation',
+                }
+                alias = CanonicalItemAlias.objects.select_for_update().filter(
+                    source='isrc', resource_type='recording', source_id=item.identifier,
+                    canonical_item_id=item.canonical_item_id,
+                ).first()
+                if alias and alias.status == 'active':
+                    alias.status = 'conflict'
+                    alias.metadata = {**alias.metadata, **extra}
+                    alias.save(update_fields=['status', 'metadata', 'updated_at'])
+            _finish_item(item, status='ambiguous', evidence={**item.evidence, **(evidence or {}), **extra,
+                                                          'validation_hold': reason})
+            run.ambiguous_count += 1
+            run.save()
+        return 'ambiguous'
+
+    if HOLD_KEY in item.evidence or identifier_held('isrc', 'recording', item.identifier):
+        return hold('quarantined_reference')
+    key = item.canonical_item.canonical_key
+    reference = None
+    if key.startswith('recording_mbid:'):
+        reference = MusicBrainzRecordingMetadata.objects.filter(
+            recording_mbid=key.split(':', 1)[1], source_version=item.source_version,
+        ).first()
+    if not reference or not reference.title or not reference.artist_credit or len(reference.source_checksum) != 64:
+        return hold('missing_recording_metadata')
+    if not MusicBrainzRecordingISRC.objects.filter(recording_mbid=reference.recording_mbid,
+            isrc=item.identifier, source_version=item.source_version).exists():
+        return hold('isrc_not_on_recording')
     try:
+        run.request_count += 1
         candidates = client.search_isrc(item.identifier)
         evidence = {'query_isrc': item.identifier, 'candidates': [candidate.evidence() for candidate in candidates]}
         if not candidates:
@@ -697,34 +748,50 @@ def hydrate_spotify_item(item, *, run, client):
             run.ambiguous_count += 1
             return 'ambiguous'
         candidate = candidates[0]
-        existing = CanonicalItemAlias.objects.filter(
-            source='spotify', resource_type='track', source_id=candidate.track_id,
-        ).first()
-        if existing is not None and existing.canonical_item_id != item.canonical_item_id:
-            evidence['conflict_canonical_item_id'] = str(existing.canonical_item_id)
-            _finish_item(item, status='ambiguous', evidence=evidence)
-            run.ambiguous_count += 1
-            return 'ambiguous'
-        CanonicalItemAlias.objects.update_or_create(
-            source='spotify',
-            resource_type='track',
-            source_id=candidate.track_id,
-            defaults={
-                'canonical_item_id': item.canonical_item_id,
-                'confidence': 1.0,
-                'source_version': 'spotify-search-v1',
-                'status': 'active',
-                'metadata': {
-                    'spotify_uri': candidate.uri,
-                    'match_source': 'isrc',
-                    'match_isrc': item.identifier,
-                    'evidence': candidate.evidence(),
+        if normalize_isrc(candidate.isrc) != normalize_isrc(item.identifier):
+            return hold('returned_isrc_disagrees', evidence)
+        verdict = metadata_verdict(reference, candidate)
+        evidence['metadata_validation'] = {'verdict': verdict, 'source_version': reference.source_version,
+                                           'recording_mbid': str(reference.recording_mbid),
+                                           'source_checksum': reference.source_checksum}
+        if verdict != 'metadata_consistent':
+            return hold(verdict, evidence)
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_xact_lock(hashtext('mlcore-canonical-alias-materialization'))")
+            item.refresh_from_db(fields=['evidence'])
+            if HOLD_KEY in item.evidence or identifier_held('isrc', 'recording', item.identifier):
+                return hold('quarantined_reference', evidence)
+            existing = CanonicalItemAlias.objects.filter(
+                source='spotify', resource_type='track', source_id=candidate.track_id,
+            ).first()
+            if existing is not None and (existing.status != 'active' or HOLD_KEY in existing.metadata
+                                         or existing.canonical_item_id != item.canonical_item_id):
+                evidence['conflict_canonical_item_id'] = str(existing.canonical_item_id)
+                _finish_item(item, status='ambiguous', evidence=evidence)
+                run.ambiguous_count += 1
+                return 'ambiguous'
+            CanonicalItemAlias.objects.update_or_create(
+                source='spotify',
+                resource_type='track',
+                source_id=candidate.track_id,
+                defaults={
+                    'canonical_item_id': item.canonical_item_id,
+                    'confidence': 1.0,
+                    'source_version': 'spotify-search-v1',
+                    'status': 'active',
+                    'metadata': {
+                        'spotify_uri': candidate.uri,
+                        'match_source': 'isrc',
+                        'match_isrc': item.identifier,
+                        'evidence': candidate.evidence(),
+                        'metadata_validation': evidence['metadata_validation'],
+                    },
                 },
-            },
-        )
-        _finish_item(item, status='matched', evidence=evidence)
-        run.matched_count += 1
-        return 'matched'
+            )
+            _finish_item(item, status='matched', evidence=evidence)
+            run.matched_count += 1
+            return 'matched'
     except ProviderHydrationError as exc:
         item.last_http_status = exc.http_status
         item.last_error = str(exc)

@@ -471,6 +471,8 @@ class CanonicalItemAlias(models.Model):
             models.Index(fields=['canonical_item'], name='mlcore_cia_canonic_7d4fe3_idx'),
             models.Index(fields=['source', 'resource_type', 'source_id'], name='mlcore_cia_lookup_117b92_idx'),
             models.Index(fields=['status'], name='mlcore_cia_status_6e75d3_idx'),
+            models.Index(fields=['source', 'resource_type', 'source_id'], name='mlcore_cia_held_idx',
+                         condition=~models.Q(status='active') | models.Q(metadata__has_key='identity_reference_quarantine')),
         ]
         ordering = ['source', 'resource_type', 'source_id']
 
@@ -548,6 +550,9 @@ class ProviderHydrationItem(models.Model):
             ),
         ]
         indexes = [
+            models.Index(fields=['identifier'], name='mlcore_phi_held_idx',
+                         condition=models.Q(provider='spotify', identifier_type='isrc',
+                                            evidence__has_key='identity_reference_quarantine')),
             models.Index(
                 fields=['provider', 'status', 'next_attempt_at', 'priority'],
                 name='mlcore_phi_claim_idx',
@@ -1127,3 +1132,19 @@ class IdentityEvidenceLoadGroup(models.Model):
 
     def __str__(self):
         return f'{self.source_version}:{self.scheme}:{self.status}'
+
+
+class MusicBrainzRecordingMetadata(models.Model):
+    """Immutable recording metadata used to check an ISRC search reference, per dump version."""
+    recording_mbid = models.UUIDField()
+    source_version = models.CharField(max_length=64)
+    source_checksum = models.CharField(max_length=64)
+    title = models.TextField()
+    artist_credit = models.TextField()
+    duration_ms = models.IntegerField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'mlcore_musicbrainz_recording_metadata'
+        db_tablespace = 'juke_mlcore_cold'
+        unique_together = ('recording_mbid', 'source_version')

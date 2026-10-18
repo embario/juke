@@ -6,6 +6,7 @@ from django.db import connection, transaction
 
 from mlcore.services.musicbrainz_bridge import BRIDGE_SOURCE_ID
 from mlcore.models import SourceIngestionRun
+from mlcore.services.identity_safety import stage_holds, assert_hold_snapshot
 
 
 ALGORITHM_VERSION = 'musicbrainz-isrc-alias-v1'
@@ -56,7 +57,9 @@ def materialize_musicbrainz_isrc_alias_batch(
     if batch_size < 1:
         raise ValueError('batch_size must be greater than zero')
 
+    stage_holds()
     with transaction.atomic(), connection.cursor() as cursor:
+        assert_hold_snapshot()
         if connection.vendor == 'postgresql':
             cursor.execute("SELECT pg_advisory_xact_lock(hashtext('mlcore-canonical-alias-materialization'))")
         cursor.execute(
@@ -85,6 +88,7 @@ def materialize_musicbrainz_isrc_alias_batch(
                 FROM resolved
                 WHERE mbid_count = 1
                   AND canonical_item_id IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'isrc' AND h.value = resolved.isrc)
             ), existing AS MATERIALIZED (
                 SELECT
                     candidate.isrc,

@@ -21,8 +21,9 @@ from django.db import connection, transaction
 from mlcore.models import MusicBrainzRecordingURL, SourceIngestionRun
 from mlcore.services.musicbrainz_bridge import BRIDGE_SOURCE_ID
 from mlcore.services.spotify_ids import normalize_spotify_track_id
+from mlcore.services.identity_safety import stage_holds, assert_hold_snapshot
 
-ALGORITHM_VERSION = 'musicbrainz-url-alias-v1'
+ALGORITHM_VERSION = 'musicbrainz-url-alias-v2'
 MATCH_SOURCE = 'musicbrainz_url'
 MAX_REDIRECT_DEPTH = 8
 STAGE_CHUNK_SIZE = 50_000
@@ -48,15 +49,16 @@ BULK_JOIN_SETTINGS = (
 
 TEMP_TABLES_SQL = (
     'DROP TABLE IF EXISTS tmp_mbu_stage, tmp_mbu_recording, tmp_mbu_alias, tmp_mbu_items, tmp_mbu_api, '
-    'tmp_mbu_candidate, tmp_mbu_hydra_items, tmp_mbu_phi, tmp_mbu_isrc',
+    'tmp_mbu_candidate, tmp_mbu_api_hold, tmp_mbu_hydra_items, tmp_mbu_phi, tmp_mbu_isrc',
     'CREATE TEMP TABLE tmp_mbu_stage (recording_mbid uuid NOT NULL, spotify_id text NOT NULL)',
     '''CREATE TEMP TABLE tmp_mbu_recording (
         recording_mbid uuid PRIMARY KEY, id_count integer NOT NULL, spotify_id text NOT NULL, item_id uuid)''',
     '''CREATE TEMP TABLE tmp_mbu_alias (
-        source_id text PRIMARY KEY, owner_id uuid NOT NULL, status text NOT NULL, match_source text NOT NULL)''',
+        source_id text PRIMARY KEY, owner_id uuid NOT NULL, status text NOT NULL, match_source text NOT NULL, held boolean NOT NULL)''',
     '''CREATE TEMP TABLE tmp_mbu_items (
         item_id uuid PRIMARY KEY, final_id uuid NOT NULL, depth integer NOT NULL DEFAULT 0)''',
     'CREATE TEMP TABLE tmp_mbu_api (final_id uuid NOT NULL, spotify_id text NOT NULL)',
+    'CREATE TEMP TABLE tmp_mbu_api_hold (final_id uuid NOT NULL, spotify_id text NOT NULL)',
     '''CREATE TEMP TABLE tmp_mbu_candidate (
         recording_mbid uuid PRIMARY KEY, spotify_id text NOT NULL, final_id uuid, status text NOT NULL)''',
 )
@@ -70,8 +72,11 @@ RESOLVE_ITEMS_SQL = '''
 '''
 
 LOAD_SPOTIFY_ALIASES_SQL = '''
-    INSERT INTO tmp_mbu_alias (source_id, owner_id, status, match_source)
-    SELECT alias.source_id, alias.canonical_item_id, alias.status, COALESCE(alias.metadata->>'match_source', '')
+    INSERT INTO tmp_mbu_alias (source_id, owner_id, status, match_source, held)
+    SELECT alias.source_id, alias.canonical_item_id, alias.status, COALESCE(alias.metadata->>'match_source', ''),
+           EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'spotify_track' AND h.value = alias.source_id)
+           OR EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'isrc'
+                      AND h.value = alias.metadata->>'match_isrc')
     FROM mlcore_canonical_item_alias alias
     WHERE alias.source = 'spotify' AND alias.resource_type = 'track'
     ON CONFLICT (source_id) DO NOTHING
@@ -94,6 +99,7 @@ CLASSIFY_SQL = '''
         r.spotify_id,
         it.final_id,
         CASE
+            WHEN a.held THEN 'quarantined_reference'
             WHEN r.id_count > 1 THEN 'multiple_ids'
             WHEN r.item_id IS NULL THEN 'unresolved'
             WHEN it.depth >= %s THEN 'redirect_depth'
@@ -262,6 +268,11 @@ ISRC_CANDIDATES_SQL = '''
     ) AS candidate
     WHERE phi.provider = 'spotify'
       AND phi.status IN ('matched', 'ambiguous')
+      AND NOT (phi.evidence ? 'identity_reference_quarantine')
+      AND NOT (phi.evidence ? 'validation_hold')
+      AND NOT EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'spotify_track'
+                      AND h.value = candidate->>'track_id')
+      AND NOT EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'isrc' AND h.value = phi.identifier)
 '''
 
 PRECISION_SQL = '''
@@ -366,6 +377,7 @@ def build_workspace(
     prefix = mbid_prefix.strip().lower().replace('-', '')
     stats = WorkspaceStats(source_version=source_version)
     started = time.monotonic()
+    stage_holds()
 
     with connection.cursor() as cursor:
         for statement in TEMP_TABLES_SQL:
@@ -430,8 +442,11 @@ def build_workspace(
             INSERT INTO tmp_mbu_api (final_id, spotify_id)
             SELECT it.final_id, a.source_id
             FROM tmp_mbu_alias a JOIN tmp_mbu_items it ON it.item_id = a.owner_id
-            WHERE a.status = 'active' AND a.match_source = 'isrc'
+            WHERE a.status = 'active' AND NOT a.held AND a.match_source = 'isrc'
         ''')
+        cursor.execute('''INSERT INTO tmp_mbu_api_hold (final_id, spotify_id)
+            SELECT it.final_id, a.source_id FROM tmp_mbu_alias a
+            JOIN tmp_mbu_items it ON it.item_id = a.owner_id WHERE a.held AND a.match_source = 'isrc' ''')
         cursor.execute('ANALYZE tmp_mbu_api')
         cursor.execute(CLASSIFY_SQL, [MAX_REDIRECT_DEPTH])
         cursor.execute(SHARED_ID_SQL)
@@ -476,6 +491,7 @@ def apply_alias_batch(
         raise ValueError('batch_size must be greater than zero')
     with transaction.atomic(), connection.cursor() as cursor:
         if write:
+            assert_hold_snapshot()
             if connection.vendor == 'postgresql':
                 cursor.execute("SELECT pg_advisory_xact_lock(hashtext('mlcore-canonical-alias-materialization'))")
             cursor.execute(
@@ -517,6 +533,7 @@ def apply_hydration_batch(
         raise ValueError('batch_size must be greater than zero')
     with transaction.atomic(), connection.cursor() as cursor:
         if write:
+            assert_hold_snapshot()
             cursor.execute(HYDRA_BATCH_UPDATE_SQL, [last_id, batch_size, source_version])
         else:
             cursor.execute(HYDRA_BATCH_DRY_RUN_SQL, [last_id, batch_size])
@@ -553,13 +570,30 @@ def precision_report(*, explain: bool = False, example_limit: int = 0) -> dict[s
     same_isrc = counts.get('different_same_isrc', 0)
     different = counts.get('different', 0)
     compared = same + same_isrc + different
+    held = _held_reference_count()
     return {
         'compared': compared,
+        'metric_kind': 'reference_agreement_not_independent_precision',
+        'held_comparisons': held,
+        'population': compared + held,
+        'eligible_reference_agreement': ((same + same_isrc) / compared) if compared else None,
         'same': same,
         'different_same_isrc': same_isrc,
         'different': different,
-        'strict_precision': (same / compared) if compared else None,
-        'precision': ((same + same_isrc) / compared) if compared else None,
+        'strict_precision': (same / (compared + held)) if compared + held else None,
+        'precision': ((same + same_isrc) / (compared + held)) if compared + held else None,
         'examples': examples,
         'explains': plan,
     }
+
+
+def _held_reference_count():
+    with connection.cursor() as c:
+        c.execute("""SELECT COUNT(*) FROM tmp_mbu_candidate c WHERE
+            ((c.status = 'quarantined_reference' AND (
+                EXISTS (SELECT 1 FROM tmp_mbu_api_hold h WHERE h.final_id = c.final_id)
+                OR EXISTS (SELECT 1 FROM tmp_mbu_api a WHERE a.final_id = c.final_id)))
+             OR (EXISTS (SELECT 1 FROM tmp_mbu_api_hold h WHERE h.final_id = c.final_id)
+                 AND NOT EXISTS (SELECT 1 FROM tmp_mbu_api a WHERE a.final_id = c.final_id)))
+            AND c.status IN ('new','existing_same','conflict_alias','api_disagrees','shared_id','quarantined_reference')""")
+        return c.fetchone()[0]
