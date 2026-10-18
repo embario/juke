@@ -22,9 +22,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from django.db import connection
+from django.db import connection, transaction
 
 from mlcore.models import SourceIngestionRun
+from mlcore.services.identity_safety import stage_holds, assert_hold_snapshot
 from mlcore.services.canonical_items import (
     ITEM_TYPE_RECORDING_MBID,
     ITEM_TYPE_RECORDING_MSID,
@@ -44,7 +45,7 @@ from mlcore.services.redirect_writes import (
     stage_inbound_redirects,
 )
 
-ALGORITHM_VERSION = 'musicbrainz-isrc-bridge-v2'
+ALGORITHM_VERSION = 'musicbrainz-isrc-bridge-v3'
 REDIRECT_SOURCE = 'musicbrainz-isrc-bridge'
 TARGET_CHUNK_SIZE = 50_000
 INBOUND_TABLE = 'tmp_ib_inbound'
@@ -82,6 +83,8 @@ STAGE_ISRCS_SQL = '''
     SELECT isrc, MIN(recording_mbid::text)::uuid
     FROM mlcore_musicbrainz_recording_isrc
     WHERE source_version = %s
+      AND NOT EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'isrc'
+                      AND h.value = mlcore_musicbrainz_recording_isrc.isrc)
     GROUP BY isrc
     HAVING COUNT(DISTINCT recording_mbid) = 1
 '''
@@ -284,6 +287,7 @@ def build_workspace(
         for statement in TEMP_TABLES_SQL:
             cursor.execute(statement)
 
+    stage_holds(subjects=True)
     if explain_plans:
         workspace.explains['stage_isrcs'] = explain(STAGE_ISRCS_SQL, [source_version])
     workspace.unambiguous_isrcs = run_bulk(STAGE_ISRCS_SQL, [source_version])
@@ -328,6 +332,9 @@ def build_workspace(
     with connection.cursor() as cursor:
         cursor.execute(CLASSIFY_SUBJECTS_SQL, [MAX_REDIRECT_DEPTH, MAX_REDIRECT_DEPTH])
         cursor.execute(BUILD_ROOTS_SQL)
+        cursor.execute("""UPDATE tmp_ib_root r SET status = 'quarantined_reference'
+            WHERE EXISTS (SELECT 1 FROM tmp_identity_held_subject h WHERE h.final_id = r.root_id)
+               OR EXISTS (SELECT 1 FROM tmp_identity_held_subject h WHERE h.depth >= 8)""")
         if basis_points < FULL_SAMPLE_BASIS_POINTS:
             cursor.execute(SAMPLE_ROOTS_SQL, [basis_points])
         cursor.execute('ANALYZE tmp_ib_root')
@@ -397,14 +404,17 @@ def apply_redirect_batch(
 ) -> RedirectBatchResult:
     if batch_size < 1:
         raise ValueError('batch_size must be greater than zero')
-    return insert_flat_redirects(
-        batch_sql=REDIRECT_BATCH_SQL,
-        batch_params=_batch_params(source_version, last_root, batch_size),
-        source=REDIRECT_SOURCE,
-        source_version=source_version,
-        inbound_table=INBOUND_TABLE,
-        write=write,
-    )
+    with transaction.atomic():
+        if write:
+            assert_hold_snapshot()
+        return insert_flat_redirects(
+            batch_sql=REDIRECT_BATCH_SQL,
+            batch_params=_batch_params(source_version, last_root, batch_size),
+            source=REDIRECT_SOURCE,
+            source_version=source_version,
+            inbound_table=INBOUND_TABLE,
+            write=write,
+        )
 
 
 def _batch_params(source_version: str, last_root: str | None, batch_size: int) -> list[Any]:

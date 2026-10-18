@@ -14,13 +14,14 @@ from pathlib import Path
 from django.db import connection, transaction
 
 from mlcore.services.canonical_items import canonical_item_uuid
+from mlcore.services.identity_safety import stage_holds, assert_hold_snapshot
 from mlcore.services.redirect_writes import (
     MAX_REDIRECT_DEPTH, bulk_join_mode, create_inbound_table, explain,
     follow_redirects, insert_flat_redirects, run_bulk, stage_inbound_redirects,
 )
 
 SOURCE = 'listenbrainz-spotify-cluster'
-ALGORITHM = 'spotify-cluster-v1'
+ALGORITHM = 'spotify-cluster-v2'
 
 # SUM across all loaded versions: B4 keeps cumulative observations, not version snapshots.
 DOMINANT_SQL = '''
@@ -71,6 +72,7 @@ CANDIDATES_SQL = '''
     SELECT d.spotify_id, 'recording_mbid:' || MIN(b.recording_mbid::text), 3
     FROM tmp_sp_isrc_dominant d
     JOIN mlcore_musicbrainz_recording_isrc b ON b.isrc = d.isrc AND b.source_version = %s
+    WHERE NOT EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'isrc' AND h.value = d.isrc)
     GROUP BY d.spotify_id HAVING COUNT(DISTINCT b.recording_mbid) = 1
 '''
 
@@ -227,6 +229,7 @@ def build_workspace(*, sample_percent=1, musicbrainz_version, progress=print, pl
             cursor.execute(f'DROP TABLE IF EXISTS tmp_sp_{name}')
     if plans is not None:
         plans['dominance'] = explain(DOMINANT_SQL, [sample_percent * 10000])
+    stage_holds(subjects=True)
     progress('staging dominant Spotify evidence (sequential/hash scan)')
     _bulk(DOMINANT_SQL, [sample_percent * 10000])
     with connection.cursor() as cursor:
@@ -255,6 +258,11 @@ def build_workspace(*, sample_percent=1, musicbrainz_version, progress=print, pl
     _bulk(OWNERSHIP_SQL)
     if plans is not None:
         plans['actions'] = explain(ACTIONS_SQL)
+    _bulk("""UPDATE tmp_sp_group g SET status = 'quarantined_reference'
+        WHERE EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'spotify_track' AND h.value = g.spotify_id)
+           OR EXISTS (SELECT 1 FROM tmp_sp_member m JOIN tmp_identity_held_subject h
+                      ON h.final_id = m.final_id WHERE m.spotify_id = g.spotify_id)
+           OR EXISTS (SELECT 1 FROM tmp_identity_held_subject h WHERE h.depth >= 8)""")
     _bulk(ACTIONS_SQL)
     _analyze('tmp_sp_action')
     progress('staging globally unambiguous ISRC aliases (evidence hash scan)')
@@ -282,7 +290,7 @@ def build_workspace(*, sample_percent=1, musicbrainz_version, progress=print, pl
 
 BATCH_SQL = '''
     SELECT from_id, to_id, 0.9::float AS confidence,
-           jsonb_build_object('algorithm', 'spotify-cluster-v1', 'spotify_id', spotify_id) AS evidence,
+           jsonb_build_object('algorithm', 'spotify-cluster-v2', 'spotify_id', spotify_id) AS evidence,
            batch_key
     FROM tmp_sp_action WHERE batch_key > %s ORDER BY batch_key LIMIT %s
 '''
@@ -334,6 +342,7 @@ def apply_workspace(*, write=False, source_version, batch_size=50_000, after_key
             if upper is None:
                 break
             if write:
+                assert_hold_snapshot()
                 cursor.execute(ITEM_BATCH_SQL, [after_key, upper])
             result = insert_flat_redirects(
                 batch_sql=BATCH_SQL, batch_params=[after_key, batch_size], source=SOURCE,

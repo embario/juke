@@ -11,6 +11,7 @@ from django.test import TestCase
 
 from mlcore.models import (
     MusicBrainzRecordingISRC,
+    MusicBrainzRecordingMetadata,
     MusicBrainzRecordingURL,
     SourceIngestionRun,
 )
@@ -39,6 +40,7 @@ class MusicBrainzBridgeTests(TestCase):
 
     def _write_archive(self):
         members = {
+            'mbdump/artist_credit': '1\tTest Artist\t1\t1\t2026-01-01\n',
             'mbdump/recording': (
                 f'1\t{self.recording_mbid}\tTest Recording\t1\t180000\t\\N\t0\t2026-01-01\tf\n'
                 '2\t87654321-4321-4321-8321-cba987654321\tOther\t1\t200000\t\\N\t0\t2026-01-01\tf\n'
@@ -100,6 +102,40 @@ class MusicBrainzBridgeTests(TestCase):
         self.assertEqual(run.source_version, self.source_version)
         self.assertEqual(run.malformed_row_count, 1)
         self.assertEqual(run.metadata['tablespace'], 'juke_mlcore_cold')
+
+    def test_metadata_only_backfill_is_idempotent_and_does_not_replay_bridge(self):
+        from mlcore.services.musicbrainz_metadata import import_recording_metadata
+        import_musicbrainz_bridge(self.manifest_path)
+        rows = MusicBrainzRecordingMetadata.objects.filter(source_version=self.source_version)
+        self.assertEqual(rows.count(), 2)
+        reference = rows.get(recording_mbid=self.recording_mbid)
+        self.assertEqual(reference.title, 'Test Recording')
+        self.assertEqual(reference.artist_credit, 'Test Artist')
+        self.assertEqual(reference.duration_ms, 180000)
+        self.assertEqual(reference.source_checksum, hashlib.sha256(self.archive_path.read_bytes()).hexdigest())
+        before = list(MusicBrainzRecordingISRC.objects.values())
+        result = import_recording_metadata(self.manifest_path)
+        self.assertEqual(result['inserted_metadata'], 0)
+        self.assertEqual(result['identity_facts_changed'], 0)
+        self.assertEqual(list(MusicBrainzRecordingISRC.objects.values()), before)
+        self.assertEqual(SourceIngestionRun.objects.count(), 1)
+
+    def test_metadata_backfill_rejects_changed_checksum_for_same_version(self):
+        from mlcore.services.musicbrainz_metadata import import_recording_metadata
+        import_musicbrainz_bridge(self.manifest_path)
+        MusicBrainzRecordingMetadata.objects.update(source_checksum='0' * 64)
+        with self.assertRaisesRegex(ValueError, 'different checksum'):
+            import_recording_metadata(self.manifest_path)
+        self.assertEqual(MusicBrainzRecordingMetadata.objects.count(), 2)
+
+    def test_metadata_only_command_does_not_write_aliases(self):
+        from mlcore.models import CanonicalItemAlias
+        import_musicbrainz_bridge(self.manifest_path)
+        stdout = io.StringIO()
+        call_command('import_musicbrainz_recording_metadata', manifest=str(self.manifest_path),
+                     stdout=stdout, stderr=io.StringIO())
+        self.assertEqual(json.loads(stdout.getvalue())['inserted_metadata'], 0)
+        self.assertFalse(CanonicalItemAlias.objects.exists())
 
     def test_checksum_failure_records_no_run(self):
         manifest = json.loads(self.manifest_path.read_text())

@@ -91,6 +91,10 @@ def import_musicbrainz_bridge(
         _load_archive(archive_path, counters, progress_callback)
 
         summary = _materialize_bridge(source_version)
+        from mlcore.services.musicbrainz_metadata import import_recording_metadata
+        summary['recording_metadata'] = import_recording_metadata(
+            manifest_path, progress=lambda p: progress_callback({**counters, **p}) if progress_callback else None,
+        )
         metadata = {
             **run.metadata,
             **counters,

@@ -22,6 +22,7 @@ from typing import Callable
 from django.db import connection, transaction
 
 from mlcore.models import ProviderHydrationItem
+from mlcore.services.identity_safety import stage_holds, assert_hold_snapshot
 from mlcore.services.redirect_writes import MAX_REDIRECT_DEPTH, follow_redirects, run_bulk
 
 PROVIDER = 'spotify'
@@ -50,6 +51,8 @@ STAGE_PENDING_SQL = f'''
     FROM {ProviderHydrationItem._meta.db_table} i
     WHERE i.provider = %s
       AND i.status IN ('pending', 'retry')
+      AND NOT (i.evidence ? 'identity_reference_quarantine')
+      AND NOT EXISTS (SELECT 1 FROM tmp_identity_hold h WHERE h.scheme = 'isrc' AND h.value = i.identifier)
       AND (i.lease_expires_at IS NULL OR i.lease_expires_at <= NOW())
       AND i.id > %s
     ORDER BY i.id
@@ -60,6 +63,7 @@ STAGE_SPOTIFY_ALIASES_SQL = f'''
     SELECT DISTINCT ON (a.canonical_item_id) a.canonical_item_id, a.source_id
     FROM mlcore_canonical_item_alias a
     WHERE a.source = 'spotify' AND a.resource_type = 'track' AND a.status = 'active'
+      AND NOT (a.metadata ? 'identity_reference_quarantine')
     ORDER BY a.canonical_item_id, a.source_id
 '''
 
@@ -122,6 +126,7 @@ def reconcile_hydration_with_spotify_aliases(
     if staging_tablespace is not None:
         if not re.match(IDENTIFIER_RE, staging_tablespace):
             raise ValueError(f'Invalid tablespace name: {staging_tablespace!r}')
+    stage_holds()
     with connection.cursor() as cursor:
         if staging_tablespace:
             cursor.execute(f'SET temp_tablespaces = {quote(staging_tablespace)}')
@@ -183,6 +188,7 @@ def _reconcile(*, batch_size, after_id, limit, dry_run, started, progress_callba
         if not slice_rows:
             break
         with transaction.atomic(), connection.cursor() as cursor:
+            assert_hold_snapshot()
             cursor.execute(APPLY_SLICE_SQL, [RESOLVED_BY, RECONCILED_BY, lower, upper, lower, upper, lower, upper])
             updated = max(cursor.rowcount, 0)
         matched += updated
